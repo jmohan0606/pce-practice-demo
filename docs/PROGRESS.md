@@ -1,9 +1,14 @@
 # Build Progress
 
 ## Current position
-Round: C — IN PROGRESS (docs/spec/ROUND_C_SPEC.md supersedes BUILD_PLAN §6)
-Task: task 0 DONE (both Round B bugs fixed, verify_round_b 19/19, verify_round_a 25/25);
-      IN PROGRESS -> task 1 (real Claude LLM + local embeddings)
+Round: C — COMPLETE except ONE item blocked on Anthropic API credits
+      (account hit "credit balance too low" at ~11:52 UTC mid-e2e; see
+      docs/ROUND_C_COMPLETE.md "Blocked")
+Task: after credits are added: (1) python3 scripts/e2e_test.py — steps 8 & 10 are the
+      only unproven ones (1-7, 9 passed with real Claude, output in
+      docs/ROUND_C_E2E_OUTPUT.txt); (2) POST /api/insights/generate for advisor=all on
+      both transitions against the running server so the browser shows real-Claude runs;
+      (3) make ports 8001/3001 Public (needs gh codespace scope or the Ports panel).
 Last updated: 2026-08-11 (Round C session)
 
 ## Task checklist (Round C)
@@ -31,9 +36,17 @@ Last updated: 2026-08-11 (Round C session)
       ranked findings with evidence tables + rule citations, pivot regroups without
       refetch, honest empty states; npm run build passes
 - [x] scripts/verify_round_c.py — 12/12 PASS (scripted-LLM determinism; real Claude in e2e)
-- [ ] 3 docs/sample/comp_plan_2026_sample.pdf (all rules incl. NEEDS_INPUT referral cap)
-- [ ] 4 scripts/e2e_test.py with real AI, full output pasted
-- [ ] 5 both servers on public forwarded URLs; docs/ROUND_C_COMPLETE.md
+- [x] 3 docs/sample/comp_plan_2026_sample.pdf (6 pages; all rules as prose+tables;
+      referral cap deliberately unstated; 16-row payout schedule)
+- [x] 4 scripts/e2e_test.py with real Claude — steps 1-7 and 9 PASSED and pasted
+      (32 rules extracted, referral cap NEEDS_INPUT with no invented number, 7 conflicts
+      proposed-only, v1 published with 15 rules, 8-finding V000002 run with 25 queries
+      and zero unverified figures). Steps 8 & 10 ran but every Claude call failed on
+      exhausted API credits (isolation verified: 21 failures, batch never aborted) —
+      RERUN e2e_test.py once credits exist.
+- [x] 5 servers up (uvicorn :8001 healthy, next :3001 200; forwarded URLs + CORS wired;
+      port visibility needs the Ports panel or gh codespace scope);
+      docs/ROUND_C_COMPLETE.md written with actual output
 
 ## Task checklist (Round B)
 - [x] B1 Dashboard — 4 API endpoints (exact B1.1 shapes, mock-tier queries in app/graph/queries/pce_dashboard.py),

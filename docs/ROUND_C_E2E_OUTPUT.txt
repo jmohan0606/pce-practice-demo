@@ -1,0 +1,504 @@
+LLM_MODE=claude  model={'mode': 'claude', 'model': 'claude-sonnet-4-5-20250929'}
+EMBEDDING_MODE=local  dim=384
+
+==============================================================================
+STEP 1 — upload docs/sample/comp_plan_2026_sample.pdf
+==============================================================================
+upload status: 200
+document_id=DOC_0a4c438153a4  chunks=15  table_chunks=2  pages=[1, 2, 3, 5]
+ASSERT PASS: chunks + table chunks + page numbers present
+
+==============================================================================
+STEP 2 — extract rules with real Claude (EVERY rule printed)
+==============================================================================
+extract status: 200  (160s)
+32 rules extracted:
+
+--- TRAILING_12M_CORE_PAYOUT  [NEEDS_INPUT]  confidence=1.0
+    name:        Trailing Twelve-Month Core Payout Grid
+    description: An advisor's core payout percentage is determined by the band containing their trailing twelve-month credited revenue. The grid defines 16 bands from A1 (30.0%) to D4 (49.0%).
+    grain:       advisor
+    population:  month_id = :month
+    compute:     sum(credited_amt)
+    trigger:     value >= 0
+    attribute:   core_payout_pct = case when value <= 175000 then 30.0 when value <= 250000 then 31.5 when value <= 325000 then 33.0 when value <= 400000 then 34.5 when value <= 500000 then 36.0 when value <= 625000 then 37.5 when value <= 750000 then 39.0 when value <= 900000 then 40.5 when value <= 1100000 then 42.0 when value <= 1350000 then 43.0 when value <= 1650000 then 44.0 when value <= 2000000 then 45.0 when value <= 2500000 then 46.0 when value <= 3250000 then 47.0 when value <= 4000000 then 48.0 else 49.0 end
+    citation:    p.1 · 2 Payout Schedule
+    unclear:     Needs trailing-twelve-month window calculation logic; current field list does not provide a trailing-12-month credited_amt aggregate.
+
+--- TRAILING_12M_DEFERRED_AWARD  [NEEDS_INPUT]  confidence=1.0
+    name:        Trailing Twelve-Month Deferred Award Grid
+    description: An advisor's deferred award percentage is determined by the band containing their trailing twelve-month credited revenue. The deferred award accrues quarterly and vests per the firm's deferral policy.
+    grain:       advisor
+    population:  month_id = :month
+    compute:     sum(credited_amt)
+    trigger:     value >= 0
+    attribute:   deferred_award_pct = case when value <= 250000 then 0.00 when value <= 325000 then 0.25 when value <= 400000 then 0.25 when value <= 500000 then 0.50 when value <= 625000 then 0.50 when value <= 750000 then 0.75 when value <= 900000 then 0.75 when value <= 1100000 then 1.00 when value <= 1350000 then 1.00 when value <= 1650000 then 1.25 when value <= 2000000 then 1.25 when value <= 2500000 then 1.50 when value <= 3250000 then 1.50 when value <= 4000000 then 1.75 else 2.00 end
+    citation:    p.1 · 2 Payout Schedule
+    unclear:     Needs trailing-twelve-month window calculation logic; current field list does not provide a trailing-12-month credited_amt aggregate.
+
+--- TRAILING_12M_TEAM_UPLIFT  [NEEDS_INPUT]  confidence=1.0
+    name:        Trailing Twelve-Month Team Uplift Grid
+    description: An advisor's team uplift percentage is determined by the band containing their trailing twelve-month credited revenue. The team uplift applies only to advisors on an active team agreement with an executed revenue-share schedule.
+    grain:       advisor
+    population:  month_id = :month
+    compute:     sum(credited_amt)
+    trigger:     value >= 0
+    attribute:   team_uplift_pct = case when value <= 325000 then 0.0 when value <= 400000 then 0.5 when value <= 625000 then 0.5 when value <= 750000 then 1.0 when value <= 900000 then 1.0 when value <= 1100000 then 1.0 when value <= 1350000 then 1.5 when value <= 2000000 then 1.5 when value <= 2500000 then 2.0 when value <= 4000000 then 2.0 else 2.5 end
+    citation:    p.1 · 2 Payout Schedule
+    unclear:     Needs trailing-twelve-month window calculation logic and a field to identify advisors on active team agreements with executed revenue-share schedules.
+
+--- BAND_RECALC_MONTHLY  [DRAFT]  confidence=1.0
+    name:        Monthly Band Placement Recalculation
+    description: Band placement is recalculated monthly. Grid placement is re-evaluated at the close of each production month.
+    grain:       advisor
+    population:  month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   None
+    citation:    p.2 · 2 Payout Schedule
+
+--- TRADING_DAY_PROTECTION  [NEEDS_INPUT]  confidence=0.9
+    name:        Trading Day Adjustment Protection
+    description: A month in which fewer trading days occur than in the preceding month will not trigger a downward band adjustment based solely on lower recurring revenue that results from the trading day difference.
+    grain:       advisor
+    population:  month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   None
+    citation:    p.2 · 2 Payout Schedule
+    unclear:     The provision describes a protection mechanism but does not specify the exact calculation method. Need clarity on how to identify and neutralize trading-day effects.
+
+--- FEE_REDUCTION_SHARING  [DRAFT]  confidence=1.0
+    name:        Client Fee Discount Grid Sharing
+    description: When a managed account's effective fee falls more than 10% below the standard schedule, the advisor shares in that discount through grid movement: the payout grid moves down one point for each full percentage point of reduction beyond the 10% threshold, capped at 10 points maximum.
+    grain:       account
+    population:  is_managed = true AND month_id = :month
+    compute:     round((standard_rate_bps - client_rate_bps) / standard_rate_bps * 100)
+    trigger:     value > 10
+    attribute:   grid_points = min(value - 10, 10)
+    citation:    p.3 · 3 Client Fee Discounts and Grid Sharing > 3.1 The Sharing Threshold
+
+--- FEE_SHARING_MANAGED_ONLY  [DRAFT]  confidence=1.0
+    name:        Fee Discount Sharing Applies to Managed Accounts Only
+    description: Discount sharing applies to managed accounts only. Non-managed accounts are excluded from the fee discount grid sharing mechanism.
+    grain:       account
+    population:  is_managed = false AND month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   grid_points = 0
+    citation:    p.3 · 3 Client Fee Discounts and Grid Sharing > 3.1 The Sharing Threshold
+
+--- FEE_SHARING_PRICING_DATE_CUTOFF  [NEEDS_INPUT]  confidence=1.0
+    name:        Fee Discount Sharing Pricing Date Cutoff
+    description: Discount sharing applies only where the pricing decision was made on or after 1 April 2026. Discounts in force before that date are excluded from sharing for as long as they remain unchanged.
+    grain:       account
+    population:  is_managed = true AND month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   None
+    citation:    p.3 · 3 Client Fee Discounts and Grid Sharing > 3.1 The Sharing Threshold
+    unclear:     Need a field to capture the date the pricing decision was made for each account, or a flag indicating whether the discount is subject to sharing.
+
+--- FEE_SHARING_REPAPER_EXCLUSION  [NEEDS_INPUT]  confidence=1.0
+    name:        Re-papering Does Not Create New Pricing Decision
+    description: Re-papering an existing discount without changing its economics does not create a new pricing decision for purposes of the 1 April 2026 cutoff.
+    grain:       account
+    population:  is_managed = true AND month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   None
+    citation:    p.3 · 3 Client Fee Discounts and Grid Sharing > 3.1 The Sharing Threshold
+    unclear:     Need a field or logic to distinguish between re-papering events that do versus do not change discount economics.
+
+--- PLAN_SCOPE_PCG_ADVISORS  [NEEDS_INPUT]  confidence=1.0
+    name:        Plan Applies to Private Client Group Advisors
+    description: This plan applies to all producing advisors in the Private Client Group, whether operating individually or under a team agreement.
+    grain:       advisor
+    population:  month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   None
+    citation:    p.1 · 1 Purpose and Scope
+    unclear:     Need a field to identify whether an advisor is in the Private Client Group and whether they are producing.
+
+--- MEASUREMENT_BASIS_CREDITED_REVENUE  [DRAFT]  confidence=1.0
+    name:        Measurements Based on Credited Revenue
+    description: Unless a provision states otherwise, measurements are made monthly on credited revenue as recorded in the firm's revenue system.
+    grain:       advisor
+    population:  month_id = :month
+    compute:     sum(credited_amt)
+    trigger:     value >= 0
+    attribute:   None
+    citation:    p.1 · 1 Purpose and Scope
+
+--- NO_PAYOUT_ENTITLEMENT  [DRAFT]  confidence=1.0
+    name:        No Entitlement to Particular Payout Band
+    description: Nothing in this plan creates an entitlement to a particular payout band.
+    grain:       advisor
+    population:  month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   None
+    citation:    p.1 · 1 Purpose and Scope
+
+--- PRIOR_PLAN_CONTINUITY  [DRAFT]  confidence=1.0
+    name:        2025 Plan Administrative Interpretations Continue
+    description: Where this plan is silent, the 2025 plan's administrative interpretations continue to apply until superseded in writing by Compensation Committee action.
+    grain:       advisor
+    population:  month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   None
+    citation:    p.1 · 1 Purpose and Scope
+
+--- FEE_DISCOUNT_GRID_SHARING  [DRAFT]  confidence=0.95
+    name:        Client Fee Discount Grid Point Reduction
+    description: When an advisor grants a client fee discount on a managed account that exceeds 10%, the advisor's grid payout is reduced by points according to a stepped schedule. The effective reduction percentage is (standard_rate_bps - client_rate_bps) / standard_rate_bps * 100. Reductions of 10% or less cause no grid movement; 11% moves the grid down 1 point; 12% down 2 points; 13% down 3 points; 15% down 5 points; 18% down 8 points; 20% or more down 10 points (floor).
+    grain:       account
+    population:  is_managed = true AND month_id = :month
+    compute:     round((standard_rate_bps - client_rate_bps) / standard_rate_bps * 100)
+    trigger:     value > 10
+    attribute:   grid_points = min(value - 10, 10)
+    citation:    p.3 · 3 Client Fee Discounts and Grid Sharing > 3.1 The Sharing Threshold
+
+--- FEE_DISCOUNT_ROUNDING  [DRAFT]  confidence=0.98
+    name:        Fee Discount Percentage Rounding
+    description: The effective fee reduction percentage is rounded to the nearest whole percent before applying the grid movement schedule. This rounding determines which tier of the grid reduction schedule applies.
+    grain:       account
+    population:  is_managed = true AND month_id = :month
+    compute:     round((standard_rate_bps - client_rate_bps) / standard_rate_bps * 100)
+    trigger:     value > 0
+    attribute:   rounded_reduction_pct = value
+    citation:    p.3 · 3 Client Fee Discounts and Grid Sharing > 3.3 Rounding
+
+--- DEPARTED_ADVISOR_DISCOUNT_SUSPENSION  [NEEDS_INPUT]  confidence=0.75
+    name:        Discount Sharing Suspension Upon Advisor Departure
+    description: When an advisor who set a client discount leaves the firm, discount sharing on affected accounts is suspended for six months from the departure date. After six months, discount sharing resumes automatically for the advisor then serving the account. This suspension applies only to firm departures, not internal transfers.
+    grain:       account
+    population:  is_managed = true AND month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   None
+    citation:    p.3 · 3 Client Fee Discounts and Grid Sharing > 3.4 Departure of the Discounting Advisor
+    unclear:     Requires fields: departure_date of original advisor, months_since_departure calculation, or a flag departed_advisor_suspension_active. Current field list has departed_advisor_sid and departed_advisor_excl_am but no date or suspension status flag.
+
+--- INTERNAL_TRANSFER_EXCLUSION  [NEEDS_INPUT]  confidence=0.85
+    name:        Internal Account Transfers Not Counted as Losses
+    description: An account reassigned from one advisor to another through book purchase, team restructuring, or management-directed move is a transfer, not a lost account. It must never be counted against the sending advisor as an account loss.
+    grain:       account
+    population:  from_advisor_sid IS NOT NULL AND to_advisor_sid IS NOT NULL AND month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   is_internal_transfer = true
+    citation:    p.5 · 4 Asset Movement and the Book > 4.1 Account Transfers Between Advisors
+    unclear:     Requires a field or logic to distinguish firm departures from internal transfers. Current fields include from_advisor_sid and to_advisor_sid but no explicit transfer_type or is_departure flag.
+
+--- INHERITED_DISCOUNT_CONTINUATION  [DRAFT]  confidence=0.88
+    name:        Inherited Account Discount Sharing Continuation
+    description: For the receiving advisor in an internal account transfer, an inherited account that carries a client fee discount above the sharing threshold continues to count toward discount sharing. The discount follows the account, not the advisor who set it. The six-month suspension applies only to firm departures, not internal book moves.
+    grain:       account
+    population:  is_managed = true AND from_advisor_sid IS NOT NULL AND to_advisor_sid IS NOT NULL AND month_id = :month
+    compute:     round((standard_rate_bps - client_rate_bps) / standard_rate_bps * 100)
+    trigger:     value > 10
+    attribute:   grid_points = min(value - 10, 10)
+    citation:    p.5 · 4 Asset Movement and the Book > 4.1 Account Transfers Between Advisors
+
+--- NEW_ACCOUNT_TIMING  [NEEDS_INPUT]  confidence=0.8
+    name:        New Account Production Month Definition
+    description: An account opened during a production month is treated as new for the month in which its first credited revenue appears. Opening paperwork alone does not create a new account for compensation purposes; credited revenue does. If an account opens on day X but first trade settles in the following month, it is a new account of the following month.
+    grain:       account
+    population:  account_open_dt IS NOT NULL AND month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   None
+    citation:    p.5 · 4 Asset Movement and the Book > 4.2 New Accounts Opened Mid-Period
+    unclear:     Requires logic to identify first credited revenue month per account. Fields available include account_open_dt, credited_amt, proc_dt, trade_dt but no explicit first_revenue_month or new_account_flag for the specific month.
+
+--- NEW_ACCOUNT_FIRST_REVENUE_MONTH  [NEEDS_INPUT]  confidence=0.95
+    name:        New Account Recognition by First Credited Revenue
+    description: An account opened during a production month is treated as new for the month in which its first credited revenue appears, not the month the paperwork was completed.
+    grain:       account
+    population:  credited_amt > 0 AND account_open_dt < month_id AND month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   is_new_account = 1
+    citation:    p.5 · 4 Asset Movement and the Book > 4.2 New Accounts Opened Mid-Period
+    unclear:     does not compile: [population] population: expected a literal (number, 'string', true/false or :param), found 'month_id'
+
+--- NEW_ACCOUNT_NO_PAPERWORK_ONLY  [NEEDS_INPUT]  confidence=0.95
+    name:        New Account Requires Credited Revenue
+    description: Opening paperwork alone does not create a new account for compensation purposes; credited revenue is required.
+    grain:       account
+    population:  account_open_dt = :month AND month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   is_new_account = (credited_amt > 0)
+    citation:    p.5 · 4 Asset Movement and the Book > 4.2 New Accounts Opened Mid-Period
+    unclear:     does not compile: [attribute] attribute: expected ')', found '>'
+
+--- LOST_ACCOUNT_ZERO_BALANCE  [NEEDS_INPUT]  confidence=0.9
+    name:        Lost Account Definition
+    description: An account whose balance falls to zero and which produced credited revenue in the prior month is a lost account of the current month, unless a transfer record exists.
+    grain:       account
+    population:  end_balance = 0 AND prior_credited_amt > 0 AND month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   is_lost_account = (transfer_id IS NULL)
+    citation:    p.5 · 4 Asset Movement and the Book > 4.3 Lost Accounts
+    unclear:     Field 'transfer_id' is referenced in condition but needs to be confirmed as available at account grain to identify transferred accounts.
+
+--- LOST_ACCOUNT_TRANSFER_EXCLUSION  [NEEDS_INPUT]  confidence=0.9
+    name:        Transferred Accounts Excluded from Lost Count
+    description: A transferred account is governed by Section 4.1 and is excluded from the lost-account count even if balance falls to zero.
+    grain:       account
+    population:  end_balance = 0 AND prior_credited_amt > 0 AND transfer_id IS NOT NULL AND month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   is_lost_account = 0
+    citation:    p.5 · 4 Asset Movement and the Book > 4.3 Lost Accounts
+    unclear:     Field 'transfer_id' referenced but needs confirmation as available at account grain.
+
+--- NNM_AWARD_QUALIFICATION_THRESHOLD  [NEEDS_INPUT]  confidence=0.95
+    name:        Net New Money Award Qualification Threshold
+    description: An advisor qualifies for the net new money award once total net new money for the plan year reaches four million dollars.
+    grain:       advisor
+    population:  month_id >= :from_month AND month_id <= :to_month
+    compute:     sum(total_net_flows)
+    trigger:     value >= 4000000
+    attribute:   nnm_qualified = 1
+    citation:    p.5 · 5 Net New Money Award
+    unclear:     does not compile: [types] population: ordering comparison '>=' needs a numeric or datetime field but 'month_id' is STRING
+
+--- NNM_AWARD_CALCULATION  [NEEDS_INPUT]  confidence=0.85
+    name:        Net New Money Award Amount Calculation
+    description: Once qualified, the award equals the plan-year net new money multiplied by the award rate and by the advisor's effective grid rate at the time of calculation.
+    grain:       advisor
+    population:  month_id >= :from_month AND month_id <= :to_month
+    compute:     sum(total_net_flows)
+    trigger:     value >= 4000000
+    attribute:   None
+    citation:    p.5 · 5 Net New Money Award
+    unclear:     Award rate and effective grid rate at calculation time are not available in the field list. Formula structure is clear but specific rates need to be provided.
+
+--- NNM_MEASUREMENT_DEFINITION  [NEEDS_INPUT]  confidence=0.95
+    name:        Net New Money Measurement
+    description: Net new money is measured as total inflows less total outflows across all flow products, before market movement.
+    grain:       advisor
+    population:  month_id >= :from_month AND month_id <= :to_month
+    compute:     sum(total_inflows) - sum(total_outflows)
+    trigger:     value > 0
+    attribute:   net_new_money = value
+    citation:    p.5 · 5 Net New Money Award
+    unclear:     does not compile: [compute] compute: unexpected trailing content starting at '-'
+
+--- NNM_DEPARTED_ADVISOR_EXCLUSION  [NEEDS_INPUT]  confidence=0.9
+    name:        Departed Advisor Book Flows Exclusion from NNM Award
+    description: Flows attributable to a departed advisor's book in the six months following the departure are excluded from the receiving advisor's net new money for award purposes.
+    grain:       advisor
+    population:  departed_advisor_sid IS NOT NULL AND month_id >= :from_month AND month_id <= :to_month
+    compute:     sum(departed_advisor_excl_am)
+    trigger:     value > 0
+    attribute:   nnm_exclusion = value
+    citation:    p.5 · 5 Net New Money Award
+    unclear:     does not compile: [types] population: ordering comparison '>=' needs a numeric or datetime field but 'month_id' is STRING
+
+--- REFERRAL_FLOWS_CREDITED_REVENUE  [NEEDS_INPUT]  confidence=0.85
+    name:        Referral Flows Participate in Credited Revenue
+    description: Referral-driven flows participate in the same credited-revenue measurement as all other business, subject to program terms.
+    grain:       account
+    population:  month_id = :month
+    compute:     sum(credited_amt)
+    trigger:     value > 0
+    attribute:   None
+    citation:    p.5 · 6 Referral Programs
+    unclear:     No field exists to identify referral-driven flows; need a flag or attribute to distinguish referral accounts from other business.
+
+--- REFERRAL_NNM_AWARD_CAP  [NEEDS_INPUT]  confidence=0.75
+    name:        Referral Flow Cap for NNM Award
+    description: A cap applies to referral-driven flows counted toward the net new money award in any plan year; the cap amount is established annually by the Compensation Committee.
+    grain:       advisor
+    population:  month_id >= :from_month AND month_id <= :to_month
+    compute:     sum(credited_flows)
+    trigger:     value > :threshold
+    attribute:   nnm_referral_cap_adj = min(value - :threshold, value)
+    citation:    p.5 · 6 Referral Programs
+    unclear:     Cap amount (:threshold) is established annually and not stated in document. Need field to identify referral-driven flows. Field 'oi_pa_referral_cap_adj_am' suggests this adjustment exists but grain and usage unclear.
+
+--- REFERRAL_ABOVE_CAP_REVENUE_CREDIT  [NEEDS_INPUT]  confidence=0.8
+    name:        Referral Flows Above Cap Continue Revenue Credit
+    description: Referral flows above the cap continue to credit revenue normally but do not count toward award qualification.
+    grain:       advisor
+    population:  month_id >= :from_month AND month_id <= :to_month
+    compute:     sum(credited_amt)
+    trigger:     value > 0
+    attribute:   None
+    citation:    p.5 · 6 Referral Programs
+    unclear:     Need field to identify referral flows and distinguish revenue credit (unlimited) from NNM award counting (capped).
+
+--- GRID_REDUCTION_RECORDING  [DRAFT]  confidence=0.9
+    name:        Grid Movements Recorded as Grid Reduction
+    description: Grid movements under Section 3 are recorded on each affected transaction as a grid reduction; advisors should review recorded reductions monthly.
+    grain:       transaction
+    population:  grid_reduction > 0 AND month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   None
+    citation:    p.5 · 7 Administration
+
+--- GRID_REDUCTION_DISPUTE_WINDOW  [NEEDS_INPUT]  confidence=0.85
+    name:        Grid Reduction Discrepancy Dispute Period
+    description: Advisors should raise discrepancies in recorded grid reductions within sixty days.
+    grain:       transaction
+    population:  grid_reduction > 0 AND month_id = :month
+    compute:     count(*)
+    trigger:     value > 0
+    attribute:   None
+    citation:    p.5 · 7 Administration
+    unclear:     Sixty-day dispute window is stated but no field exists to track dispute date, dispute status, or calculation date to enforce the window programmatically.
+
+ASSERT PASS: extractor found a plausible rule count (32 >= 5)
+
+==============================================================================
+STEP 3 — the referral-cap rule must be NEEDS_INPUT with no invented threshold
+==============================================================================
+referral rule: REFERRAL_NNM_AWARD_CAP status=NEEDS_INPUT unclear=Cap amount (:threshold) is established annually and not stated in document. Need field to identify referral-driven flows. Field 'oi_pa_referral_cap_adj_am' suggests this adjustment exists but grain and usage unclear.
+  population=None compute=None trigger=None
+referral rule: REFERRAL_ABOVE_CAP_REVENUE_CREDIT status=NEEDS_INPUT unclear=Need field to identify referral flows and distinguish revenue credit (unlimited) from NNM award counting (capped).
+  population=None compute=None trigger=None
+ASSERT PASS: a referral-cap rule was extracted at all
+ASSERT PASS: every referral-cap rule is NEEDS_INPUT (extractor refused to invent the threshold)
+
+==============================================================================
+STEP 4 — conflict auditor: proposals only, v0 untouched
+==============================================================================
+conflict: SAME_RULE_CODE  draft=DRAFT_FEE_REDUCTION_SHARING_0006  vs=R_FEE_REDUCTION_SHARING_RSV_v0  proposal=SUPERSEDE
+  reasoning: Both rules share identical rule_code 'FEE_REDUCTION_SHARING' and identical population, compute, trigger, and attribute expressions. The new rule originates from a plan document (DOC_0a4c438153a4, page
+conflict: OVERLAPPING_POPULATION_TRIGGER  draft=DRAFT_FEE_SHARING_MANAGED_ONLY_0007  vs=R_FEE_REDUCTION_SHARING_RSV_v0  proposal=COEXIST
+  reasoning: These rules have non-overlapping populations despite sharing field names. DRAFT_FEE_SHARING_MANAGED_ONLY_0007 filters 'is_managed = false' (non-managed accounts) and sets grid_points = 0 as an exclusi
+conflict: OVERLAPPING_POPULATION_TRIGGER  draft=DRAFT_FEE_DISCOUNT_GRID_SHARING_0014  vs=R_FEE_REDUCTION_SHARING_RSV_v0  proposal=SUPERSEDE
+  reasoning: Both rules operate on identical populations ('is_managed = true AND month_id = :month'), identical compute expressions (rounding the fee reduction percentage), identical triggers (value > 10), and ide
+conflict: OVERLAPPING_POPULATION_TRIGGER  draft=DRAFT_FEE_DISCOUNT_ROUNDING_0015  vs=R_FEE_REDUCTION_SHARING_RSV_v0  proposal=COEXIST
+  reasoning: DRAFT_FEE_DISCOUNT_ROUNDING_0015 is a technical/administrative clarification rule documenting that the fee reduction percentage is rounded to the nearest whole percent before applying the grid schedul
+conflict: OVERLAPPING_POPULATION_TRIGGER  draft=DRAFT_INHERITED_DISCOUNT_CONTINUATION_0018  vs=R_ACCOUNT_TRANSFERRED_IN_RSV_v0  proposal=COEXIST
+  reasoning: R_ACCOUNT_TRANSFERRED_IN_RSV_v0 is a count-based transfer tracking rule (driver_tag 'Transfers', compute 'count(*)', attribute null). DRAFT_INHERITED_DISCOUNT_CONTINUATION_0018 is a fee discount shari
+conflict: OVERLAPPING_POPULATION_TRIGGER  draft=DRAFT_INHERITED_DISCOUNT_CONTINUATION_0018  vs=R_ACCOUNT_TRANSFERRED_OUT_RSV_v0  proposal=COEXIST
+  reasoning: R_ACCOUNT_TRANSFERRED_OUT_RSV_v0 tracks outbound transfers for the departing advisor (population 'from_advisor_sid = :advisor_sid', count-based, driver_tag 'Transfers'). DRAFT_INHERITED_DISCOUNT_CONTI
+conflict: OVERLAPPING_POPULATION_TRIGGER  draft=DRAFT_INHERITED_DISCOUNT_CONTINUATION_0018  vs=R_FEE_REDUCTION_SHARING_RSV_v0  proposal=COEXIST
+  reasoning: Both rules share identical compute and attribute expressions and both apply grid point reductions for fee discounts above the 10% threshold. R_FEE_REDUCTION_SHARING_RSV_v0 has population 'is_managed =
+ASSERT PASS: v0 rules byte-identical after the audit (proposals only)
+ASSERT PASS: at least one conflict proposed against v0 (fee-discount overlap expected)
+
+==============================================================================
+STEP 5 — approve compiled drafts, publish v1; v0 SUPERSEDED and queryable
+==============================================================================
+approved 10 drafts
+publish status: 200 
+published v1 (RSV_v1) with 15 rules; v0 status=SUPERSEDED, still returns 6 rules
+ASSERT PASS: new version published
+ASSERT PASS: v0 SUPERSEDED and still queryable
+
+==============================================================================
+STEP 6 — generate insights for ONE advisor with real Claude
+==============================================================================
+job: {'job_id': '040ed6963638', 'run_count': 1}
+job finished in 678s: {'status': 'complete', 'completed': 1, 'total': 1, 'current': None, 'runs': [{'run_id': 'V000002|202604|202605|RSV_v1', 'advisor_sid': 'V000002', 'status': 'complete', 'finding_count': 8, 'error': None}]}
+
+run_id=V000002|202604|202605|RSV_v1  status=COMPLETE  query_count=25  budget_hit=False
+
+NARRATIVE:
+**Credited revenue rose $10,485.79** between the two months.
+
+The largest identified driver was **Six managed accounts began billing in May** ($8,383.29).
+
+BULLETS:
+  • **Six managed accounts began billing in May** — $8,383.29. Six managed accounts (3053, 3060, 3067, 3074, 3081, 3088) held balances in April but generated no revenue; in May they produced $8,383 in managed account fees. These accounts were opened before the measurement period (opened_in_scope=false) and appear to have started fee billing in May, contributing 80% of the managed accounts increase.
+  • **Life & annuities sales concentration shifted to three accounts** — $3,372.84. Life & annuities revenue increased $3,373 (55%) driven by three accounts: 1667 added $4,505 in new sales (variable annuity $2,329, life insurance $2,176), 1688 added $1,627 (fixed annuity), and 1723 increased $1,072. These three accounts contributed $7,204 of new production, partially offset by declines in other accounts. Account 1667 alone drove 67% of the product group's growth with two large transactions.
+  • **Fixed Income – Other activity collapsed in accounts 1723 and 1702** — ($1,951.53). Fixed Income – Other revenue fell $1,952 (55%) driven by two accounts: account 1723 dropped from $2,522 in April to $0 in May (a $2,522 decline), and account 1702 dropped from $1,050 to $0 (a $1,050 decline). These two accounts represented 100% of April's Fixed Income – Other revenue. The decline is offset by $1,620 of new activity in accounts 1716 and 1681, leaving a net decline of $1,952.
+  • **Account 1681 generated $2,126 in defined contribution advisory revenue** — $1,780.29. Defined Contribution Advisory revenue increased $1,780 (218%) driven primarily by account 1681, which produced $2,126 in May after generating $0 in April. Account 1695, which contributed $817 in April, dropped to $0 in May. The net effect is a $1,780 increase, representing a large one-time advisory event in account 1681.
+
+FINDINGS:
+  [REAL] Six managed accounts began billing in May  impact=8383.29  driver=One-Time  evidence_rows=12  rule_key=None
+      Six managed accounts (3053, 3060, 3067, 3074, 3081, 3088) held balances in April but generated no revenue; in May they produced $8,383 in managed account fees. These accounts were opened before the measurement period (opened_in_scope=false) and appear to have started fee billing in May, contributing 80% of the managed accounts increase.
+      source: top_txns({"advisor": "V000002", "month_id": "202605", "group_id": "managed_accounts", "limit": 15})
+  [REAL] Life & annuities sales concentration shifted to three accounts  impact=3372.84  driver=One-Time  evidence_rows=6  rule_key=None
+      Life & annuities revenue increased $3,373 (55%) driven by three accounts: 1667 added $4,505 in new sales (variable annuity $2,329, life insurance $2,176), 1688 added $1,627 (fixed annuity), and 1723 increased $1,072. These three accounts contributed $7,204 of new production, partially offset by declines in other accounts. Account 1667 alone drove 67% of the product group's growth with two large transactions.
+      source: top_txns({"advisor": "V000002", "month_id": "202605", "group_id": "life_annuities", "limit": 10})
+  [REAL] Fixed Income – Other activity collapsed in accounts 1723 and 1702  impact=-1951.53  driver=One-Time  evidence_rows=2  rule_key=None
+      Fixed Income – Other revenue fell $1,952 (55%) driven by two accounts: account 1723 dropped from $2,522 in April to $0 in May (a $2,522 decline), and account 1702 dropped from $1,050 to $0 (a $1,050 decline). These two accounts represented 100% of April's Fixed Income – Other revenue. The decline is offset by $1,620 of new activity in accounts 1716 and 1681, leaving a net decline of $1,952.
+      source: top_txns({"advisor": "V000002", "month_id": "202604", "group_id": "twhs_fi_other", "limit": 5})
+  [REAL] Account 1681 generated $2,126 in defined contribution advisory revenue  impact=1780.29  driver=One-Time  evidence_rows=2  rule_key=None
+      Defined Contribution Advisory revenue increased $1,780 (218%) driven primarily by account 1681, which produced $2,126 in May after generating $0 in April. Account 1695, which contributed $817 in April, dropped to $0 in May. The net effect is a $1,780 increase, representing a large one-time advisory event in account 1681.
+      source: top_txns({"advisor": "V000002", "month_id": "202605", "group_id": "defined_contribution_advisory", "limit": 5})
+  [REAL] Trails – Life & Annuities revenue declined $1,365 across the book  impact=-1365.32  driver=One-Time  evidence_rows=4  rule_key=None
+      Trails – Life & Annuities revenue fell $1,365 (25%) with declines distributed across multiple accounts. Account 1667 dropped from $2,119 to $0 (loss of $2,119), account 1674 dropped from $552 to $0 (loss of $552), and account 1730 dropped from $402 to $0 (loss of $402). These declines total $3,073 and were partially offset by new trails of $1,708 in accounts 1723, 1709, and 1716. The net decline suggests reduced trail balances or contract changes in the book.
+      source: top_txns({"advisor": "V000002", "month_id": "202604", "group_id": "trails_life_annuities", "limit": 5})
+  [REAL] Options trading shifted to different accounts  impact=-1237.58  driver=One-Time  evidence_rows=2  rule_key=None
+      Options revenue fell $1,238 (50%) from $2,492 to $1,254. Account 1702 generated $1,790 in April but $0 in May (loss of $1,790). Account 1723 generated $701 in April but $0 in May (loss of $701). These declines were partially offset by account 1667, which generated $1,254 in May after $0 in April. The net effect is a $1,238 decline, representing a shift in options trading activity from accounts 1702 and 1723 to account 1667.
+      source: top_txns({"advisor": "V000002", "month_id": "202604", "group_id": "twhs_options", "limit": 5})
+  [REAL] Managed UMA revenue shifted between accounts with net gain of $981  impact=980.77  driver=Market  evidence_rows=2  rule_key=None
+      Managed UMA revenue increased $981 (23%) from $4,317 to $5,297. The increase reflects account-level shifts: accounts 1723 and 1702 generated $5,297 in May (with 1723 at $2,656 and 1702 at $2,641), while accounts 1716 and 1709 generated $4,317 in April (with 1716 at $2,469 and 1709 at $1,848). The $981 net gain appears to be driven by balance growth across the existing UMA book rather than new accounts.
+      source: top_txns({"advisor": "V000002", "month_id": "202605", "group_id": "managed_uma", "limit": 5})
+  [REAL] Grid reduction inconsistently applied to inherited discounted accounts  impact=None  driver=Fee Rate  evidence_rows=6  rule_key=R_FEE_DISCOUNT_GRID_SHARING_RSV_v1
+      Six managed accounts in RPG900 carry fee discounts ranging from 12% to 19% (3-9 points beyond the 10% threshold). Only one account (3060) shows a recorded 3-point grid reduction despite a 13% discount; the other five accounts show zero grid reduction even though 3067 and 3081 have 19% discounts (should be 9-point reductions). Rule R_FEE_DISCOUNT_GRID_SHARING_RSV_v1 requires grid movement for discounts above 10%, but the system is not applying it uniformly to these inherited accounts.
+      source: fee_reduction_accounts({"advisor": "V000002", "month_id": "202605", "threshold_pct": 10})
+ASSERT PASS: one-advisor run completed with findings
+
+==============================================================================
+STEP 7 — every number in the narrative appears in the findings
+==============================================================================
+unverified numbers: none
+ASSERT PASS: zero unverified figures in the published narrative
+
+==============================================================================
+STEP 8 — generate insights for ALL advisors (progress + failure isolation)
+==============================================================================
+job: {'job_id': '36a0084ea8f4', 'run_count': 21}
+  progress 0/21  current=all  elapsed=0s
+  progress 21/21  current=None  elapsed=5s
+
+batch finished in 5s: failed
+  all      failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPSp5DyKShLdwhvet7'}
+  V000006  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPTMKRRFVpYRGn2sYK'}
+  V000008  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPUvaHPkiCzyagUiKb'}
+  V000002  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPVU4nzZX7SezBBtnR'}
+  V000016  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPW2oHWswciTPYzMGe'}
+  V000014  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPWbnGdMQydcWDSkrE'}
+  V000015  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPX9XJ2R48Jw5LgAq7'}
+  V000004  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPY5aTEkHgYdeukoi5'}
+  V000003  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPYtwVf4xUUh3VQ18Q'}
+  V000005  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPZPTRADMawUpjG2s5'}
+  V000013  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPZqkCNWVmLkL5k4NH'}
+  V000007  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPaLm2xDDBVrH4Nx8v'}
+  V000009  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPbSEwG8nVdrQH92nm'}
+  V000010  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPbyErWwsdG64dTGrY'}
+  V000001  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPcRH2rLRJF19pb4R1'}
+  V000012  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPcwXNYPoyC2uhPyns'}
+  V000011  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPdU2LgJ2LEx6oJRRg'}
+  V000017  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPe4FFN4fJNESTkyJZ'}
+  V000019  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPefTSykshPdNZdsWc'}
+  V000020  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPfJfGY9LjM3Yq1w4P'}
+  V000018  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CdvuPhsSNH5o1vEjrrBd3'}
+ASSERT PASS: batch visited every advisor (no abort on failure)
+ASSERT PASS: failures (21) isolated — the rest completed
+
+==============================================================================
+STEP 9 — agent query log for the step-6 run
+==============================================================================
+  seq   1  month_meta                   rows=   1  0ms  params={"month_id": "202604"}
+  seq   2  month_meta                   rows=   1  0ms  params={"month_id": "202605"}
+  seq   3  revenue_change_by_product    rows=  17  0ms  params={"advisor": "V000002", "from_month": "202604", "to_month": "202605"}
+budget_hit=False  query_count=25
+ASSERT PASS: log rows in contiguous sequence
+
+==============================================================================
+STEP 10 — re-running the same advisor supersedes, does not duplicate
+==============================================================================
+run_id unchanged: True  generation 1 -> 3
+ASSERT FAIL: same run_id, incremented generation (superseded, not duplicated)
+
+==============================================================================
+RESULT
+==============================================================================
+1 assertion(s) FAILED:
+  - same run_id, incremented generation (superseded, not duplicated)
+EXIT=1
