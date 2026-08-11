@@ -6,11 +6,13 @@ import {
   type MonthRow,
   type RuleVersion,
   type Transition,
+  type TraceSummary,
   generateInsights,
   getInsightStatus,
   getInsights,
   getMonths,
   getRuleVersions,
+  getTraceSummary,
   getTransitions,
 } from "@/lib/api";
 import EmptyState from "@/components/EmptyState";
@@ -28,6 +30,11 @@ export default function InsightsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [pivot, setPivot] = useState<"driver" | "product" | "none">("none");
   const [error, setError] = useState<string | null>(null);
+  const [traceSummary, setTraceSummary] = useState<TraceSummary | null>(null);
+
+  useEffect(() => {
+    getTraceSummary().then(setTraceSummary).catch(() => setTraceSummary(null));
+  }, []);
 
   const monthLabel = useCallback(
     (id: string) => months.find((m) => m.month_id === id)?.month_name ?? id,
@@ -131,9 +138,26 @@ export default function InsightsPage() {
                 </option>
               ))}
             </select>
-            <button className="btn" onClick={regenerate} disabled={busy !== null}>
-              {busy ? busy : "↻ Regenerate"}
-            </button>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+              <button className="btn" onClick={regenerate} disabled={busy !== null}>
+                {busy ? busy : "↻ Regenerate"}
+              </button>
+              {/* projection from the average of previous runs; grey when no history */}
+              <span
+                style={{
+                  fontSize: "11px",
+                  color: traceSummary?.projection.avg_run_cost_usd != null ? "var(--slate)" : "var(--rule)",
+                }}
+              >
+                {transitions.length} aggregate run{transitions.length === 1 ? "" : "s"} ·{" "}
+                {traceSummary?.projection.avg_run_cost_usd != null
+                  ? `approx $${(traceSummary.projection.avg_run_cost_usd * transitions.length).toFixed(2)}, approx ${Math.max(
+                      1,
+                      Math.round(((traceSummary.projection.avg_run_wall_ms ?? 0) * transitions.length) / 60000),
+                    )} min`
+                  : "no run history for a projection"}
+              </span>
+            </div>
             <button className="btn" onClick={exportJson} disabled={!anyRun}>
               Export
             </button>

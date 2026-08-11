@@ -11,6 +11,7 @@ const TABS = [
   { href: "/advisor", label: "Advisor" },
   { href: "/documents", label: "Documents & Rules" },
   { href: "/rules", label: "Rule Versions" },
+  { href: "/trace", label: "Trace" },
 ];
 
 /** Top bar (brand + TigerGraph pill) and the five-tab navigation. */

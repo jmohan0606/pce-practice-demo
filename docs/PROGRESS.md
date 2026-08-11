@@ -22,7 +22,12 @@
       NOTE: Haiku's minimum cacheable prefix is 4096 tokens — the opening block
       (rules+catalog+initial) makes the cached prefix large enough; the system
       block alone would not be.
-- [ ] Task 3: Trace screen + /api/trace endpoints
+- [x] Task 3: Trace tab — /api/trace/runs (runs table: advisor, transition, version,
+      turns, queries, tokens, cache hit %, cost, wall, status incl. budget flags),
+      /api/trace/runs/{run_id} (per-turn table with prompt-size bar — runaway turn
+      visible at a glance), /api/trace/summary (per-advisor, document-extraction,
+      conflict-audit, full-refresh projection). Projection line under the insights
+      Generate button (avg of previous runs; greyed with no history). npm build OK.
 - [ ] Task 4: UI corrections (4.1–4.6)
 - [ ] Task 5: schema additions (opportunity, document_type, checklist)
 - [ ] Task 6: one cheap verification run + ROUND_C_FIX_COMPLETE.md

@@ -306,3 +306,60 @@ export interface PeerRank {
 export function getPeerRank(advisor: string, monthId: string): Promise<PeerRank> {
   return get(`/api/insights/peer-rank?advisor=${encodeURIComponent(advisor)}&month_id=${monthId}`);
 }
+
+// ---------- Cost & Trace (cost-fix session task 3) ----------
+
+export interface TraceTotals {
+  turns: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  cache_hit_pct: number;
+  est_cost_usd: number;
+}
+export interface TraceRun extends TraceTotals {
+  run_id: string;
+  kind: string; // insight_run | document_extraction | conflict_audit | other
+  advisor_sid: string | null;
+  transition: string | null;
+  version_id: string | null;
+  status: string;
+  query_count: number;
+  wall_ms: number;
+  budget_hit: boolean;
+  budget_hit_tokens: boolean;
+  started_at: string | null;
+}
+export interface TraceTurn {
+  seq_no: number;
+  agent_name: string;
+  action_kind: string;
+  query_name: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  latency_ms: number;
+  est_cost_usd: number;
+}
+export interface TraceRunDetail extends TraceRun {
+  turn_rows: TraceTurn[];
+}
+export interface TraceSummary {
+  per_advisor: ({ advisor_sid: string } & TraceTotals)[];
+  document_extraction: TraceTotals;
+  conflict_audit: TraceTotals;
+  full_refresh: { run_count: number | null; est_cost_usd: number | null; est_minutes: number | null };
+  projection: { history_runs: number; avg_run_cost_usd: number | null; avg_run_wall_ms: number | null };
+}
+export function getTraceRuns(): Promise<{ runs: TraceRun[] }> {
+  return get("/api/trace/runs");
+}
+export function getTraceRunDetail(runId: string): Promise<TraceRunDetail> {
+  return get(`/api/trace/runs/${encodeURIComponent(runId)}`);
+}
+export function getTraceSummary(): Promise<TraceSummary> {
+  return get("/api/trace/summary");
+}

@@ -10,6 +10,7 @@ from app.api.routers.documents import router as documents_router
 from app.api.routers.health import router as health_router
 from app.api.routers.insights import router as insights_router
 from app.api.routers.rules import router as rules_router
+from app.api.routers.trace import router as trace_router
 from app.config.settings import get_settings
 from app.rules.seed import ensure_v0_seed
 from app.shared.logging import configure_logging, get_logger
@@ -50,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(documents_router)
     app.include_router(rules_router)
     app.include_router(insights_router)
+    app.include_router(trace_router)
 
     # B3.7: seed rule-set v0 at first startup if no version exists (idempotent).
     ensure_v0_seed()
