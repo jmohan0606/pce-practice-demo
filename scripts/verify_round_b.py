@@ -152,30 +152,36 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
           f"found={body.get('found')}, llm_calls={len(calls)}")
 
     # ---------------------------------------------------------------- B3
-    from app.rules.grammar import GrammarError, parse_compute, parse_population
-    from app.rules.compiler import CompileError, compile_rule
+    # Round E: the expression grammar is GONE (it discarded correct rules for
+    # form). B3-11 now pins the checks that PROTECT THE DATA: unknown vertex,
+    # disallowed aggregate and out-of-set parameters are all rejected by plan
+    # validation — a model can never smuggle a raw query through.
+    from app.rules.compiler import CompileError, translate_plan
     from app.rules.store import get_rule_store
 
+    base_plan = {"vertex": "phx_dm_pce_account_month", "filters": [],
+                 "compute": {"agg": "sum", "expr": "credited_amt"},
+                 "trigger": {"op": ">", "value": 0}, "params": []}
     rejected, accepted = [], []
-    for what, fn, text in [
-        ("free SQL", parse_population, "SELECT * FROM phx_dm_pce_account"),
-        ("subquery", parse_population, "acct_key IN (SELECT acct_key FROM t)"),
-        ("unknown function", parse_compute, "regexp_extract(reason_cd, 'x')"),
+    for what, plan in [
+        ("unknown vertex", dict(base_plan, vertex="SELECT * FROM accounts")),
+        ("disallowed aggregate", dict(base_plan, compute={"agg": "exec", "expr": "credited_amt"})),
+        ("out-of-set parameter", dict(base_plan, params=[":drop_table"])),
     ]:
-        try:
-            fn(text)
+        outcome = translate_plan("PROBE", "account", plan)
+        if isinstance(outcome, CompileError):
+            rejected.append(f"{what}: {str(outcome)[:40]}")
+        else:
             accepted.append(what)
-        except GrammarError as exc:
-            rejected.append(f"{what}: {str(exc)[:40]}")
-    check("B3-11", "grammar rejects free SQL, subqueries and unknown functions",
+    check("B3-11", "plan validation rejects unknown vertex, aggregate and parameter (grammar removed)",
           not accepted, f"rejected {len(rejected)}/3; wrongly accepted={accepted or 'none'}")
 
     store = get_rule_store()
     v0 = store.latest_version()
     v0_rules = store.version_rules(v0["version_id"])
-    probe = dict(next(r for r in v0_rules if r["rule_code"] == "LOST_ACCOUNT"))
-    probe["population_expr"] = "made_up_field = true AND month_id = :month"
-    result = compile_rule(probe)
+    probe_plan = dict(base_plan,
+                      filters=[{"field": "made_up_field", "op": "=", "value": True}])
+    result = translate_plan("LOST_ACCOUNT", "account", probe_plan)
     msg = str(result)
     check("B3-12", "compiler rejects an unknown field, naming field and vertex",
           isinstance(result, CompileError) and "made_up_field" in msg and "phx_dm_pce_" in msg,
@@ -244,12 +250,21 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     same_code = [c for c in conf["conflicts"] if c["conflict_type"] == "SAME_RULE_CODE"]
     fee_after = store.get(fee["rule_key"])
     untouched = (fee_after["status"] == "PUBLISHED"
-                 and fee_after["trigger_expr"] == fee["trigger_expr"])
+                 and fee_after["plan"] == fee["plan"])
     check("B3-16", "a same-rule_code draft is flagged as a conflict and NOT auto-applied",
           len(same_code) >= 1 and untouched,
           f"conflicts={len(same_code)} ({same_code[0]['proposed_resolution'] if same_code else '-'}), "
           f"published rule untouched={untouched}")
 
+    # Round E lifecycle: a draft must be COMPILED (plan validated + executed
+    # against mock data) before approval — deterministic here, no LLM.
+    from app.rules.compiler import validate_plan
+
+    outcome = validate_plan(draft["rule_code"], draft["grain"], draft["plan"])
+    assert outcome["ok"], f"draft plan failed validation: {outcome.get('error')}"
+    store.mark_compiled(draft["rule_key"], plan=draft["plan"],
+                        explanation=draft["plan"].get("explanation") or "",
+                        execution=outcome["execution"])
     client.post(f"/api/rules/{draft['rule_key']}/approve", json={"approved_by": "verify"})
     pub = client.post("/api/rules/publish", json={"approved_by": "verify"}).json()
     v1 = pub["version"]

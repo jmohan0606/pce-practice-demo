@@ -1,39 +1,37 @@
-"""B3.3 — compile a rule against the graph schema.
+"""Round E — validate and translate Rule Compiler plans.
 
-``compile_rule(rule) -> CompiledRule | CompileError``
+The restricted expression grammar is GONE (it discarded 18 of 32 correct rules
+for form). Rules are plain English (`statement`); the Rule Compiler agent
+(app/agents/rule_compiler.py) produces a structured query plan JSON once per
+rule at approval time. This module keeps ONLY the checks that protect the data
+(ROUND_E_SPEC 1.3):
 
-1. Parse each expression against the narrow grammar (app/rules/grammar.py)
-2. Resolve every field against docs/tigergraph/schema_catalog.json for the
-   declared grain — an unknown field is a compile error naming the field AND
-   the vertex it was sought on
-3. Type-check: arithmetic needs numeric fields; comparisons need compatible types
-4. Emit a query plan: {vertex, filters, aggregate, group_by, params} (+ the
-   compute/trigger/attribute trees and join specs the evaluator needs)
+1. `vertex` exists in the schema catalog
+2. every `field` exists on that vertex, or on a vertex reachable by a shared
+   join key
+3. every `params` entry is in the allowed set
+4. `agg` is one of none | sum | count | count_distinct | avg | min | max
+5. the plan EXECUTES against mock data without error and returns a row count
+   (`execute_check`) — a plan that runs is valid; one that raises is not
 
-An uncompilable rule cannot be approved.
+`expr` strings are parsed into JSON node trees evaluated by the existing safe
+evaluator over already-fetched rows — never eval, never string-concatenated
+SQL, never a raw query from the model. Field-to-field comparison and string
+ordering are ALLOWED (the two forms the old grammar wrongly rejected).
 """
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field as dc_field
 from functools import lru_cache
 from pathlib import Path
-
-from app.rules.grammar import (
-    GrammarError,
-    collect_fields,
-    collect_params,
-    parse_attribute,
-    parse_compute,
-    parse_population,
-    parse_trigger,
-)
+from typing import Any
 
 GRAINS = ("advisor", "account", "rpg", "household", "product", "transaction")
 
-# The vertices a grain's fields resolve against, in priority order. The first
-# vertex is the grain's home; the driving vertex of the query plan is the one
-# that resolves the most referenced fields (ties break by this order).
+# Join-candidate vertices per grain (the plan vertex may be any catalog vertex;
+# extra fields resolve against these via a shared key).
 GRAIN_VERTICES: dict[str, list[str]] = {
     "account": [
         "phx_dm_pce_account_month",
@@ -46,6 +44,7 @@ GRAIN_VERTICES: dict[str, list[str]] = {
         "phx_dm_pce_month",
         "phx_dm_pce_monthly_revenue",
         "phx_dm_pce_advisor_flow_month",
+        "phx_dm_pce_opportunity",
     ],
     "rpg": ["phx_dm_pce_rpg"],
     "household": ["phx_dm_pce_household"],
@@ -68,6 +67,11 @@ _JOIN_KEYS = ("acct_key", "advisor_sid", "month_id", "product_id")
 
 NUMERIC_TYPES = {"INT", "UINT", "DOUBLE", "FLOAT"}
 
+ALLOWED_PARAMS = ("month", "advisor_sid", "from_month", "to_month", "threshold")
+ALLOWED_AGGS = ("none", "sum", "count", "count_distinct", "avg", "min", "max")
+FILTER_OPS = ("=", "!=", ">", ">=", "<", "<=", "LIKE", "IN", "IS_NULL", "IS_NOT_NULL")
+SCALAR_FUNCTIONS = ("round", "abs", "min", "max")
+
 _CATALOG_PATH = Path(__file__).resolve().parents[2] / "docs" / "tigergraph" / "schema_catalog.json"
 
 
@@ -82,17 +86,15 @@ def vertex_attributes(vertex: str) -> dict[str, str]:
 
 
 def fields_for_grain(grain: str) -> dict[str, dict[str, str]]:
-    """vertex -> {field: DDL type} for every vertex in a grain's resolution set.
-    Used both by the compiler and to inject the field list into the extractor prompt."""
     return {vertex: vertex_attributes(vertex) for vertex in GRAIN_VERTICES.get(grain, [])}
 
 
 @dataclass(frozen=True)
 class CompileError:
-    """A readable compile failure. Returned (not raised) by compile_rule."""
+    """A readable compile failure. Returned (not raised) by translate_plan."""
 
     rule_code: str
-    stage: str  # population | compute | trigger | attribute | grain | fields | types
+    stage: str  # vertex | fields | params | agg | expr | filters | execution
     message: str
 
     def __str__(self) -> str:
@@ -107,190 +109,350 @@ class CompiledRule:
     field_vertices: dict[str, str] = dc_field(default_factory=dict)
 
 
-def _resolve_fields(grain: str, fields: set[str], rule_code: str) -> dict[str, str] | CompileError:
-    """field -> owning vertex, searched across the grain's vertex set.
-    Unknown field → CompileError naming the field and the vertex it was sought on."""
-    vertices = GRAIN_VERTICES[grain]
+# --------------------------------------------------------------------------- node helpers
+
+def collect_fields(node: Any) -> set[str]:
+    """Every field name referenced anywhere in a node tree (incl. fieldrefs)."""
+    fields: set[str] = set()
+    if isinstance(node, dict):
+        if node.get("type") in ("field", "fieldref"):
+            fields.add(node["name"])
+        if node.get("type") in ("cond", "in", "isnull"):
+            fields.add(node["field"])
+        for value in node.values():
+            fields |= collect_fields(value)
+    elif isinstance(node, list):
+        for item in node:
+            fields |= collect_fields(item)
+    return fields
+
+
+def collect_params(node: Any) -> set[str]:
+    params: set[str] = set()
+    if isinstance(node, dict):
+        if node.get("type") == "param":
+            params.add(node["name"])
+        for value in node.values():
+            params |= collect_params(value)
+    elif isinstance(node, list):
+        for item in node:
+            params |= collect_params(item)
+    return params
+
+
+# --------------------------------------------------------------------------- expr parsing
+
+class ExprError(ValueError):
+    """An expr string could not be parsed into a safe evaluation tree."""
+
+
+_EXPR_TOKEN_RE = re.compile(
+    r"""\s*(?:
+        (?P<param>:[A-Za-z_][A-Za-z0-9_]*)
+      | (?P<number>\d+\.\d+|\d+)
+      | (?P<string>'[^']*'|"[^"]*")
+      | (?P<ident>[A-Za-z_][A-Za-z0-9_]*)
+      | (?P<punct>[(),*+\-/])
+    )""",
+    re.VERBOSE,
+)
+
+
+def _expr_tokens(text: str) -> list[tuple[str, str]]:
+    tokens: list[tuple[str, str]] = []
+    pos = 0
+    while pos < len(text):
+        match = _EXPR_TOKEN_RE.match(text, pos)
+        if match is None:
+            remainder = text[pos:].lstrip()
+            if not remainder:
+                break
+            raise ExprError(f"unexpected character {remainder[0]!r} in expression {text!r}")
+        pos = match.end()
+        for kind in ("param", "number", "string", "ident", "punct"):
+            value = match.group(kind)
+            if value is not None:
+                tokens.append((kind, value))
+                break
+    return tokens
+
+
+class _ExprParser:
+    """Arithmetic over fields, numbers, :params, `value` and round/abs/min/max.
+    Emits the evaluator's JSON node trees. This is plan TRANSLATION, not a
+    grammar wall — a failure is a readable compile error on a machine-built
+    plan, never a reason to discard a correct rule."""
+
+    def __init__(self, tokens: list[tuple[str, str]], text: str) -> None:
+        self.tokens = tokens
+        self.pos = 0
+        self.text = text
+
+    def peek(self):
+        return self.tokens[self.pos] if self.pos < len(self.tokens) else None
+
+    def next(self):
+        token = self.peek()
+        if token is None:
+            raise ExprError(f"unexpected end of expression {self.text!r}")
+        self.pos += 1
+        return token
+
+    def expect(self, char: str) -> None:
+        token = self.peek()
+        if token != ("punct", char):
+            found = token[1] if token else "end"
+            raise ExprError(f"expected {char!r} in {self.text!r}, found {found!r}")
+        self.pos += 1
+
+    def parse(self) -> dict:
+        node = self.parse_expr()
+        if self.pos < len(self.tokens):
+            raise ExprError(f"trailing content {self.peek()[1]!r} in {self.text!r}")
+        return node
+
+    def parse_expr(self) -> dict:
+        node = self.parse_term()
+        while self.peek() in (("punct", "+"), ("punct", "-")):
+            op = self.next()[1]
+            node = {"type": "binop", "op": op, "left": node, "right": self.parse_term()}
+        return node
+
+    def parse_term(self) -> dict:
+        node = self.parse_factor()
+        while self.peek() in (("punct", "*"), ("punct", "/")):
+            op = self.next()[1]
+            node = {"type": "binop", "op": op, "left": node, "right": self.parse_factor()}
+        return node
+
+    def parse_factor(self) -> dict:
+        token = self.peek()
+        if token is None:
+            raise ExprError(f"unexpected end of expression {self.text!r}")
+        kind, value = token
+        if token == ("punct", "("):
+            self.next()
+            node = self.parse_expr()
+            self.expect(")")
+            return node
+        if token == ("punct", "-"):
+            self.next()
+            return {"type": "binop", "op": "-",
+                    "left": {"type": "number", "value": 0},
+                    "right": self.parse_factor()}
+        if kind == "number":
+            self.next()
+            return {"type": "number", "value": float(value) if "." in value else int(value)}
+        if kind == "param":
+            self.next()
+            return {"type": "param", "name": value[1:]}
+        if kind == "ident":
+            self.next()
+            lowered = value.lower()
+            if self.peek() == ("punct", "("):
+                if lowered not in SCALAR_FUNCTIONS:
+                    raise ExprError(
+                        f"unknown function {value!r} — allowed: "
+                        + ", ".join(SCALAR_FUNCTIONS))
+                self.next()
+                args = [self.parse_expr()]
+                while self.peek() == ("punct", ","):
+                    self.next()
+                    args.append(self.parse_expr())
+                self.expect(")")
+                expected = 1 if lowered in ("round", "abs") else 2
+                if len(args) != expected:
+                    raise ExprError(f"{lowered}() takes {expected} argument(s), got {len(args)}")
+                return {"type": "func", "name": lowered, "args": args}
+            if lowered == "value":
+                return {"type": "valueref"}
+            return {"type": "field", "name": value}
+        raise ExprError(f"unexpected token {value!r} in {self.text!r}")
+
+
+def parse_expr(text: str) -> dict:
+    """Parse one expr string into an evaluator node tree. Raises ExprError."""
+    if not (text or "").strip():
+        raise ExprError("expression is empty")
+    return _ExprParser(_expr_tokens(text), text).parse()
+
+
+# --------------------------------------------------------------------------- plan translation
+
+def _literal_node(value: Any, rule_code: str) -> dict | CompileError:
+    """A filter's `value` → an evaluator node. Forms:
+    ':param' string → param; {'field': name} → fieldref (field-to-field
+    comparison — allowed); bool/number/string → literal."""
+    if isinstance(value, dict):
+        name = value.get("field") or value.get("value_field")
+        if not name:
+            return CompileError(rule_code, "filters",
+                                f"object filter value must be {{'field': <name>}}, got {value!r}")
+        return {"type": "fieldref", "name": str(name)}
+    if isinstance(value, bool):
+        return {"type": "bool", "value": value}
+    if isinstance(value, (int, float)):
+        return {"type": "number", "value": value}
+    if isinstance(value, str):
+        if value.startswith(":"):
+            name = value[1:]
+            if name not in ALLOWED_PARAMS:
+                return CompileError(
+                    rule_code, "params",
+                    f"unknown parameter {value!r} — allowed: "
+                    + ", ".join(f":{p}" for p in ALLOWED_PARAMS))
+            return {"type": "param", "name": name}
+        return {"type": "string", "value": value}
+    if value is None:
+        return CompileError(rule_code, "filters",
+                            "filter value is null — use op IS_NULL / IS_NOT_NULL instead")
+    return CompileError(rule_code, "filters", f"cannot use filter value {value!r}")
+
+
+def _filters_node(filters: list, rule_code: str) -> dict | CompileError:
+    """The plan's filter list → one AND node tree for the evaluator."""
+    items: list[dict] = []
+    for entry in filters or []:
+        if not isinstance(entry, dict) or not entry.get("field"):
+            return CompileError(rule_code, "filters",
+                                f"each filter needs a 'field', got {entry!r}")
+        fieldname = str(entry["field"])
+        op = str(entry.get("op") or "=").upper().replace(" ", "_")
+        if op == "<>":
+            op = "!="
+        if op not in FILTER_OPS:
+            return CompileError(rule_code, "filters",
+                                f"unknown filter op {entry.get('op')!r} — allowed: "
+                                + ", ".join(FILTER_OPS))
+        if op == "IS_NULL":
+            items.append({"type": "isnull", "field": fieldname, "negated": False})
+            continue
+        if op == "IS_NOT_NULL":
+            items.append({"type": "isnull", "field": fieldname, "negated": True})
+            continue
+        if op == "IN":
+            values = entry.get("value")
+            if not isinstance(values, list) or not values:
+                return CompileError(rule_code, "filters",
+                                    f"IN filter on {fieldname!r} needs a non-empty value list")
+            nodes = []
+            for v in values:
+                node = _literal_node(v, rule_code)
+                if isinstance(node, CompileError):
+                    return node
+                nodes.append(node)
+            items.append({"type": "in", "field": fieldname, "values": nodes})
+            continue
+        node = _literal_node(entry.get("value"), rule_code)
+        if isinstance(node, CompileError):
+            return node
+        items.append({"type": "cond", "field": fieldname, "op": op, "value": node})
+    if not items:
+        # an unfiltered plan is legal — the whole vertex (scoped by month/advisor
+        # params automatically) is the population.
+        return {"type": "and", "items": []}
+    return items[0] if len(items) == 1 else {"type": "and", "items": items}
+
+
+def _resolve_fields(vertex: str, grain: str, fields: set[str],
+                    rule_code: str) -> dict[str, str] | CompileError:
+    """field -> owning vertex: the plan vertex first, then the grain's join
+    candidates. Unknown field → readable error naming where it was sought."""
+    candidates = [vertex] + [v for v in GRAIN_VERTICES.get(grain, []) if v != vertex]
     resolution: dict[str, str] = {}
     for name in sorted(fields):
-        owner = next((v for v in vertices if name in vertex_attributes(v)), None)
+        owner = next((v for v in candidates if name in vertex_attributes(v)), None)
         if owner is None:
-            searched = ", ".join(vertices[1:]) or "(none)"
             return CompileError(
                 rule_code, "fields",
-                f"unknown field '{name}' on vertex '{vertices[0]}' (grain '{grain}'; "
-                f"also searched: {searched}) — field names must come from schema_catalog.json",
-            )
+                f"unknown field '{name}' on vertex '{vertex}' (also searched: "
+                f"{', '.join(candidates[1:]) or '(none)'}) — field names must come "
+                f"from schema_catalog.json")
         resolution[name] = owner
     return resolution
 
 
-def _pick_driving_vertex(grain: str, resolution: dict[str, str]) -> str:
-    vertices = GRAIN_VERTICES[grain]
-    votes = {v: sum(1 for owner in resolution.values() if owner == v) for v in vertices}
-    return max(vertices, key=lambda v: (votes[v], -vertices.index(v)))
-
-
-def _field_type(name: str, resolution: dict[str, str]) -> str:
-    return vertex_attributes(resolution[name]).get(name, "STRING")
-
-
-def _expr_type(node: dict, resolution: dict[str, str], rule_code: str, stage: str) -> str | CompileError:
-    """Type of an expr node: 'NUMERIC' | 'STRING' | 'BOOL' | 'DATETIME'."""
-    kind = node.get("type")
-    if kind == "number" or kind == "valueref" or kind == "star":
-        return "NUMERIC"
-    if kind == "string":
-        return "STRING"
-    if kind == "bool":
-        return "BOOL"
-    if kind == "param":
-        return "PARAM"  # params compare with anything (month ids are strings, threshold numeric)
-    if kind == "field":
-        ddl = _field_type(node["name"], resolution)
-        return "NUMERIC" if ddl in NUMERIC_TYPES else ddl
-    if kind == "binop":
-        for side in ("left", "right"):
-            side_type = _expr_type(node[side], resolution, rule_code, stage)
-            if isinstance(side_type, CompileError):
-                return side_type
-            if side_type not in ("NUMERIC", "PARAM"):
-                offender = node[side].get("name", node[side].get("value"))
-                return CompileError(
-                    rule_code, "types",
-                    f"{stage}: arithmetic '{node['op']}' needs numeric operands but "
-                    f"'{offender}' is {side_type}",
-                )
-        return "NUMERIC"
-    if kind == "func":
-        for arg in node["args"]:
-            arg_type = _expr_type(arg, resolution, rule_code, stage)
-            if isinstance(arg_type, CompileError):
-                return arg_type
-            if arg_type not in ("NUMERIC", "PARAM"):
-                return CompileError(
-                    rule_code, "types",
-                    f"{stage}: {node['name']}() needs numeric arguments, got {arg_type}",
-                )
-        return "NUMERIC"
-    return CompileError(rule_code, "types", f"{stage}: cannot type node {kind!r}")
-
-
-def _check_population_types(node: dict, resolution: dict[str, str], rule_code: str) -> CompileError | None:
-    kind = node.get("type")
-    if kind in ("and", "or"):
-        for item in node["items"]:
-            error = _check_population_types(item, resolution, rule_code)
-            if error is not None:
-                return error
-        return None
-    if kind == "isnull":
-        return None
-    if kind == "in":
-        field_type = _expr_type({"type": "field", "name": node["field"]}, resolution, rule_code, "population")
-        for literal in node["values"]:
-            lit_type = _expr_type(literal, resolution, rule_code, "population")
-            if lit_type not in (field_type, "PARAM"):
-                return CompileError(
-                    rule_code, "types",
-                    f"population: IN list value type {lit_type} does not match field "
-                    f"'{node['field']}' ({field_type})",
-                )
-        return None
-    if kind == "cond":
-        field_type = _expr_type({"type": "field", "name": node["field"]}, resolution, rule_code, "population")
-        if isinstance(field_type, CompileError):
-            return field_type
-        value_type = _expr_type(node["value"], resolution, rule_code, "population")
-        if isinstance(value_type, CompileError):
-            return value_type
-        op = node["op"]
-        if op == "LIKE" and field_type != "STRING":
-            return CompileError(
-                rule_code, "types",
-                f"population: LIKE needs a STRING field but '{node['field']}' is {field_type}",
-            )
-        if op in (">", ">=", "<", "<=") and field_type not in ("NUMERIC", "DATETIME"):
-            return CompileError(
-                rule_code, "types",
-                f"population: ordering comparison '{op}' needs a numeric or datetime field "
-                f"but '{node['field']}' is {field_type}",
-            )
-        if value_type != "PARAM" and op in ("=", "!=") and value_type != field_type:
-            # month_id-style string fields compared to string literals are fine;
-            # anything cross-type (bool vs number etc.) is an error.
-            if not (field_type == "DATETIME" and value_type == "STRING"):
-                return CompileError(
-                    rule_code, "types",
-                    f"population: '{node['field']}' ({field_type}) compared with a "
-                    f"{value_type} literal — incompatible types",
-                )
-        if value_type != "PARAM" and op in (">", ">=", "<", "<=") and value_type not in ("NUMERIC", "STRING"):
-            return CompileError(
-                rule_code, "types",
-                f"population: '{op}' right-hand side must be numeric, got {value_type}",
-            )
-        return None
-    return CompileError(rule_code, "types", f"population: cannot check node {kind!r}")
-
-
-def compile_rule(rule: dict) -> CompiledRule | CompileError:
-    """Compile one rule dict (B3.1 shape — `population`/`compute`/`trigger`/
-    `attribute` keys, or the stored *_expr aliases). Returns a CompiledRule or a
-    CompileError; never raises for a bad rule."""
-    rule_code = rule.get("rule_code") or "(unnamed rule)"
-    grain = (rule.get("grain") or "").strip().lower()
+def translate_plan(rule_code: str, grain: str, plan_json: dict) -> CompiledRule | CompileError:
+    """Checks 1–4 + node building: the Rule Compiler's plan JSON → the internal
+    evaluator plan. Returns CompiledRule or a readable CompileError; never
+    raises for a bad plan. Check 5 (execution) is `execute_check`."""
+    grain = (grain or "").strip().lower()
     if grain not in GRAINS:
-        return CompileError(rule_code, "grain",
+        return CompileError(rule_code, "fields",
                             f"unknown grain {grain!r} — expected one of {', '.join(GRAINS)}")
+    if not isinstance(plan_json, dict):
+        return CompileError(rule_code, "vertex", "plan is not an object")
 
-    population_src = rule.get("population", rule.get("population_expr", ""))
-    compute_src = rule.get("compute", rule.get("compute_expr", ""))
-    trigger_src = rule.get("trigger", rule.get("trigger_expr", ""))
-    attribute_src = rule.get("attribute", rule.get("attribute_expr", ""))
+    # 1. vertex exists
+    vertex = str(plan_json.get("vertex") or "")
+    if vertex not in load_schema_catalog()["vertices"]:
+        return CompileError(rule_code, "vertex",
+                            f"unknown vertex {vertex!r} — must be a schema_catalog.json vertex")
 
-    try:
-        population = parse_population(population_src)
-    except GrammarError as exc:
-        return CompileError(rule_code, "population", str(exc))
-    try:
-        compute = parse_compute(compute_src)
-    except GrammarError as exc:
-        return CompileError(rule_code, "compute", str(exc))
-    try:
-        trigger = parse_trigger(trigger_src)
-    except GrammarError as exc:
-        return CompileError(rule_code, "trigger", str(exc))
-    try:
-        attribute = parse_attribute(attribute_src)
-    except GrammarError as exc:
-        return CompileError(rule_code, "attribute", str(exc))
+    # filters → node tree
+    filters = _filters_node(plan_json.get("filters") or [], rule_code)
+    if isinstance(filters, CompileError):
+        return filters
 
-    fields = collect_fields(population) | collect_fields(compute)
+    # 4. agg allowed; compute expr parsed
+    compute_spec = plan_json.get("compute") or {}
+    if not isinstance(compute_spec, dict):
+        return CompileError(rule_code, "agg", f"compute must be an object, got {compute_spec!r}")
+    agg = str(compute_spec.get("agg") or "none").lower()
+    if agg not in ALLOWED_AGGS:
+        return CompileError(rule_code, "agg",
+                            f"unknown agg {agg!r} — allowed: " + " | ".join(ALLOWED_AGGS))
+    expr_text = str(compute_spec.get("expr") or "").strip()
+    try:
+        if agg == "count" and expr_text in ("", "*"):
+            compute: dict = {"type": "agg", "name": "count", "arg": {"type": "star"}}
+        else:
+            arg = parse_expr(expr_text)
+            compute = arg if agg == "none" else {"type": "agg", "name": agg, "arg": arg}
+    except ExprError as exc:
+        return CompileError(rule_code, "expr", f"compute: {exc}")
+
+    trigger_spec = plan_json.get("trigger") or {}
+    op = str(trigger_spec.get("op") or ">").strip()
+    if op == "<>":
+        op = "!="
+    if op not in ("=", "!=", ">", ">=", "<", "<="):
+        return CompileError(rule_code, "expr", f"trigger op {op!r} not one of = != > >= < <=")
+    try:
+        threshold = float(trigger_spec.get("value", 0))
+    except (TypeError, ValueError):
+        return CompileError(rule_code, "expr",
+                            f"trigger value must be a number, got {trigger_spec.get('value')!r}")
+    trigger = {"type": "trigger", "op": op, "value": threshold}
+
+    attribute = None
+    attr_spec = plan_json.get("attribute")
+    if isinstance(attr_spec, dict) and attr_spec.get("expr"):
+        try:
+            attribute = {"type": "attribute", "name": str(attr_spec.get("name") or "attribute"),
+                         "expr": parse_expr(str(attr_spec["expr"]))}
+        except ExprError as exc:
+            return CompileError(rule_code, "expr", f"attribute: {exc}")
+
+    # 2. every field exists on the vertex or a joinable vertex
+    fields = collect_fields(filters) | collect_fields(compute)
     if attribute is not None:
         fields |= collect_fields(attribute)
-    resolution = _resolve_fields(grain, fields, rule_code)
+    resolution = _resolve_fields(vertex, grain, fields, rule_code)
     if isinstance(resolution, CompileError):
         return resolution
 
-    error = _check_population_types(population, resolution, rule_code)
-    if error is not None:
-        return error
-    compute_expr = compute["arg"] if compute.get("type") == "agg" else compute
-    if compute_expr.get("type") != "star":
-        compute_type = _expr_type(compute_expr, resolution, rule_code, "compute")
-        if isinstance(compute_type, CompileError):
-            return compute_type
-        aggregate = compute.get("name") if compute.get("type") == "agg" else None
-        if aggregate in ("sum", "avg") and compute_type not in ("NUMERIC", "PARAM"):
-            return CompileError(rule_code, "types",
-                                f"compute: {aggregate}() needs a numeric expression, got {compute_type}")
-    if attribute is not None:
-        attr_type = _expr_type(attribute["expr"], resolution, rule_code, "attribute")
-        if isinstance(attr_type, CompileError):
-            return attr_type
+    # 3. params in the allowed set (declared list + any :param found in nodes)
+    declared = [str(p).lstrip(":") for p in plan_json.get("params") or []]
+    found = collect_params(filters) | collect_params(compute) \
+        | (collect_params(attribute) if attribute else set())
+    bad = sorted(set(declared) - set(ALLOWED_PARAMS)) or sorted(found - set(ALLOWED_PARAMS))
+    if bad:
+        return CompileError(rule_code, "params",
+                            f"parameter :{bad[0]} not in the allowed set "
+                            + ", ".join(f":{p}" for p in ALLOWED_PARAMS))
+    params = sorted(set(declared) | found)
 
-    vertex = _pick_driving_vertex(grain, resolution)
     group_key = GRAIN_KEYS[grain]
     if group_key not in vertex_attributes(vertex):
         group_key = load_schema_catalog()["vertices"][vertex]["primary_id"]
@@ -299,24 +461,19 @@ def compile_rule(rule: dict) -> CompiledRule | CompileError:
     for name, owner in sorted(resolution.items()):
         if owner == vertex:
             continue
-        via = next(
-            (k for k in _JOIN_KEYS if k in vertex_attributes(vertex) and k in vertex_attributes(owner)),
-            None,
-        )
+        via = next((k for k in _JOIN_KEYS
+                    if k in vertex_attributes(vertex) and k in vertex_attributes(owner)), None)
         if via is None:
             return CompileError(
                 rule_code, "fields",
-                f"field '{name}' resolves to '{owner}' which cannot be joined to the "
-                f"driving vertex '{vertex}' (no shared key among {', '.join(_JOIN_KEYS)})",
-            )
+                f"field '{name}' resolves to '{owner}' which cannot be joined to "
+                f"'{vertex}' (no shared key among {', '.join(_JOIN_KEYS)})")
         joins.append({"field": name, "vertex": owner, "via": via})
 
-    params = sorted(collect_params(population) | collect_params(compute)
-                    | (collect_params(attribute) if attribute is not None else set()))
     plan = {
         "vertex": vertex,
-        "filters": population,
-        "aggregate": compute.get("name") if compute.get("type") == "agg" else None,
+        "filters": filters,
+        "aggregate": None if agg == "none" else (compute.get("name") if compute.get("type") == "agg" else None),
         "compute": compute,
         "trigger": trigger,
         "attribute": attribute,
@@ -324,15 +481,79 @@ def compile_rule(rule: dict) -> CompiledRule | CompileError:
         "params": params,
         "joins": joins,
         "grain": grain,
-        "population_fields": sorted(collect_fields(population)),
+        "population_fields": sorted(collect_fields(filters)),
     }
     return CompiledRule(rule_code=rule_code, grain=grain, plan=plan, field_vertices=resolution)
 
 
+# --------------------------------------------------------------------------- check 5: execution
+
+def _test_params() -> dict:
+    """Benign parameter values from the mock data — every allowed param is
+    supplied so check 5 exercises the plan itself, not parameter plumbing."""
+    from app.graph.foundation_store import get_foundation_store
+
+    store = get_foundation_store()
+    months = sorted(store.all_vertices("phx_dm_pce_month"))
+    advisors = sorted(store.all_vertices("phx_dm_pce_advisor"))
+    return {
+        "month": months[-1] if months else "202606",
+        "from_month": months[0] if months else "202604",
+        "to_month": months[-1] if months else "202606",
+        "advisor_sid": advisors[0] if advisors else "V000001",
+        "threshold": 0,
+    }
+
+
+def execute_check(compiled: CompiledRule) -> dict | CompileError:
+    """Check 5 — the real gate: the plan runs against mock data and returns a
+    row count. Returns {evaluated_rows, matched_count} or a CompileError."""
+    import app.graph.queries.rules_evaluate  # noqa: F401 — registers the mock impl
+    from app.graph.client import get_graph_client
+
+    try:
+        result = get_graph_client().run_query(
+            "rules_evaluate_plan", {"plan": compiled.plan, "params": _test_params()})
+        row = (result.get("results") or [{}])[0]
+    except Exception as exc:  # noqa: BLE001 — a plan that raises is not valid
+        return CompileError(compiled.rule_code, "execution",
+                            f"plan raised against mock data: {type(exc).__name__}: {exc}")
+    return {"evaluated_rows": row.get("evaluated_rows", 0),
+            "matched_count": row.get("matched_count", 0)}
+
+
+# --------------------------------------------------------------------------- rule-facing API
+
+def compile_rule(rule: dict) -> CompiledRule | CompileError:
+    """The stored rule's plan JSON → internal evaluator plan (checks 1–4)."""
+    rule_code = rule.get("rule_code") or "(unnamed rule)"
+    plan_json = rule.get("plan")
+    if not isinstance(plan_json, dict):
+        return CompileError(rule_code, "vertex",
+                            "rule has no compiled plan — run the Rule Compiler first")
+    return translate_plan(rule_code, rule.get("grain") or "", plan_json)
+
+
+def validate_plan(rule_code: str, grain: str, plan_json: dict) -> dict:
+    """All five checks in one call (the Rule Compiler agent's gate). Returns
+    {ok, error?, compiled?, execution?}."""
+    compiled = translate_plan(rule_code, grain, plan_json)
+    if isinstance(compiled, CompileError):
+        return {"ok": False, "error": str(compiled)}
+    execution = execute_check(compiled)
+    if isinstance(execution, CompileError):
+        return {"ok": False, "error": str(execution)}
+    return {"ok": True, "compiled": compiled, "execution": execution}
+
+
 def compile_status(rule: dict) -> dict:
-    """{compiled: bool, compile_error: str|None, plan: dict|None} — the shape the
-    API attaches to every serialised rule so the UI can show the error on the card."""
-    result = compile_rule(rule)
-    if isinstance(result, CompileError):
-        return {"compiled": False, "compile_error": str(result), "plan": None}
-    return {"compiled": True, "compile_error": None, "plan": result.plan}
+    """{compiled, compile_error, plan} for serialisation — reads the STORED
+    compile outcome (set at compile time); never re-executes per request."""
+    if rule.get("status") in ("COMPILED", "PUBLISHED", "SUPERSEDED") and rule.get("plan"):
+        return {"compiled": True, "compile_error": None, "plan": rule.get("plan")}
+    return {"compiled": False,
+            "compile_error": rule.get("compile_error")
+            or ("schema cannot express this rule: " + rule["needs_data_reason"]
+                if rule.get("needs_data_reason") else None)
+            or "not compiled yet — the Rule Compiler runs at approval",
+            "plan": rule.get("plan")}

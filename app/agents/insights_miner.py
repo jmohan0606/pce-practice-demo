@@ -95,7 +95,7 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
                           initial: dict) -> str:
     rule_lines = [
         f"- [{r.get('rule_key')}] {r.get('rule_code')} (driver: {r.get('driver_tag')}): "
-        f"{r.get('plain_description')} Example: {r.get('worked_example')}"
+        f"{r.get('statement') or r.get('plain_description')} Example: {r.get('worked_example')}"
         for r in rules
     ]
     return (

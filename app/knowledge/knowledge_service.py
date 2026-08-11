@@ -251,14 +251,33 @@ class KnowledgeManagementService:
             "SELECT * FROM phx_dm_pce_knowledge_chunk_catalog WHERE document_id = ? "
             "ORDER BY chunk_index ASC", (document_id,))
         graph_texts = self._graph_chunk_texts(document_id)
+        # Round E fix: the graph mock store is process-local, so after a restart
+        # a deduped document has NO graph chunk vertices and the old fallback
+        # silently served the 180-char catalog summary — the extractor then saw
+        # truncated provisions everywhere. Chroma persists the FULL text on
+        # disk; use it as the second source and FAIL LOUDLY rather than ever
+        # serving a truncated chunk as if it were the document.
+        chroma_texts: dict[str, str] = {}
         chunks = []
         for row in rows:
             meta = _json.loads(row.get("metadata_json") or "{}")
+            text = graph_texts.get(row["chunk_id"], "")
+            if not text:
+                if not chroma_texts:
+                    collection = meta.get("collection_name") or DEFAULT_COLLECTION
+                    chroma_texts = self.vector_store.document_chunk_texts(
+                        collection, document_id)
+                text = chroma_texts.get(row["chunk_id"], "")
+            if not text:
+                raise RuntimeError(
+                    f"chunk {row['chunk_id']} of {document_id} has no full text in "
+                    f"the graph or Chroma — refusing to serve the truncated "
+                    f"catalog summary as document content")
             chunks.append({
                 "chunk_id": row["chunk_id"],
                 "document_id": document_id,
                 "chunk_index": row["chunk_index"],
-                "chunk_text": graph_texts.get(row["chunk_id"], row.get("chunk_summary") or ""),
+                "chunk_text": text,
                 "page_no": meta.get("page_no"),
                 "section_path": meta.get("section_path"),
                 "has_table": meta.get("has_table", False),

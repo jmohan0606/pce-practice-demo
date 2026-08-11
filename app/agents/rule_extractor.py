@@ -1,4 +1,4 @@
-"""B3.4 — the Rule Extractor agent.
+"""B3.4 / Round E — the Rule Extractor agent.
 
 Entrypoint (called by B2's POST /api/documents/{id}/extract-rules):
 
@@ -6,23 +6,20 @@ Entrypoint (called by B2's POST /api/documents/{id}/extract-rules):
 
 Each chunk dict carries chunk_id, text, page_no, section_path, has_table.
 
-Runs per document, in batch — never per request. Chunks are processed in
-windows of 6 with 1 chunk of overlap so a rule spanning a boundary is still
-seen whole. The system prompt inlines the narrow grammar and the schema field
-list; a threshold/rate/date that is referenced but not stated becomes
-status=NEEDS_INPUT with unclear_notes — a number is NEVER invented.
+Round E: the extractor emits PLAIN ENGLISH — a ``statement`` per provision plus
+kind / grain / driver_tag / citations / confidence / ``missing``. There is no
+expression grammar and NOTHING IS DISCARDED FOR FORM: if the extractor can
+state it, it gets stored. The Rule Compiler (app/agents/rule_compiler.py)
+turns statements into query plans later, at approval time.
 
-Output handling is fail-honest end to end:
-- an unparseable LLM response (not a JSON array) becomes ONE NEEDS_INPUT rule
-  per window with the parse error attached — never silently dropped;
-- an invalid entry (bad shape, missing citation, unknown grain) is kept as
-  NEEDS_INPUT with the validation error;
-- a syntactically valid entry that fails to COMPILE is kept as NEEDS_INPUT
-  carrying the compile error (B3.8: every draft either compiles or carries a
-  readable reason).
+``missing`` is a plain sentence naming anything the document references but
+does not state (the referral-cap case). A rule with ``missing`` set is still
+extracted and still shown; it just cannot be approved until the value is
+supplied — status NEEDS_INPUT. A number is NEVER invented.
 
-Extracted drafts are stored in the rule store's draft pool (mirrored to the
-graph) and returned as dicts.
+Output handling is fail-honest end to end: an unparseable LLM response becomes
+ONE NEEDS_INPUT stub per window with the parse error attached; an invalid entry
+is kept as NEEDS_INPUT with the validation error — never silently dropped.
 """
 from __future__ import annotations
 
@@ -31,8 +28,7 @@ import re
 from typing import Callable
 
 from app.llm.roles import build_role_llm
-from app.rules.compiler import GRAINS, compile_status, fields_for_grain
-from app.rules.grammar import GRAMMAR_TEXT
+from app.rules.compiler import GRAINS
 from app.rules.store import get_rule_store
 from app.shared.logging import get_logger
 
@@ -41,8 +37,9 @@ _log = get_logger("app.agents.rule_extractor")
 WINDOW_SIZE = 6
 WINDOW_OVERLAP = 1
 
-_REQUIRED_KEYS = ("rule_code", "rule_name", "plain_description", "grain",
-                  "population", "compute", "trigger", "citations")
+KINDS = ("TRIGGER", "RECORD", "EXCLUDE", "WINDOW", "CAP", "CALCULATION")
+
+_REQUIRED_KEYS = ("rule_code", "rule_name", "statement", "kind", "grain", "citations")
 
 
 def build_windows(chunks: list[dict], size: int = WINDOW_SIZE,
@@ -63,59 +60,48 @@ def build_windows(chunks: list[dict], size: int = WINDOW_SIZE,
     return windows
 
 
-def _field_list_text() -> str:
-    lines = []
-    for grain in GRAINS:
-        per_vertex = fields_for_grain(grain)
-        if not per_vertex:
-            continue
-        names = sorted({f for attrs in per_vertex.values() for f in attrs})
-        lines.append(f"grain '{grain}': " + ", ".join(names))
-    return "\n".join(lines)
-
-
 def build_system_prompt() -> str:
-    """The B3.4 system prompt — every requirement stated, grammar and field
-    list inlined."""
+    """Round E system prompt — plain-English extraction, nothing discarded for
+    form, `missing` instead of invented numbers."""
     return (
         "You are the Rule Extractor for a wealth-management compensation engine. "
-        "You read chunks of a compensation plan document and extract governing rules.\n\n"
+        "You read chunks of a compensation plan document and extract every "
+        "governing rule as PLAIN ENGLISH. A separate Rule Compiler turns your "
+        "statements into queries later — your job is to state each provision "
+        "completely and faithfully, not to formalise it.\n\n"
         "Requirements:\n"
-        "- Extract EVERY distinct provision that could define, qualify, cap, exclude "
-        "or time-bound a revenue or compensation outcome. Exhaustiveness matters more "
-        "than precision.\n"
-        "- One rule per provision. Do not merge two provisions; do not split one. A "
-        "rate table that encodes a single formula (e.g. a discount grid, a payout "
-        "schedule) is ONE provision — extract the formula, never one rule per row.\n"
-        "- population, compute and trigger are REQUIRED on every rule and must use "
-        "the narrow grammar with fields from the list below. Express qualitative "
-        "provisions the same way (e.g. compute count(*), trigger value > 0 over the "
-        "defined population). Example, a fee-discount sharing provision:\n"
-        '  {"rule_code": "FEE_REDUCTION_SHARING", "grain": "account",\n'
-        '   "population": "is_managed = true AND month_id = :month",\n'
-        '   "compute": "round((standard_rate_bps - client_rate_bps) / standard_rate_bps * 100)",\n'
-        '   "trigger": "value > 10", "attribute": "grid_points = min(value - 10, 10)", ...}\n'
-        "- Use only these expression forms:\n"
-        + GRAMMAR_TEXT + "\n\n"
-        "- Field names must come from this list (per grain):\n"
-        + _field_list_text() + "\n\n"
-        "- If a threshold, rate or date is referenced but not stated, set "
-        "\"status\": \"NEEDS_INPUT\" and put what is missing in \"unclear_notes\". "
-        "Never invent a number.\n"
+        "- Extract EVERY distinct provision that could define, qualify, cap, "
+        "exclude or time-bound a revenue or compensation outcome. Exhaustiveness "
+        "matters more than precision. If you can state it, it gets stored — "
+        "nothing is discarded for form.\n"
+        "- One rule per provision. Do not merge two provisions; do not split one. "
+        "A rate table that encodes a single formula (a discount grid, a payout "
+        "schedule) is ONE provision — state the formula, never one rule per row.\n"
+        "- `statement` is the heart of the rule: a complete, self-contained "
+        "plain-English statement of the provision with every threshold, rate, "
+        "date and scope condition the document gives. Someone reading only the "
+        "statement must be able to implement the rule.\n"
+        "- `worked_example`: a short numeric example when the document implies "
+        "one (compute it FROM the document's own figures, never invent inputs).\n"
+        "- `kind` is one of TRIGGER (fires per entity when a condition holds), "
+        "RECORD (records an event, e.g. a transfer), EXCLUDE (removes entities "
+        "from another rule's scope), WINDOW (a time/period qualification), CAP "
+        "(a maximum/limit), CALCULATION (a formula/schedule).\n"
+        "- `grain` is the entity the rule applies to: one of "
+        + "|".join(GRAINS) + ".\n"
+        "- `missing`: if the document REFERENCES a threshold, rate, date or cap "
+        "but does not STATE its value, extract the rule anyway and set `missing` "
+        "to one plain sentence naming exactly what is absent. Never invent a "
+        "number. If nothing is missing, use null.\n"
         "- Every rule must cite the chunk it came from: \"citations\": "
         "[{\"chunk_id\": ..., \"page_no\": ..., \"section_path\": ..., \"excerpt\": ...}].\n"
-        "- Each rule object needs: rule_code (UPPER_SNAKE), rule_name, "
-        "plain_description, worked_example, grain (one of "
-        + "|".join(GRAINS) + "), population, compute, trigger, attribute (or null), "
-        "driver_tag, confidence (0..1), status (DRAFT or NEEDS_INPUT), unclear_notes "
-        "(or null), citations.\n"
-        "- If a provision needs data the field list does not carry (a date, rate or "
-        "flag that does not exist), still fill population/compute/trigger as far as "
-        "the fields allow, set status NEEDS_INPUT and name the missing piece in "
-        "unclear_notes.\n"
+        "- Each rule object: rule_code (UPPER_SNAKE), rule_name, statement, "
+        "worked_example (or null), kind, grain, driver_tag (short business label "
+        "like \"Fee Rate\", \"Transfers\", \"Referrals\"), confidence (0..1), "
+        "missing (sentence or null), citations.\n"
         "- Return a JSON array only. No prose, no markdown fences. STRICT JSON: "
-        "escape every newline inside strings. Keep each citation excerpt under 160 "
-        "characters."
+        "escape every newline inside strings. Keep each citation excerpt under "
+        "160 characters."
     )
 
 
@@ -136,9 +122,6 @@ def parse_llm_response(raw: str) -> list | str:
     error string. A stray markdown fence is stripped (tolerant parsing, not
     guessing); anything else unparseable is the readable error."""
     text = (raw or "").strip()
-    # strip markdown fences even when the CLOSING fence is missing (a truncated
-    # response must fail on its truncated JSON, with that readable error — not
-    # on the cosmetic fence)
     if text.startswith("```"):
         text = re.sub(r"^```[A-Za-z]*\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
@@ -152,15 +135,13 @@ def parse_llm_response(raw: str) -> list | str:
 
 
 def validate_entry(entry, window_chunk_ids: set[str]) -> str | None:
-    """Structural validation of one extracted entry. Returns the readable error
-    or None when valid."""
+    """Structural validation only — form is never a reason to reject a rule the
+    extractor could state. Returns the readable error or None when usable."""
     if not isinstance(entry, dict):
         return f"entry is not an object (got {type(entry).__name__})"
-    missing = [k for k in _REQUIRED_KEYS if not entry.get(k)]
-    if missing:
-        return "entry is missing required field(s): " + ", ".join(missing)
-    if str(entry.get("grain", "")).lower() not in GRAINS:
-        return f"unknown grain {entry.get('grain')!r} — expected one of {', '.join(GRAINS)}"
+    missing_keys = [k for k in ("rule_code", "statement", "citations") if not entry.get(k)]
+    if missing_keys:
+        return "entry is missing required field(s): " + ", ".join(missing_keys)
     citations = entry.get("citations")
     if not isinstance(citations, list) or not citations:
         return "entry has no citations — every rule must cite the chunk it came from"
@@ -172,9 +153,6 @@ def validate_entry(entry, window_chunk_ids: set[str]) -> str | None:
                     f"chunks the rule was extracted from")
         if citation.get("page_no") in (None, ""):
             return f"citation for chunk {citation['chunk_id']!r} is missing page_no"
-    status = entry.get("status", "DRAFT")
-    if status not in ("DRAFT", "NEEDS_INPUT"):
-        return f"extracted rule status must be DRAFT or NEEDS_INPUT, got {status!r}"
     return None
 
 
@@ -184,11 +162,11 @@ def _needs_input_stub(document_id: str, reason: str, window_index: int,
     return {
         "rule_code": f"UNPARSED_WINDOW_{window_index:02d}",
         "rule_name": f"Unparseable extractor output (window {window_index})",
-        "plain_description": "The extractor's output for this chunk window could not be "
-                             "used. It is kept for operator review — never dropped.",
+        "statement": "The extractor's output for this chunk window could not be "
+                     "used. It is kept for operator review — never dropped.",
         "worked_example": "",
+        "kind": "CALCULATION",
         "grain": "account",
-        "population": "", "compute": "", "trigger": "", "attribute": None,
         "driver_tag": "Extraction",
         "provenance": "DOCUMENT_DERIVED",
         "confidence": 0.0,
@@ -197,6 +175,7 @@ def _needs_input_stub(document_id: str, reason: str, window_index: int,
                        "section_path": first.get("section_path", ""),
                        "excerpt": (first.get("text", "") or "")[:200]}],
         "status": "NEEDS_INPUT",
+        "missing": reason,
         "unclear_notes": reason,
         "document_id": document_id,
     }
@@ -204,8 +183,7 @@ def _needs_input_stub(document_id: str, reason: str, window_index: int,
 
 def _resolve_llm(document_id: str) -> Callable[[str, dict], str]:
     """The rule_extractor role's client, wrapped so every window call is
-    turn-logged (document extraction is a large cost — it is measured) under
-    the synthetic run id ``doc_extract|<document_id>``."""
+    turn-logged under the synthetic run id ``doc_extract|<document_id>``."""
     from app.llm.usage import wrap_llm
 
     client = build_role_llm("rule_extractor")
@@ -219,12 +197,10 @@ def _resolve_llm(document_id: str) -> Callable[[str, dict], str]:
 def extract_rules_for_document(document_id: str, chunks: list[dict],
                                llm: Callable[[str, dict], str] | None = None,
                                persist: bool = True) -> list[dict]:
-    """Extract draft rules from one document's chunks (B2 calls this from
-    POST /api/documents/{id}/extract-rules).
-
-    `llm` overrides the transport for deterministic tests; default resolves the
-    rule_extractor role config (app.llm.roles) falling back to the shared client.
-    `persist=True` stores results in the rule store's draft pool."""
+    """Extract draft rules from one document's chunks. `llm` overrides the
+    transport for deterministic tests; `persist=True` stores results in the
+    rule store's draft pool. Rules with `missing` set land as NEEDS_INPUT;
+    everything else is DRAFT awaiting the Rule Compiler."""
     generate = llm or _resolve_llm(document_id)
     system_prompt = build_system_prompt()
     windows = build_windows(chunks)
@@ -260,21 +236,23 @@ def extract_rules_for_document(document_id: str, chunks: list[dict],
                 extracted.append(stub)
                 continue
             rule = dict(entry)
-            rule["grain"] = str(rule["grain"]).lower()
+            # lenient coercion — never a reason to drop a stated rule
+            rule["grain"] = str(rule.get("grain") or "account").lower()
+            if rule["grain"] not in GRAINS:
+                rule["grain"] = "account"
+            kind = str(rule.get("kind") or "").upper()
+            rule["kind"] = kind if kind in KINDS else "CALCULATION"
+            rule.setdefault("rule_name", rule["rule_code"].replace("_", " ").title())
+            rule.setdefault("driver_tag", "Other")
             rule["provenance"] = "DOCUMENT_DERIVED"
             rule["document_id"] = document_id
-            rule.setdefault("unclear_notes", None)
-            rule.setdefault("attribute", None)
+            rule.setdefault("worked_example", None)
+            missing = rule.get("missing")
+            rule["missing"] = str(missing).strip() if missing else None
+            rule["unclear_notes"] = rule["missing"]
+            rule["status"] = "NEEDS_INPUT" if rule["missing"] else "DRAFT"
             if rule["rule_code"] in seen_codes:  # overlap window duplicate
                 continue
-            if rule.get("status") == "DRAFT":
-                compiled = compile_status(rule)
-                if not compiled["compiled"]:
-                    rule["status"] = "NEEDS_INPUT"
-                    rule["unclear_notes"] = (
-                        f"does not compile: {compiled['compile_error']}"
-                        + (f" | {rule['unclear_notes']}" if rule.get("unclear_notes") else "")
-                    )
             seen_codes.add(rule["rule_code"])
             extracted.append(rule)
 

@@ -26,6 +26,15 @@ class KnowledgeVectorStore:
         )
         return len(chunks)
 
+    def document_chunk_texts(self, collection_name: str, document_id: str) -> dict[str, str]:
+        """chunk_id -> FULL chunk text for one document, from Chroma's stored
+        documents. Chroma persists on disk, so this survives process restarts
+        (the graph mock store does not) — Round E truncation fix."""
+        collection = self.factory.get_or_create_collection(collection_name)
+        result = collection.get(where={"document_id": document_id},
+                                include=["documents"])
+        return dict(zip(result.get("ids", []), result.get("documents", []) or []))
+
     def delete_document_chunks(self, collection_name: str, document_id: str) -> None:
         collection = self.factory.get_or_create_collection(collection_name)
         collection.delete(where={"document_id": document_id})

@@ -35,7 +35,8 @@ from app.shared.logging import get_logger
 
 _log = get_logger("app.llm.roles")
 
-ROLES = ("rule_extractor", "rule_conflict_auditor", "insights_miner", "insights_reporter")
+ROLES = ("rule_extractor", "rule_compiler", "rule_conflict_auditor",
+         "insights_miner", "insights_reporter")
 
 _FIELDS = ("mode", "model", "deployment", "api_version")
 

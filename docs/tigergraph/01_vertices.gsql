@@ -124,8 +124,8 @@ CREATE VERTEX phx_dm_pce_rule_set_version (PRIMARY_ID version_id STRING, version
 WITH primary_id_as_attribute="true";
 
 CREATE VERTEX phx_dm_pce_rule (PRIMARY_ID rule_key STRING, version_id STRING, rule_code STRING,
-  rule_name STRING, plain_description STRING, worked_example STRING, population_expr STRING,
-  compute_expr STRING, trigger_expr STRING, attribute_expr STRING, grain STRING,
+  rule_name STRING, statement STRING, worked_example STRING, kind STRING,
+  plan_json STRING, explanation STRING, missing_note STRING, grain STRING,
   provenance STRING, confidence DOUBLE, status STRING) WITH primary_id_as_attribute="true";
 
 CREATE VERTEX phx_dm_pce_insight_run (PRIMARY_ID run_id STRING, advisor_sid STRING,

@@ -27,17 +27,19 @@ router = APIRouter(prefix="/api/rules", tags=["rules"],
 
 
 def _serialize(rule: dict) -> dict:
-    """Full rule + B3.1 aliases + compile status (the UI shows the compile
-    error on the rule card)."""
+    """Full rule + compile status (the UI shows statement, compiled plan with
+    its plain-English explanation, and any missing/needs-data reason)."""
     out = dict(rule)
-    out["population"] = rule.get("population_expr", "")
-    out["compute"] = rule.get("compute_expr", "")
-    out["trigger"] = rule.get("trigger_expr", "")
-    out["attribute"] = rule.get("attribute_expr") or None
+    out.setdefault("statement", rule.get("plain_description", ""))
+    out.setdefault("kind", "TRIGGER")
+    out.setdefault("explanation", None)
+    out.setdefault("missing", rule.get("unclear_notes") or None)
+    out.setdefault("needs_data_reason", None)
     if rule.get("status") == "NEEDS_INPUT":
         out.update({"compiled": False,
-                    "compile_error": rule.get("unclear_notes") or "needs input",
-                    "plan": None})
+                    "compile_error": rule.get("missing") or rule.get("unclear_notes")
+                    or "needs input",
+                    "plan": rule.get("plan")})
     else:
         out.update(compile_status(rule))
     return out
@@ -122,6 +124,38 @@ def evaluate(body: EvaluateRequest) -> dict:
         return evaluate_rule_set(version, month=body.month, advisor_sid=body.advisor_sid)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/{rule_key}/compile")
+def compile_rule(rule_key: str) -> dict:
+    """Run the Rule Compiler agent on one draft (Round E 1.2). Outcome is one
+    of COMPILED / NEEDS_DATA / DRAFT-with-compile_error — all honest states."""
+    from app.agents.rule_compiler import compile_rule_with_agent
+
+    try:
+        rule = compile_rule_with_agent(rule_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"rule": _serialize(rule)}
+
+
+@router.get("/extraction-summary")
+def extraction_summary() -> dict:
+    """Counts for the Documents & Rules screen (Round E 6.4): extracted /
+    compiled / need a value / need data we don't have, each with reasons."""
+    store = get_rule_store()
+    drafts = store.drafts()
+    return {
+        "extracted": len(drafts),
+        "compiled": sum(1 for r in drafts if r.get("status") == "COMPILED"),
+        "draft": sum(1 for r in drafts if r.get("status") == "DRAFT"),
+        "needs_input": [{"rule_key": r["rule_key"], "rule_code": r.get("rule_code"),
+                         "reason": r.get("missing") or r.get("unclear_notes")}
+                        for r in drafts if r.get("status") == "NEEDS_INPUT"],
+        "needs_data": [{"rule_key": r["rule_key"], "rule_code": r.get("rule_code"),
+                        "reason": r.get("needs_data_reason")}
+                       for r in drafts if r.get("status") == "NEEDS_DATA"],
+    }
 
 
 class ApproveRequest(BaseModel):

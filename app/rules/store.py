@@ -23,7 +23,6 @@ from __future__ import annotations
 import threading
 from datetime import datetime, timezone
 
-from app.rules.compiler import compile_status
 from app.shared.logging import get_logger
 
 _log = get_logger("app.rules.store")
@@ -31,17 +30,24 @@ _log = get_logger("app.rules.store")
 RULE_VERTEX = "phx_dm_pce_rule"
 VERSION_VERTEX = "phx_dm_pce_rule_set_version"
 
-# graph-schema attributes of each vertex (identity column first).
+# graph-schema attributes of each vertex (identity column first). Round E: the
+# four *_expr grammar columns are replaced by statement / kind / plan_json /
+# explanation / missing_note (DDL V15, schema change checklist followed).
 _RULE_GRAPH_ATTRS = (
-    "rule_key", "version_id", "rule_code", "rule_name", "plain_description",
-    "worked_example", "population_expr", "compute_expr", "trigger_expr",
-    "attribute_expr", "grain", "provenance", "confidence", "status",
+    "rule_key", "version_id", "rule_code", "rule_name", "statement",
+    "worked_example", "kind", "plan_json", "explanation", "missing_note",
+    "grain", "provenance", "confidence", "status",
 )
 _VERSION_GRAPH_ATTRS = (
     "version_id", "version_no", "status", "rule_count", "approved_by", "approved_at", "notes",
 )
 
-RULE_STATUSES = ("DRAFT", "PUBLISHED", "SUPERSEDED", "NEEDS_INPUT", "REJECTED")
+# Round E status flow (spec 1.4):
+#   DRAFT --compile--> COMPILED --human approve + publish--> PUBLISHED
+#     |                   |
+#     +-> NEEDS_INPUT     +-> NEEDS_DATA (schema cannot express it)
+RULE_STATUSES = ("DRAFT", "COMPILED", "PUBLISHED", "SUPERSEDED",
+                 "NEEDS_INPUT", "NEEDS_DATA", "REJECTED")
 
 
 class RuleStoreError(RuntimeError):
@@ -79,8 +85,13 @@ class RuleStore:
         return get_graph_client()
 
     def _mirror_rule(self, rule: dict) -> None:
+        import json as _json
+
         row = {name: ("" if rule.get(name) is None else rule.get(name))
                for name in _RULE_GRAPH_ATTRS}
+        row["plan_json"] = _json.dumps(rule["plan"]) if rule.get("plan") else ""
+        row["missing_note"] = rule.get("missing") or rule.get("needs_data_reason") \
+            or rule.get("unclear_notes") or ""
         try:
             self._graph().upsert(_entry(RULE_VERTEX, "rule_key", _RULE_GRAPH_ATTRS), [row])
         except Exception as exc:  # noqa: BLE001 — the store stays authoritative; log loudly
@@ -153,12 +164,12 @@ class RuleStore:
                     rule["rule_key"] = f"DRAFT_{rule['rule_code']}_{self._draft_seq:04d}"
             if rule["rule_key"] in self.rules:
                 raise RuleStoreError(f"rule_key {rule['rule_key']} already exists — rules are immutable")
-            # canonical expression storage under *_expr; keep B3.1 aliases readable
-            for short, long in (("population", "population_expr"), ("compute", "compute_expr"),
-                                ("trigger", "trigger_expr"), ("attribute", "attribute_expr")):
-                if long not in rule and short in rule:
-                    rule[long] = rule.pop(short)
-                rule.pop(short, None)
+            # Round E: `statement` is canonical; plain_description mirrors it so
+            # pre-E consumers keep working.
+            if rule.get("statement") and not rule.get("plain_description"):
+                rule["plain_description"] = rule["statement"]
+            if rule.get("plain_description") and not rule.get("statement"):
+                rule["statement"] = rule["plain_description"]
             rule.setdefault("created_at", _now())
             self.rules[rule["rule_key"]] = rule
             if version_id:
@@ -178,7 +189,8 @@ class RuleStore:
             rules = [r for r in self.rules.values() if r["version_id"] == version_id]
             return sorted(rules, key=lambda r: (r.get("evaluation_order") or 999, r["rule_code"]))
 
-    def drafts(self, statuses: tuple[str, ...] = ("DRAFT", "NEEDS_INPUT")) -> list[dict]:
+    def drafts(self, statuses: tuple[str, ...] = ("DRAFT", "COMPILED",
+                                                  "NEEDS_INPUT", "NEEDS_DATA")) -> list[dict]:
         with self._lock:
             return sorted(
                 (r for r in self.rules.values() if not r["version_id"] and r["status"] in statuses),
@@ -195,9 +207,34 @@ class RuleStore:
 
     # ----- lifecycle operations -----
 
+    def mark_compiled(self, rule_key: str, plan: dict, explanation: str,
+                      execution: dict) -> dict:
+        """The Rule Compiler produced a plan that passed all five checks
+        (including execution against mock data). DRAFT → COMPILED."""
+        return self._update_rule_fields(
+            rule_key, status="COMPILED", plan=plan, explanation=explanation,
+            compile_error=None, needs_data_reason=None,
+            compiled_evaluated_rows=execution.get("evaluated_rows"),
+            compiled_matched_count=execution.get("matched_count"),
+            compiled_at=_now())
+
+    def mark_needs_data(self, rule_key: str, reason: str, plan: dict | None = None,
+                        explanation: str | None = None) -> dict:
+        """The schema cannot express the rule — surface exactly what is missing
+        (this list is the client conversation). DRAFT → NEEDS_DATA."""
+        return self._update_rule_fields(
+            rule_key, status="NEEDS_DATA", needs_data_reason=reason,
+            plan=plan, explanation=explanation, compile_error=None)
+
+    def record_compile_failure(self, rule_key: str, error: str) -> dict:
+        """The compiler's plans kept failing validation — the rule stays DRAFT
+        with the readable error; nothing is guessed."""
+        return self._update_rule_fields(rule_key, compile_error=error)
+
     def approve(self, rule_key: str, approved_by: str = "") -> dict:
-        """Mark a draft approved for the next publish. An uncompilable rule
-        cannot be approved (B3.3); a NEEDS_INPUT rule cannot be approved either."""
+        """Human approval of a COMPILED draft for the next publish. Only
+        COMPILED rules can be approved — the compile step (with its execution
+        check) is the gate; NEEDS_INPUT / NEEDS_DATA carry their reasons."""
         with self._lock:
             rule = self.rules.get(rule_key)
             if rule is None:
@@ -206,14 +243,18 @@ class RuleStore:
                 raise RuleStoreError(f"{rule_key} already belongs to version {rule['version_id']}")
             if rule["status"] == "NEEDS_INPUT":
                 raise RuleStoreError(
-                    f"{rule_key} is NEEDS_INPUT ({rule.get('unclear_notes') or 'missing input'}) "
-                    f"— resolve it before approving"
-                )
-            status = compile_status(rule)
-            if not status["compiled"]:
+                    f"{rule_key} is NEEDS_INPUT ({rule.get('missing') or rule.get('unclear_notes') or 'missing input'}) "
+                    f"— supply the missing value before approving")
+            if rule["status"] == "NEEDS_DATA":
                 raise RuleStoreError(
-                    f"{rule_key} does not compile and cannot be approved: {status['compile_error']}"
-                )
+                    f"{rule_key} is NEEDS_DATA ({rule.get('needs_data_reason') or 'schema gap'}) "
+                    f"— the schema cannot express it; this needs a data conversation, not an approval")
+            if rule["status"] != "COMPILED":
+                raise RuleStoreError(
+                    f"{rule_key} is {rule['status']} — run the Rule Compiler first "
+                    f"(only a COMPILED rule can be approved)"
+                    + (f"; last compile error: {rule['compile_error']}"
+                       if rule.get("compile_error") else ""))
             return self._update_rule_fields(rule_key, approved=True,
                                             approved_by=approved_by, approved_at=_now())
 
@@ -225,23 +266,26 @@ class RuleStore:
             if original is None:
                 raise RuleStoreError(f"unknown rule_key {rule_key!r}")
             editable = {
-                "rule_code", "rule_name", "plain_description", "worked_example",
-                "population", "compute", "trigger", "attribute",
-                "population_expr", "compute_expr", "trigger_expr", "attribute_expr",
-                "grain", "driver_tag", "confidence", "unclear_notes", "evaluation_order",
+                "rule_code", "rule_name", "statement", "plain_description",
+                "worked_example", "kind", "grain", "driver_tag", "confidence",
+                "missing", "unclear_notes", "evaluation_order",
             }
             rejected = sorted(set(changes) - editable)
             if rejected:
                 raise RuleStoreError(f"fields not editable: {', '.join(rejected)}")
-            # normalise B3.1 short aliases to the stored *_expr keys so an edit
-            # like {"trigger": "value > 12"} replaces the inherited trigger_expr.
             changes = dict(changes)
-            for short in ("population", "compute", "trigger", "attribute"):
-                if short in changes:
-                    changes[f"{short}_expr"] = changes.pop(short)
+            if "statement" in changes:
+                changes.setdefault("plain_description", changes["statement"])
+            elif "plain_description" in changes:
+                changes.setdefault("statement", changes["plain_description"])
             draft = {k: v for k, v in original.items()
                      if k not in ("rule_key", "version_id", "status", "approved",
-                                  "approved_by", "approved_at", "created_at", "published_as")}
+                                  "approved_by", "approved_at", "created_at", "published_as",
+                                  # a changed statement invalidates the compiled plan —
+                                  # the new draft recompiles from scratch
+                                  "plan", "explanation", "compile_error",
+                                  "needs_data_reason", "compiled_evaluated_rows",
+                                  "compiled_matched_count", "compiled_at")}
             draft.update(changes)
             draft["status"] = "DRAFT"
             draft["supersedes_rule_key"] = rule_key
@@ -252,7 +296,7 @@ class RuleStore:
         version's rules (minus ones superseded by an approved edit) plus copies
         of every approved draft. Previous version becomes SUPERSEDED."""
         with self._lock:
-            approved_drafts = [r for r in self.drafts(statuses=("DRAFT",)) if r.get("approved")]
+            approved_drafts = [r for r in self.drafts(statuses=("COMPILED",)) if r.get("approved")]
             if not approved_drafts:
                 raise RuleStoreError("nothing to publish — no approved drafts")
             previous = self.latest_version("PUBLISHED")

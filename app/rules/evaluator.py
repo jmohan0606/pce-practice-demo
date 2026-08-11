@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.rules.grammar import collect_fields
+from app.rules.compiler import collect_fields
 
 
 class EvaluationError(RuntimeError):
@@ -43,6 +43,13 @@ def _literal(node: dict, params: dict) -> Any:
     raise EvaluationError(f"cannot evaluate literal node {kind!r}")
 
 
+def _filter_value(node: dict, row: dict, params: dict) -> Any:
+    """A filter's right-hand side: literal / :param / another field's value."""
+    if node.get("type") == "fieldref":
+        return row.get(node["name"])
+    return _literal(node, params)
+
+
 def _row_matches(node: dict, row: dict, params: dict) -> bool:
     kind = node["type"]
     if kind == "and":
@@ -54,10 +61,11 @@ def _row_matches(node: dict, row: dict, params: dict) -> bool:
         return (not is_null) if node["negated"] else is_null
     if kind == "in":
         actual = row.get(node["field"])
-        return any(_loose_eq(actual, _literal(v, params)) for v in node["values"])
+        return any(_loose_eq(actual, _filter_value(v, row, params)) for v in node["values"])
     if kind == "cond":
         actual = row.get(node["field"])
-        expected = _literal(node["value"], params)
+        # fieldref value → field-to-field comparison (Round E: explicitly allowed)
+        expected = _filter_value(node["value"], row, params)
         op = node["op"]
         if actual is None:
             return False

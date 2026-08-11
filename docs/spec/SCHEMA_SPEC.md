@@ -304,9 +304,13 @@ CREATE VERTEX phx_dm_pce_rule_set_version (PRIMARY_ID version_id STRING, version
   status STRING, rule_count INT, approved_by STRING, approved_at DATETIME, notes STRING)
 WITH primary_id_as_attribute="true";
 
+-- Round E (V15): the four *_expr grammar columns are replaced by the
+-- plain-English statement + the Rule Compiler's plan_json / explanation;
+-- missing_note carries a NEEDS_INPUT/NEEDS_DATA reason. kind is
+-- TRIGGER|RECORD|EXCLUDE|WINDOW|CAP|CALCULATION.
 CREATE VERTEX phx_dm_pce_rule (PRIMARY_ID rule_key STRING, version_id STRING, rule_code STRING,
-  rule_name STRING, plain_description STRING, worked_example STRING, population_expr STRING,
-  compute_expr STRING, trigger_expr STRING, attribute_expr STRING, grain STRING,
+  rule_name STRING, statement STRING, worked_example STRING, kind STRING,
+  plan_json STRING, explanation STRING, missing_note STRING, grain STRING,
   provenance STRING, confidence DOUBLE, status STRING) WITH primary_id_as_attribute="true";
 
 CREATE VERTEX phx_dm_pce_insight_run (PRIMARY_ID run_id STRING, advisor_sid STRING,

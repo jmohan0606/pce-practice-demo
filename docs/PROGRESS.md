@@ -1,5 +1,24 @@
 # Build Progress
 
+## Round E (docs/spec/ROUND_E_SPEC.md)
+- [x] Task 1: rule grammar REMOVED (app/rules/grammar.py deleted); extractor emits
+      plain-English statement/kind/missing (nothing discarded for form); new Rule
+      Compiler agent (app/agents/rule_compiler.py, Sonnet, once per rule at approval,
+      turn-logged as rule_compile|<key>) emits structured plan JSON; validation =
+      the five data-protecting checks incl. EXECUTION against mock data;
+      status flow DRAFT→COMPILED→PUBLISHED / NEEDS_INPUT / NEEDS_DATA; rule vertex
+      schema V15 (statement/kind/plan_json/explanation/missing_note in DDL,
+      schema_catalog, SCHEMA_SPEC); field-to-field + string-ordering comparisons now
+      legal (fieldref). FOUND+FIXED en route: document_chunks silently served
+      180-char catalog summaries after a process restart (graph mock store is
+      process-local) — now rehydrates full text from Chroma and fails loudly
+      (DECISIONS.md). Re-run on the sample PDF (real Sonnet): extracted 32 (was 32),
+      COMPILED 15 (was 10), NEEDS_INPUT 4 (incl. the deliberately-unstated referral
+      cap — no number invented), NEEDS_DATA 13 each naming the exact missing
+      field/table (the client conversation list). LLM cost $1.13 (+$0.50 for the
+      first, truncated-chunk run that exposed the bug). verify a/b 25/25, 19/19
+      (B3-11/12/16/17 updated for the new lifecycle), verify c 12/12.
+
 ## Cost & UI fix session (docs/spec/SESSION_PROMPT_COST_AND_UI_FIXES.md)
 - [x] Hard rule 2: ANTHROPIC_MODEL=claude-haiku-4-5-20251001 in .env; settings default
       already Haiku; all four roles inherit it (no per-role overrides set)

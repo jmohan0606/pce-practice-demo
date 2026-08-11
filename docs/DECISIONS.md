@@ -115,6 +115,23 @@ Context: The spec's two static cache_control blocks (system + opening) never cac
 Decision: _build_messages sets two additional ephemeral breakpoints (4 total, the API maximum): the newest COLLAPSED transcript entry (stable forever once collapsed — readable next turn even after the pruning window slides) and the newest assistant turn (full-prefix read on turns with no new collapse). Measured effect on the verification run: 28.7% cache hit rate vs 0%.
 Reversible: yes
 
+## 2026-08-11 · Round E task 1 · document_chunks rehydrates full text from Chroma, never the summary
+Context: Task 1.5's first extraction run produced 12 "the chunk is truncated" NEEDS_INPUT rules. Diagnosis: every chunk served to the extractor was exactly 180 chars — `document_chunks` fell back to the catalog's `chunk_summary` (`text[:180]`) because the graph mock store is process-local, so after a process restart a deduped document has no graph chunk vertices while the SQLite catalog + Chroma persist on disk.
+Decision: `document_chunks` now sources text graph-first, then Chroma's stored documents (`KnowledgeVectorStore.document_chunk_texts`), and RAISES if both are empty — a truncated summary is never served as document content.
+Reason: Chroma persists the full chunk text on disk and survives restarts; silently degrading to a summary produced confidently wrong extraction results (the worst failure mode this project guards against).
+Reversible: yes
+
+## 2026-08-11 · Round E task 1 · verify_round_b B3-11/B3-12/B3-16/B3-17 updated for the grammar removal
+Context: ROUND_E_SPEC task 1 deletes the expression grammar; B3-11 pinned grammar parse errors, B3-16/17 exercised the approve→publish flow that now requires COMPILED status.
+Decision: B3-11 now pins the data-protecting plan validation (unknown vertex / disallowed aggregate / out-of-set parameter all rejected); B3-12 probes an unknown field through translate_plan; B3-16 compares plans instead of trigger_expr; B3-17 marks the draft COMPILED deterministically (validate_plan, no LLM) before approving.
+Reason: The five Round E checks are the replacement contract for what the grammar used to guarantee; the verify script pins the contract, not the deleted implementation.
+Reversible: yes
+
+## 2026-08-11 · Round E task 1 · Grammar removal verdict: compiled 10→15, and the honest-gap lists are the real product
+Context: The spec ordered "stop and report" if compiled was not materially above 10. First run compiled exactly 10 — but that run was invalidated by the truncated-chunk bug above. With full chunks: extracted 32, COMPILED 15 (+50%), NEEDS_INPUT 4 (each a genuinely unstated value, incl. the deliberate referral-cap trap), NEEDS_DATA 13 (each naming the exact missing field/table/anti-join).
+Decision: Proceed with the round. Recorded learning: the grammar was ONE constraint (field-to-field and string-ordering rules now compile); the equally large constraint is schema expressiveness — NOT EXISTS/anti-join, prior-month references, lookup tables and decision-date fields dominate the NEEDS_DATA list and belong in the Round D client-schema conversation.
+Reversible: n/a (observation)
+
 ## 2026-08-11 · Round B · section_path is the full heading trail joined with " > "
 Context: B2's spec example shows a leaf ("3.2 Discount Sharing"); nested sections need ancestry for provenance.
 Decision: section_path renders the dotted heading trail joined with " > " (e.g. "3 Adjustments > 3.2 Discount Sharing").

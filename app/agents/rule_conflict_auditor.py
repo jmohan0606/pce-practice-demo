@@ -23,7 +23,6 @@ import re
 from typing import Callable
 
 from app.llm.roles import build_role_llm
-from app.rules.grammar import GrammarError, collect_fields, parse_population, parse_trigger
 from app.shared.logging import get_logger
 
 _log = get_logger("app.agents.rule_conflict_auditor")
@@ -36,23 +35,30 @@ _PRECEDENCE_NOTE = (
 
 
 def _population_fields(rule: dict) -> set[str]:
-    text = rule.get("population", rule.get("population_expr", "")) or ""
-    try:
-        return collect_fields(parse_population(text))
-    except GrammarError:
-        # unparseable population — conservative: no field overlap claim.
+    """Filter fields of the rule's compiled plan JSON (Round E). An uncompiled
+    rule has no plan — conservative: no field-overlap claim."""
+    plan = rule.get("plan")
+    if not isinstance(plan, dict):
         return set()
+    return {str(f.get("field")) for f in plan.get("filters") or []
+            if isinstance(f, dict) and f.get("field")}
 
 
 def _trigger_interval(rule: dict) -> tuple[float, float, bool, bool] | None:
     """(low, high, low_inclusive, high_inclusive) satisfied-value interval, or
-    None when the trigger is unparseable / '!=' (treated as always-overlapping)."""
-    text = rule.get("trigger", rule.get("trigger_expr", "")) or ""
-    try:
-        trigger = parse_trigger(text)
-    except GrammarError:
+    None when there is no compiled trigger / '!=' (treated as always-overlapping)."""
+    plan = rule.get("plan")
+    trigger = (plan or {}).get("trigger") if isinstance(plan, dict) else None
+    if not isinstance(trigger, dict) or trigger.get("op") is None:
         return None
-    op, threshold = trigger["op"], float(trigger["value"])
+    try:
+        op, threshold = str(trigger["op"]), float(trigger.get("value", 0))
+    except (TypeError, ValueError):
+        return None
+    if op == "<>":
+        op = "!="
+    if op not in ("=", ">", ">=", "<", "<=", "!="):
+        return None
     inf = float("inf")
     return {
         "=": (threshold, threshold, True, True),
