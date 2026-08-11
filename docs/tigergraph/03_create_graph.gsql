@@ -21,6 +21,7 @@ CREATE GRAPH phx_dm_pce_practice_demo (
   phx_dm_pce_account_month,
   phx_dm_pce_account_transfer,
   phx_dm_pce_advisor_flow_month,
+  phx_dm_pce_opportunity,
   // vertices — app-written (8)
   phx_dm_pce_document,
   phx_dm_pce_document_chunk,
@@ -67,6 +68,9 @@ CREATE GRAPH phx_dm_pce_practice_demo (
   // edges — flows
   phx_dm_pce_flow_by_advisor,
   phx_dm_pce_flow_in_month,
+  // edges — opportunity (dummy CRM pipeline)
+  phx_dm_pce_opportunity_for_household,
+  phx_dm_pce_opportunity_by_advisor,
   // edges — rules & insights (app-written)
   phx_dm_pce_chunk_of_document,
   phx_dm_pce_rule_in_version,

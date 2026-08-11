@@ -270,6 +270,23 @@ Required, not optional: inflows, outflows and net flows are the only source for 
 (`Total Annual NNM >= $4MM x Award Rate x Effective Grid Rate`), which is one of the two central
 formulas in the comp plans.
 
+### V14 · `phx_dm_pce_opportunity` — CRM pipeline (DUMMY data)
+```sql
+CREATE VERTEX phx_dm_pce_opportunity (PRIMARY_ID opportunity_id STRING, eci_id STRING,
+  advisor_sid STRING, stage STRING, status STRING, amount DOUBLE,
+  product_group STRING, open_dt DATETIME, expected_close_dt DATETIME,
+  close_dt DATETIME, source STRING, data_source STRING)
+WITH primary_id_as_attribute="true";
+```
+CSV `opportunity_id,eci_id,advisor_sid,stage,status,amount,product_group,open_dt,expected_close_dt,close_dt,source,data_source`
+
+CRM pipeline, joined through ECI (`eci_id` → `phx_dm_pce_household`). `status` ∈
+`WON | LOST | PENDING`. **Populated with DUMMY data until a real CRM feed exists:
+`data_source = 'DUMMY'` on every row**, and any finding that uses opportunity data carries a
+visible Dummy Data chip in the UI (the honesty pattern V2 used for MARKET and NET_FLOW).
+Edges: `phx_dm_pce_opportunity_for_household → household`,
+`phx_dm_pce_opportunity_by_advisor → advisor`.
+
 ---
 
 ## 2. App-written vertices (8) — Claude Code creates these, empty at load
@@ -374,6 +391,10 @@ CREATE DIRECTED EDGE phx_dm_pce_team_secondary (FROM phx_dm_pce_team_agreement, 
 CREATE DIRECTED EDGE phx_dm_pce_flow_by_advisor (FROM phx_dm_pce_advisor_flow_month, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_has_flow";
 CREATE DIRECTED EDGE phx_dm_pce_flow_in_month (FROM phx_dm_pce_advisor_flow_month, TO phx_dm_pce_month) WITH REVERSE_EDGE="phx_dm_pce_month_has_flow";
 
+-- opportunity (CRM pipeline — DUMMY data, joined through ECI)
+CREATE DIRECTED EDGE phx_dm_pce_opportunity_for_household (FROM phx_dm_pce_opportunity, TO phx_dm_pce_household) WITH REVERSE_EDGE="phx_dm_pce_household_has_opportunity";
+CREATE DIRECTED EDGE phx_dm_pce_opportunity_by_advisor (FROM phx_dm_pce_opportunity, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_has_opportunity";
+
 -- rules & insights (app-written)
 CREATE DIRECTED EDGE phx_dm_pce_chunk_of_document (FROM phx_dm_pce_document_chunk, TO phx_dm_pce_document) WITH REVERSE_EDGE="phx_dm_pce_document_has_chunk";
 CREATE DIRECTED EDGE phx_dm_pce_rule_in_version (FROM phx_dm_pce_rule, TO phx_dm_pce_rule_set_version) WITH REVERSE_EDGE="phx_dm_pce_version_has_rule";
@@ -387,7 +408,7 @@ CREATE DIRECTED EDGE phx_dm_pce_query_in_run (FROM phx_dm_pce_agent_query_log, T
 CREATE DIRECTED EDGE phx_dm_pce_turn_in_run (FROM phx_dm_pce_agent_turn_log, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_turn";
 ```
 
-**25 vertices (16 source-loaded + 9 app-written) · 37 edge types.** Drop order is the reverse of create order.
+**26 vertices (17 source-loaded + 9 app-written) · 39 edge types.** Drop order is the reverse of create order.
 
 ---
 

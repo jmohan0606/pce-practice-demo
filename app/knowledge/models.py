@@ -12,6 +12,10 @@ DEFAULT_COLLECTION = "pce_plan_documents"
 
 
 class KnowledgeDocumentType(StrEnum):
+    # 5.2: the two types the upload UI offers. Only PLAN documents go to the
+    # Rule Extractor; both are chunked and embedded into Chroma.
+    PLAN = "PLAN"
+    GUIDANCE = "GUIDANCE"
     COMP_PLAN = "Comp Plan"
     PRACTICE_GUIDELINE = "Practice Guideline"
     COMPLIANCE_POLICY = "Compliance Policy"

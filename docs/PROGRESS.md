@@ -40,7 +40,15 @@
       expand to every rule (name, description, source citation, compiled query,
       status) with Edit that creates a draft → approve → publish (new version,
       never mutates). npm build passes.
-- [ ] Task 5: schema additions (opportunity, document_type, checklist)
+- [x] Task 5: schema additions — 5.1 phx_dm_pce_opportunity in all five places in one
+      commit (DDL + loading job + create/drop, schema_catalog, manifest via generator,
+      generate_mock_data builder with data_source='DUMMY' on every row, SCHEMA_SPEC V14;
+      edges opportunity_for_household / opportunity_by_advisor); Dummy Data chip on any
+      finding whose evidence rows carry data_source='DUMMY' (or an opportunity query);
+      5.2 document_type PLAN|GUIDANCE at upload (Form field, default PLAN), GUIDANCE
+      rejected by extract-rules (still chunked+embedded), upload UI selector;
+      5.3 docs/spec/SCHEMA_CHANGE_CHECKLIST.md. Data regenerated (40 dummy
+      opportunities); verify a/b/c 25/19/12; npm build OK.
 - [ ] Task 6: one cheap verification run + ROUND_C_FIX_COMPLETE.md
 
 ## Current position

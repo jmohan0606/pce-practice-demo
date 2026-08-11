@@ -15,7 +15,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.config.settings import get_settings, resolve_app_path
 from app.knowledge.knowledge_service import KnowledgeManagementService
@@ -47,7 +47,15 @@ def _counts_for(document_id: str) -> dict:
 
 
 @router.post("/upload")
-async def upload_documents(files: list[UploadFile] = File(...)) -> dict:
+async def upload_documents(files: list[UploadFile] = File(...),
+                           document_type: str = Form("PLAN")) -> dict:
+    # 5.2: PLAN | GUIDANCE, chosen by the user at upload (default PLAN). Only
+    # PLAN documents go to the Rule Extractor; both are chunked + embedded.
+    document_type = (document_type or "PLAN").upper()
+    if document_type not in ("PLAN", "GUIDANCE"):
+        raise HTTPException(status_code=422,
+                            detail=f"document_type must be PLAN or GUIDANCE, "
+                                   f"got {document_type!r}")
     uploads_dir = resolve_app_path(get_settings().uploads_path)
     uploads_dir.mkdir(parents=True, exist_ok=True)
     results = []
@@ -63,8 +71,11 @@ async def upload_documents(files: list[UploadFile] = File(...)) -> dict:
         target = uploads_dir / name
         target.write_bytes(await upload.read())
         try:
+            from app.knowledge.models import KnowledgeDocumentType
+
             result = _service().ingest_document(KnowledgeIngestionRequest(
                 source_path=str(target), collection_name=DEFAULT_COLLECTION,
+                document_type=KnowledgeDocumentType(document_type),
             ))
         except Exception as exc:  # noqa: BLE001 — surfaced honestly per file
             _log.error("upload failed for %s: %s", name, exc)
@@ -75,6 +86,7 @@ async def upload_documents(files: list[UploadFile] = File(...)) -> dict:
         results.append({
             "document_id": result.document.document_id,
             "document_name": result.document.document_name,
+            "document_type": document_type,
             "page_count": counts.get("page_count"),
             "chunk_count": counts.get("chunk_count", len(result.chunks)),
             "table_chunk_count": counts.get("table_chunk_count",
@@ -100,6 +112,15 @@ def delete_document(document_id: str) -> dict:
 
 @router.post("/{document_id}/extract-rules")
 def extract_rules(document_id: str) -> dict:
+    # 5.2: only PLAN documents go to the Rule Extractor.
+    doc_row = _counts_for(document_id)
+    doc_type = str(doc_row.get("document_type") or "PLAN").upper()
+    if doc_type == "GUIDANCE":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Document '{document_id}' is GUIDANCE — only PLAN documents "
+                   "go to the Rule Extractor (it is still chunked, embedded and "
+                   "searchable).")
     chunks = _service().document_chunks(document_id)
     if not chunks:
         raise HTTPException(status_code=404,

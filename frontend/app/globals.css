@@ -46,6 +46,8 @@ select,.btn{font:inherit;font-size:13px;border:1px solid var(--rule);background:
 .chip.aigen{background:var(--ai-bg);color:var(--ai)}
 .chip.pos{background:var(--pos-bg);color:var(--pos)}
 .chip.neg{background:var(--neg-bg);color:var(--neg)}
+/* honesty flag for findings built on DUMMY-sourced data (e.g. opportunity) */
+.chip.dummy{background:#FDF3E7;color:#9A5B13;border:1px solid #EBCFA9}
 .src{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ai);
   text-decoration:none;border-bottom:1px solid var(--ai-br);padding-bottom:1px}
 .src::before{content:"";width:13px;height:7px;border-left:1px solid var(--ai-br);

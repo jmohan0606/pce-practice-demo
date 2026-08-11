@@ -410,6 +410,37 @@ def build_flows(cohort: list[str]) -> list[dict]:
     return rows
 
 
+# --------------------------------------------------------------------------- opportunities
+def build_opportunities(by_advisor: dict[str, list[dict]]) -> list[dict]:
+    """CRM pipeline rows, joined through ECI — DUMMY data on every row until a
+    real CRM feed exists (data_source='DUMMY'; the UI shows a Dummy Data chip)."""
+    stages = ["Prospecting", "Discovery", "Proposal", "Negotiation", "Closed"]
+    groups = ["managed_accounts", "twhs_structured", "insurance_annuities",
+              "lending", "mutual_funds"]
+    sources = ["Referral", "Existing Client", "Event", "Cold Outreach"]
+    rows = []
+    n = 0
+    for sid, accts in sorted(by_advisor.items()):
+        eci_ids = sorted({a["primary_eci_id"] for a in accts if a.get("primary_eci_id")})
+        for eci in eci_ids[:2]:  # a couple of open opportunities per advisor
+            n += 1
+            status = RNG.choice(["PENDING", "PENDING", "WON", "LOST"])
+            open_dt = f"2026-{RNG.choice(['04','05','06'])}-{RNG.randint(1, 28):02d}"
+            close_dt = "" if status == "PENDING" else f"2026-06-{RNG.randint(1, 30):02d}"
+            rows.append({
+                "opportunity_id": f"OPP{n:05d}", "eci_id": eci, "advisor_sid": sid,
+                "stage": "Closed" if status != "PENDING" else RNG.choice(stages[:4]),
+                "status": status, "amount": money(RNG.uniform(50_000, 1_500_000)),
+                "product_group": RNG.choice(groups),
+                "open_dt": f"{open_dt} 00:00:00",
+                "expected_close_dt": f"2026-07-{RNG.randint(1, 31):02d} 00:00:00",
+                "close_dt": f"{close_dt} 00:00:00" if close_dt else "",
+                "source": RNG.choice(sources),
+                "data_source": "DUMMY",  # every row — the honesty flag the UI keys on
+            })
+    return rows
+
+
 # --------------------------------------------------------------------------- writers
 VERTEX_COLUMNS = {
     "phx_dm_pce_month": ["month_id", "month_name", "start_dt", "end_dt", "trading_days", "is_baseline", "is_partial"],
@@ -444,6 +475,9 @@ VERTEX_COLUMNS = {
                                        "credited_flows", "departed_advisor_sid", "departed_advisor_excl_am",
                                        "lob_trfr_excl_am", "oi_pa_referral_cap_adj_am", "large_flow_cap_adj_am",
                                        "forced_closure_excl_am"],
+    "phx_dm_pce_opportunity": ["opportunity_id", "eci_id", "advisor_sid", "stage", "status", "amount",
+                                "product_group", "open_dt", "expected_close_dt", "close_dt", "source",
+                                "data_source"],
 }
 
 ID_COLUMNS = {
@@ -455,6 +489,7 @@ ID_COLUMNS = {
     "phx_dm_pce_team_agreement": "agreement_key", "phx_dm_pce_revenue_transaction": "txn_id",
     "phx_dm_pce_monthly_revenue": "mr_id", "phx_dm_pce_account_month": "am_id",
     "phx_dm_pce_account_transfer": "transfer_id", "phx_dm_pce_advisor_flow_month": "afm_id",
+    "phx_dm_pce_opportunity": "opportunity_id",
 }
 
 # edge_name -> (from_type, to_type, source vertex, from_field, to_field)
@@ -486,6 +521,8 @@ EDGES = {
     "phx_dm_pce_team_secondary": ("phx_dm_pce_team_agreement", "phx_dm_pce_advisor", "phx_dm_pce_team_agreement", "agreement_key", "sec_advisor_sid"),
     "phx_dm_pce_flow_by_advisor": ("phx_dm_pce_advisor_flow_month", "phx_dm_pce_advisor", "phx_dm_pce_advisor_flow_month", "afm_id", "advisor_sid"),
     "phx_dm_pce_flow_in_month": ("phx_dm_pce_advisor_flow_month", "phx_dm_pce_month", "phx_dm_pce_advisor_flow_month", "afm_id", "month_id"),
+    "phx_dm_pce_opportunity_for_household": ("phx_dm_pce_opportunity", "phx_dm_pce_household", "phx_dm_pce_opportunity", "opportunity_id", "eci_id"),
+    "phx_dm_pce_opportunity_by_advisor": ("phx_dm_pce_opportunity", "phx_dm_pce_advisor", "phx_dm_pce_opportunity", "opportunity_id", "advisor_sid"),
 }
 
 
@@ -530,6 +567,7 @@ def main() -> None:
     vertex_rows["phx_dm_pce_account_month"] = build_account_month(by_advisor, txns)
     vertex_rows["phx_dm_pce_account_transfer"] = build_transfers(by_advisor)
     vertex_rows["phx_dm_pce_advisor_flow_month"] = build_flows(cohort)
+    vertex_rows["phx_dm_pce_opportunity"] = build_opportunities(by_advisor)
 
     # --- vertices ---
     manifest_files = []

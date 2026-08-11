@@ -89,6 +89,9 @@ export default function DocumentsPage() {
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [rulesError, setRulesError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  // 5.2: PLAN documents go to the Rule Extractor; GUIDANCE is chunked +
+  // embedded for search only. Chosen at upload, defaulting to PLAN.
+  const [docType, setDocType] = useState<"PLAN" | "GUIDANCE">("PLAN");
   const fileInput = useRef<HTMLInputElement>(null);
 
   const refreshDocuments = useCallback(() => {
@@ -129,7 +132,7 @@ export default function DocumentsPage() {
       if (!files || !files.length) return;
       setUploading(true);
       try {
-        await uploadDocuments(Array.from(files));
+        await uploadDocuments(Array.from(files), docType);
         refreshDocuments();
       } catch (e) {
         setDocumentsError(String((e as Error)?.message || e));
@@ -137,7 +140,7 @@ export default function DocumentsPage() {
         setUploading(false);
       }
     },
-    [refreshDocuments],
+    [refreshDocuments, docType],
   );
 
   return (
@@ -159,6 +162,13 @@ export default function DocumentsPage() {
               <div className="drop">
                 <b>Drop Files Here</b>
                 <p>PDF, Word or PowerPoint · several files at once · tables and page numbers are preserved</p>
+                <div style={{ display: "flex", gap: 8, justifyContent: "center", alignItems: "center", marginBottom: 10 }}>
+                  <span style={{ fontSize: "12.5px", color: "var(--slate)" }}>Document type</span>
+                  <select value={docType} onChange={(e) => setDocType(e.target.value as "PLAN" | "GUIDANCE")}>
+                    <option value="PLAN">PLAN — rules are extracted</option>
+                    <option value="GUIDANCE">GUIDANCE — search only</option>
+                  </select>
+                </div>
                 <button
                   className="btn primary"
                   disabled={uploading}

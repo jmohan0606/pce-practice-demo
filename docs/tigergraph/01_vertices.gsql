@@ -99,6 +99,14 @@ CREATE VERTEX phx_dm_pce_advisor_flow_month (PRIMARY_ID afm_id STRING, advisor_s
   oi_pa_referral_cap_adj_am DOUBLE, large_flow_cap_adj_am DOUBLE, forced_closure_excl_am DOUBLE)
 WITH primary_id_as_attribute="true";
 
+// V14 — CRM pipeline, joined through ECI. DUMMY data until the real CRM feed
+// exists: data_source='DUMMY' on every row, surfaced as a chip in the UI.
+CREATE VERTEX phx_dm_pce_opportunity (PRIMARY_ID opportunity_id STRING, eci_id STRING,
+  advisor_sid STRING, stage STRING, status STRING, amount DOUBLE,
+  product_group STRING, open_dt DATETIME, expected_close_dt DATETIME,
+  close_dt DATETIME, source STRING, data_source STRING)
+WITH primary_id_as_attribute="true";
+
 // ---------------------------------------------------------------------------
 // §2 App-written vertices (8) — empty at load
 // ---------------------------------------------------------------------------

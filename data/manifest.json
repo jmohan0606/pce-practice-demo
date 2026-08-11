@@ -215,7 +215,7 @@
         "file_key": "file_key",
         "trade_description": "trade_description"
       },
-      "expected_rows": 2047,
+      "expected_rows": 2055,
       "order": 12
     },
     {
@@ -235,7 +235,7 @@
         "txn_count": "txn_count",
         "distinct_accounts": "distinct_accounts"
       },
-      "expected_rows": 1024,
+      "expected_rows": 1030,
       "order": 13
     },
     {
@@ -306,6 +306,28 @@
       "order": 16
     },
     {
+      "file": "vertices/phx_dm_pce_opportunity.csv",
+      "kind": "vertex",
+      "target": "phx_dm_pce_opportunity",
+      "id_column": "opportunity_id",
+      "columns": {
+        "opportunity_id": "opportunity_id",
+        "eci_id": "eci_id",
+        "advisor_sid": "advisor_sid",
+        "stage": "stage",
+        "status": "status",
+        "amount": "amount",
+        "product_group": "product_group",
+        "open_dt": "open_dt",
+        "expected_close_dt": "expected_close_dt",
+        "close_dt": "close_dt",
+        "source": "source",
+        "data_source": "data_source"
+      },
+      "expected_rows": 40,
+      "order": 17
+    },
+    {
       "file": "edges/phx_dm_pce_product_in_group.csv",
       "kind": "edge",
       "target": "phx_dm_pce_product_in_group",
@@ -315,7 +337,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 31,
-      "order": 17
+      "order": 18
     },
     {
       "file": "edges/phx_dm_pce_group_in_class.csv",
@@ -327,7 +349,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 25,
-      "order": 18
+      "order": 19
     },
     {
       "file": "edges/phx_dm_pce_txn_by_advisor.csv",
@@ -338,8 +360,8 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 2047,
-      "order": 19
+      "expected_rows": 2055,
+      "order": 20
     },
     {
       "file": "edges/phx_dm_pce_txn_for_account.csv",
@@ -350,8 +372,8 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 2047,
-      "order": 20
+      "expected_rows": 2055,
+      "order": 21
     },
     {
       "file": "edges/phx_dm_pce_txn_of_product.csv",
@@ -362,8 +384,8 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 2047,
-      "order": 21
+      "expected_rows": 2055,
+      "order": 22
     },
     {
       "file": "edges/phx_dm_pce_txn_in_month.csv",
@@ -374,8 +396,8 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 2047,
-      "order": 22
+      "expected_rows": 2055,
+      "order": 23
     },
     {
       "file": "edges/phx_dm_pce_mr_by_advisor.csv",
@@ -386,8 +408,8 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1024,
-      "order": 23
+      "expected_rows": 1030,
+      "order": 24
     },
     {
       "file": "edges/phx_dm_pce_mr_in_month.csv",
@@ -398,8 +420,8 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1024,
-      "order": 24
+      "expected_rows": 1030,
+      "order": 25
     },
     {
       "file": "edges/phx_dm_pce_mr_of_product.csv",
@@ -410,8 +432,8 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1024,
-      "order": 25
+      "expected_rows": 1030,
+      "order": 26
     },
     {
       "file": "edges/phx_dm_pce_mr_in_group.csv",
@@ -422,8 +444,8 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1024,
-      "order": 26
+      "expected_rows": 1030,
+      "order": 27
     },
     {
       "file": "edges/phx_dm_pce_am_for_account.csv",
@@ -435,7 +457,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 657,
-      "order": 27
+      "order": 28
     },
     {
       "file": "edges/phx_dm_pce_am_by_advisor.csv",
@@ -447,7 +469,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 657,
-      "order": 28
+      "order": 29
     },
     {
       "file": "edges/phx_dm_pce_am_in_month.csv",
@@ -459,7 +481,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 657,
-      "order": 29
+      "order": 30
     },
     {
       "file": "edges/phx_dm_pce_account_in_household.csv",
@@ -471,7 +493,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 219,
-      "order": 30
+      "order": 31
     },
     {
       "file": "edges/phx_dm_pce_rel_of_account.csv",
@@ -483,7 +505,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 382,
-      "order": 31
+      "order": 32
     },
     {
       "file": "edges/phx_dm_pce_rel_to_household.csv",
@@ -495,7 +517,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 382,
-      "order": 32
+      "order": 33
     },
     {
       "file": "edges/phx_dm_pce_map_of_account.csv",
@@ -507,7 +529,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 219,
-      "order": 33
+      "order": 34
     },
     {
       "file": "edges/phx_dm_pce_map_to_household.csv",
@@ -519,7 +541,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 219,
-      "order": 34
+      "order": 35
     },
     {
       "file": "edges/phx_dm_pce_account_in_rpg.csv",
@@ -531,7 +553,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 105,
-      "order": 35
+      "order": 36
     },
     {
       "file": "edges/phx_dm_pce_txn_in_rpg.csv",
@@ -542,8 +564,8 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 941,
-      "order": 36
+      "expected_rows": 933,
+      "order": 37
     },
     {
       "file": "edges/phx_dm_pce_transfer_of_account.csv",
@@ -555,7 +577,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 13,
-      "order": 37
+      "order": 38
     },
     {
       "file": "edges/phx_dm_pce_transfer_from.csv",
@@ -567,7 +589,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 13,
-      "order": 38
+      "order": 39
     },
     {
       "file": "edges/phx_dm_pce_transfer_to.csv",
@@ -579,7 +601,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 13,
-      "order": 39
+      "order": 40
     },
     {
       "file": "edges/phx_dm_pce_team_primary.csv",
@@ -591,7 +613,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 3,
-      "order": 40
+      "order": 41
     },
     {
       "file": "edges/phx_dm_pce_team_secondary.csv",
@@ -603,7 +625,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 3,
-      "order": 41
+      "order": 42
     },
     {
       "file": "edges/phx_dm_pce_flow_by_advisor.csv",
@@ -615,7 +637,7 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 80,
-      "order": 42
+      "order": 43
     },
     {
       "file": "edges/phx_dm_pce_flow_in_month.csv",
@@ -627,7 +649,31 @@
       "to_column": "to_id",
       "columns": {},
       "expected_rows": 80,
-      "order": 43
+      "order": 44
+    },
+    {
+      "file": "edges/phx_dm_pce_opportunity_for_household.csv",
+      "kind": "edge",
+      "target": "phx_dm_pce_opportunity_for_household",
+      "from_type": "phx_dm_pce_opportunity",
+      "to_type": "phx_dm_pce_household",
+      "from_column": "from_id",
+      "to_column": "to_id",
+      "columns": {},
+      "expected_rows": 40,
+      "order": 45
+    },
+    {
+      "file": "edges/phx_dm_pce_opportunity_by_advisor.csv",
+      "kind": "edge",
+      "target": "phx_dm_pce_opportunity_by_advisor",
+      "from_type": "phx_dm_pce_opportunity",
+      "to_type": "phx_dm_pce_advisor",
+      "from_column": "from_id",
+      "to_column": "to_id",
+      "columns": {},
+      "expected_rows": 40,
+      "order": 46
     }
   ]
 }

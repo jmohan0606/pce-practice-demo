@@ -223,6 +223,23 @@
         "forced_closure_excl_am": "DOUBLE"
       }
     },
+    "phx_dm_pce_opportunity": {
+      "primary_id": "opportunity_id",
+      "attributes": {
+        "opportunity_id": "STRING",
+        "eci_id": "STRING",
+        "advisor_sid": "STRING",
+        "stage": "STRING",
+        "status": "STRING",
+        "amount": "DOUBLE",
+        "product_group": "STRING",
+        "open_dt": "DATETIME",
+        "expected_close_dt": "DATETIME",
+        "close_dt": "DATETIME",
+        "source": "STRING",
+        "data_source": "STRING"
+      }
+    },
     "phx_dm_pce_document": {
       "primary_id": "document_id",
       "attributes": {
@@ -493,6 +510,16 @@
       "from": "phx_dm_pce_advisor_flow_month",
       "to": "phx_dm_pce_month",
       "reverse": "phx_dm_pce_month_has_flow"
+    },
+    "phx_dm_pce_opportunity_for_household": {
+      "from": "phx_dm_pce_opportunity",
+      "to": "phx_dm_pce_household",
+      "reverse": "phx_dm_pce_household_has_opportunity"
+    },
+    "phx_dm_pce_opportunity_by_advisor": {
+      "from": "phx_dm_pce_opportunity",
+      "to": "phx_dm_pce_advisor",
+      "reverse": "phx_dm_pce_advisor_has_opportunity"
     },
     "phx_dm_pce_chunk_of_document": {
       "from": "phx_dm_pce_document_chunk",

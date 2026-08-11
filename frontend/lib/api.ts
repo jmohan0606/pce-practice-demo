@@ -148,9 +148,13 @@ export function getDocuments(): Promise<DocumentsResponse> {
   return get("/api/documents");
 }
 
-export async function uploadDocuments(files: File[]): Promise<DocumentsResponse> {
+export async function uploadDocuments(
+  files: File[],
+  documentType: "PLAN" | "GUIDANCE" = "PLAN",
+): Promise<DocumentsResponse> {
   const form = new FormData();
   for (const file of files) form.append("files", file);
+  form.append("document_type", documentType);
   let response: Response;
   try {
     response = await fetch(`${API_BASE}/api/documents/upload`, { method: "POST", body: form });

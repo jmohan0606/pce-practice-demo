@@ -48,6 +48,10 @@ CREATE DIRECTED EDGE phx_dm_pce_team_secondary (FROM phx_dm_pce_team_agreement, 
 CREATE DIRECTED EDGE phx_dm_pce_flow_by_advisor (FROM phx_dm_pce_advisor_flow_month, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_has_flow";
 CREATE DIRECTED EDGE phx_dm_pce_flow_in_month (FROM phx_dm_pce_advisor_flow_month, TO phx_dm_pce_month) WITH REVERSE_EDGE="phx_dm_pce_month_has_flow";
 
+// opportunity (CRM pipeline — DUMMY data, joined through ECI)
+CREATE DIRECTED EDGE phx_dm_pce_opportunity_for_household (FROM phx_dm_pce_opportunity, TO phx_dm_pce_household) WITH REVERSE_EDGE="phx_dm_pce_household_has_opportunity";
+CREATE DIRECTED EDGE phx_dm_pce_opportunity_by_advisor (FROM phx_dm_pce_opportunity, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_has_opportunity";
+
 // rules & insights (app-written)
 CREATE DIRECTED EDGE phx_dm_pce_chunk_of_document (FROM phx_dm_pce_document_chunk, TO phx_dm_pce_document) WITH REVERSE_EDGE="phx_dm_pce_document_has_chunk";
 CREATE DIRECTED EDGE phx_dm_pce_rule_in_version (FROM phx_dm_pce_rule, TO phx_dm_pce_rule_set_version) WITH REVERSE_EDGE="phx_dm_pce_version_has_rule";

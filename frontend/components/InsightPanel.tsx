@@ -70,6 +70,12 @@ function FindingRow({ finding, defaultOpen }: { finding: Finding; defaultOpen?: 
               {finding.provenance === "REAL" ? "Real" : "Derived"}
             </Chip>
             <Chip variant="tag">{finding.driver_tag}</Chip>
+            {/* honesty flag: any finding built on opportunity (or other DUMMY-
+                sourced) rows says so — same pattern V2 used for MARKET/NET_FLOW */}
+            {finding.evidence_rows.some((r) => r["data_source"] === "DUMMY") ||
+            (finding.source_query?.query_name ?? "").includes("opportunit") ? (
+              <Chip variant="dummy">Dummy Data</Chip>
+            ) : null}
           </div>
         </div>
       </div>
