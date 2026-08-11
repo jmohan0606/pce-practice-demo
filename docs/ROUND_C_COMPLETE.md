@@ -162,6 +162,84 @@ the LIVE server (so the runs double as the app's data — full transcript in
 The AI Insights page now renders the completed aggregate run's real data; the Advisor
 page shows the honest FAILED state for individual advisors.
 
+#### Persisted insight runs, 202604→202605 (21)
+
+| Run | Status | Findings |
+|---|---|---|
+| `all` (aggregate book) | COMPLETE | 10 |
+| V000001 … V000020 (each of the 20) | FAILED — error recorded: "credit balance too low" | 0 |
+
+#### The completed aggregate run — verbatim (real Claude output)
+
+**Narrative:**
+
+> **Credited revenue rose $62,456.40** between the two months.
+>
+> The largest identified driver was **Structured Products: One Account, Two Syndicate
+> Allocations Drive 93% of Increase** ($58,078.21).
+
+**Bullets:**
+
+> • **Structured Products: One Account, Two Syndicate Allocations Drive 93% of
+> Increase** — $58,078.21. Account 1597 generated $58,078 in May via two syndicate
+> allocations ($30,636 and $27,442), representing 95% of the May total and 93% of the
+> month-over-month increase. All other accounts contributed the remaining $3,069
+> increase. Syndicate allocations are typically one-time events tied to new issue
+> participation.
+>
+> • **Lost Accounts: 10 Accounts with $49,921 April Revenue Went to Zero Balance in
+> May** — ($49,921.13). Ten accounts with substantial April revenue ($49,921 total,
+> 5.7% of April total) dropped to zero balance in May. Top losses: account 2486
+> ($10,871), 2437 ($7,554), 2458 ($6,420), 2451 ($5,735), and 2500 ($5,448). Combined
+> prior balances totaled $11.1M. No transfers were recorded for these accounts,
+> classifying them as lost business under rule R_LOST_ACCOUNT_RSV_v1. This $49,921
+> loss offset roughly 80% of the $62,456 gross increase, meaning the underlying book
+> growth was approximately $112,377.
+>
+> • **New Accounts Contributed $16,815 in May Revenue** — $16,815.30. Four new
+> accounts opened in May and generated first-month revenue totaling $16,815. Account
+> 3004 (opened May 6) led with $7,223, followed by 3046 ($6,028), 3018 ($2,987), and
+> 3032 ($578). This represents 27% of the $62,456 total increase, indicating new
+> account acquisition was a meaningful but not dominant driver of the month-over-month
+> growth.
+>
+> • **Municipal Bonds: 51% Revenue Increase Driven Entirely by Higher Average
+> Transaction Size** — $14,344.61. Municipal Bonds revenue increased $14,345 (+51.3%)
+> from $27,946 to $42,290. Transaction count remained stable at 30 and distinct
+> accounts held at 28 (both unchanged). Average transaction size jumped from $932 to
+> $1,410 (+51.3%), and maximum transaction rose from $2,347 to $2,637. The entire
+> increase is attributable to higher revenue per transaction, likely driven by larger
+> trade sizes or higher bond yields.
+
+**All 10 findings (provenance · title · impact · evidence rows · rule):**
+
+| # | Prov. | Title | Impact | Evidence | Rule |
+|---|---|---|---|---|---|
+| 1 | REAL | Structured Products: One Account, Two Syndicate Allocations Drive 93% of Increase | $58,078.21 | 20 | — |
+| 2 | DERIVED | Lost Accounts: 10 Accounts with $49,921 April Revenue Went to Zero Balance in May | ($49,921.13) | 10 | R_LOST_ACCOUNT_RSV_v1 |
+| 3 | DERIVED | New Accounts Contributed $16,815 in May Revenue | $16,815.30 | 4 | R_NEW_ACCOUNT_RSV_v1 |
+| 4 | DERIVED | Municipal Bonds: 51% Revenue Increase Driven Entirely by Higher Average Transaction Size | $14,344.61 | 1 | — |
+| 5 | DERIVED | Life & Annuities: Revenue Decline Due to Fewer Transactions and Lower Average Size | ($9,613.82) | 1 | — |
+| 6 | DERIVED | Managed Accounts: Growth Driven by 13 Additional Accounts Offsetting Lower Average Transaction Size | $8,666.33 | 1 | — |
+| 7 | DERIVED | Money Market Funds: Account Count Drop and Lower Average Transaction Size | ($7,331.98) | 1 | — |
+| 8 | DERIVED | Security Based Lending: 25.6% Revenue Increase Driven by Higher Transaction Size | $6,255.36 | 1 | — |
+| 9 | REAL | Lost Account 2486 Contributed $1,434 to Mutual Fund Trails Decline | ($1,433.87) | 10 | R_LOST_ACCOUNT_RSV_v1 |
+| 10 | REAL | Fee Discounts Above Threshold Present But Grid Reductions Inconsistently Applied | null (qualitative) | 13 | R_FEE_REDUCTION_SHARING_RSV_v1 |
+
+**Agent query log** — 36 queries, `budget_hit=false`, seq 1–36 contiguous:
+
+```
+month_meta ×2 → revenue_change_by_product → top_txns ×2 → revenue_by_product
+→ account_txns → accounts_for_month ×2 → accounts_absent → top_txns ×2
+→ product_txn_stats ×4 → top_txns → product_txn_stats ×2 → top_txns
+→ product_txn_stats ×2 → accounts_opened → transfers_in → transfers_out
+→ top_txns → product_txn_stats ×2 → account_txns → fee_reduction_accounts
+→ accounts_zeroed → account_master → account_txns ×2 → top_txns ×2
+```
+
+**Numeric assertion: PASSED** — zero unverified figures; every number in the narrative
+and bullets traces to a finding or the transition totals.
+
 ### The original blocker record — steps 8 and 10, and browser-visible generated data
 
 At ~11:52 UTC the Anthropic account ran out of credits
