@@ -8,7 +8,6 @@ import { getHealth } from "@/lib/api";
 const TABS = [
   { href: "/", label: "Dashboard" },
   { href: "/insights", label: "AI Insights" },
-  { href: "/advisor", label: "Advisor" },
   { href: "/documents", label: "Documents & Rules" },
   { href: "/rules", label: "Rule Versions" },
   { href: "/trace", label: "Trace" },
