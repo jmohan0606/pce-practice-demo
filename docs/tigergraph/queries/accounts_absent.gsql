@@ -1,0 +1,15 @@
+// accounts_absent — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Accounts present in from_month with NO row in to_month.
+// Local-tier equivalent: app/graph/queries/catalog.py::accounts_absent
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY accounts_absent(STRING advisor, STRING from_month, STRING to_month) FOR GRAPH phx_dm_pce_practice_demo {
+  OrAccum @in_to;
+  accts = SELECT c FROM phx_dm_pce_account:c -(phx_dm_pce_account_has_am)- phx_dm_pce_account_month:r
+                      -(phx_dm_pce_am_by_advisor)- phx_dm_pce_advisor:a
+          WHERE ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+          ACCUM CASE WHEN r.month_id == to_month THEN c.@in_to += TRUE END;
+  gone = SELECT c FROM accts:c -(phx_dm_pce_account_has_am)- phx_dm_pce_account_month:r
+         WHERE NOT c.@in_to AND r.month_id == from_month;
+  PRINT gone[gone.acct_key AS acct_key];
+  // prior_credited_amt = the from_month row's credited_amt, attached in the envelope
+}

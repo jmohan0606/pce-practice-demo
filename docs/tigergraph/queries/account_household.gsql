@@ -1,0 +1,10 @@
+// account_household — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// The household relationships of one account.
+// Local-tier equivalent: app/graph/queries/catalog.py::account_household
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY account_household(STRING acct_key) FOR GRAPH phx_dm_pce_practice_demo {
+  r = SELECT x FROM phx_dm_pce_account_eci_rel:x -(phx_dm_pce_rel_of_account)- phx_dm_pce_account:c
+      WHERE c.acct_key == acct_key;
+  PRINT r[r.eci_id AS eci_id, r.enterprise_relationship_code AS relationship_code,
+          r.party_role_name AS party_role_name, r.is_owner_role AS is_owner_role];
+}

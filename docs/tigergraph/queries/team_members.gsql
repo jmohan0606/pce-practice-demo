@@ -1,0 +1,13 @@
+// team_members — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Team agreements this advisor participates in.
+// Local-tier equivalent: app/graph/queries/catalog.py::team_members
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY team_members(STRING advisor) FOR GRAPH phx_dm_pce_practice_demo {
+  t = SELECT x FROM phx_dm_pce_team_agreement:x
+      WHERE x.prm_advisor_sid == advisor OR x.sec_advisor_sid == advisor
+         OR (advisor == "all");
+  PRINT t[t.agreement_id AS agreement_id, t.prm_advisor_sid AS prm_advisor_sid,
+          t.sec_advisor_sid AS sec_advisor_sid, t.prm_share_pct AS prm_share_pct,
+          t.sec_share_pct AS sec_share_pct, t.status_cd AS status];
+  // share_pct for the requested member selected in the envelope
+}

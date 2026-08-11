@@ -1,0 +1,12 @@
+// accounts_for_month — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Account-month rows for an advisor: revenue, balance, zero flag.
+// Local-tier equivalent: app/graph/queries/catalog.py::accounts_for_month
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY accounts_for_month(STRING advisor, STRING month_id) FOR GRAPH phx_dm_pce_practice_demo {
+  am = SELECT r FROM phx_dm_pce_account_month:r -(phx_dm_pce_am_by_advisor)- phx_dm_pce_advisor:a
+       WHERE r.month_id == month_id
+         AND ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+       ORDER BY r.credited_amt DESC;
+  PRINT am[am.acct_key AS acct_key, am.credited_amt AS credited_amt,
+           am.end_balance AS end_balance, am.is_zero_balance AS is_zero_balance];
+}

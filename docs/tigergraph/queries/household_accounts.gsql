@@ -1,0 +1,13 @@
+// household_accounts — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Accounts of a household — owner-role relationships ONLY.
+// Local-tier equivalent: app/graph/queries/catalog.py::household_accounts
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY household_accounts(STRING eci_id) FOR GRAPH phx_dm_pce_practice_demo {
+  accts = SELECT c FROM phx_dm_pce_household:h -(reverse_phx_dm_pce_rel_to_household)- phx_dm_pce_account_eci_rel:r
+                     -(phx_dm_pce_rel_of_account)- phx_dm_pce_account:c
+          WHERE h.eci_id == eci_id AND r.is_owner_role;  // owner roles only — never roll up beneficiaries
+  am = SELECT m FROM accts:c -(phx_dm_pce_account_has_am)- phx_dm_pce_account_month:m;
+  PRINT am[am.acct_key AS acct_key, am.advisor_sid AS advisor_sid,
+           am.credited_amt AS credited_amt, am.month_id AS month_id];
+  // envelope keeps the latest month per account
+}

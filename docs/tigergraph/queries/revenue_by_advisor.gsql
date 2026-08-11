@@ -1,0 +1,13 @@
+// revenue_by_advisor — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Cohort advisors ranked by credited revenue for one month.
+// Local-tier equivalent: app/graph/queries/catalog.py::revenue_by_advisor
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY revenue_by_advisor(STRING month_id) FOR GRAPH phx_dm_pce_practice_demo {
+  SumAccum<DOUBLE> @amt;
+  adv = SELECT a FROM phx_dm_pce_advisor:a -(reverse_phx_dm_pce_mr_by_advisor)- phx_dm_pce_monthly_revenue:m
+        WHERE a.in_cohort AND m.month_id == month_id
+        ACCUM a.@amt += m.credited_amt
+        ORDER BY a.@amt DESC;
+  PRINT adv[adv.advisor_sid AS advisor_sid, adv.@amt AS credited_amt];
+  // rank = position in the DESC ordering (assigned by the caller envelope)
+}

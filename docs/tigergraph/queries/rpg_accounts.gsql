@@ -1,0 +1,12 @@
+// rpg_accounts — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Accounts in a related-pricing-group with latest-month revenue.
+// Local-tier equivalent: app/graph/queries/catalog.py::rpg_accounts
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY rpg_accounts(STRING rpg_id) FOR GRAPH phx_dm_pce_practice_demo {
+  accts = SELECT c FROM phx_dm_pce_rpg:g -(reverse_phx_dm_pce_account_in_rpg)- phx_dm_pce_account:c
+          WHERE g.rpg_id == rpg_id;
+  am = SELECT m FROM accts:c -(phx_dm_pce_account_has_am)- phx_dm_pce_account_month:m;
+  PRINT am[am.acct_key AS acct_key, am.advisor_sid AS advisor_sid,
+           am.credited_amt AS credited_amt, am.month_id AS month_id];
+  // envelope keeps the latest month per account
+}

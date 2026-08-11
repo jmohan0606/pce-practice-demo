@@ -1,0 +1,13 @@
+// top_txns — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Largest transactions for one product group in a month.
+// Local-tier equivalent: app/graph/queries/catalog.py::top_txns
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY top_txns(STRING advisor, STRING month_id, STRING group_id, INT limit_n = 10) FOR GRAPH phx_dm_pce_practice_demo {
+  t = SELECT x FROM phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_of_product)- phx_dm_pce_product:p
+      WHERE p.group_id == group_id AND x.month_id == month_id
+        AND ((advisor == "all") OR x.advisor_sid == advisor)
+      ORDER BY x.credited_amt DESC
+      LIMIT limit_n;
+  PRINT t[t.txn_id AS txn_id, t.acct_key AS acct_key, t.credited_amt AS credited_amt,
+          t.trade_description AS trade_description];
+}

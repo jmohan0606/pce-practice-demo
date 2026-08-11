@@ -1,0 +1,11 @@
+// account_txns — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// One account's transactions in a month.
+// Local-tier equivalent: app/graph/queries/catalog.py::account_txns
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY account_txns(STRING acct_key, STRING month_id) FOR GRAPH phx_dm_pce_practice_demo {
+  t = SELECT x FROM phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_for_account)- phx_dm_pce_account:c
+      WHERE c.acct_key == acct_key AND x.month_id == month_id
+      ORDER BY x.credited_amt DESC;
+  PRINT t[t.txn_id AS txn_id, t.product_id AS product_id, t.credited_amt AS credited_amt,
+          t.trade_dt AS trade_dt, t.reason_cd AS reason_cd];
+}

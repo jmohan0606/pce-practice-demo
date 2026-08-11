@@ -1,0 +1,12 @@
+// accounts_zeroed — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Accounts whose balance fell to zero between two months.
+// Local-tier equivalent: app/graph/queries/catalog.py::accounts_zeroed
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY accounts_zeroed(STRING advisor, STRING from_month, STRING to_month) FOR GRAPH phx_dm_pce_practice_demo {
+  am = SELECT r FROM phx_dm_pce_account_month:r -(phx_dm_pce_am_by_advisor)- phx_dm_pce_advisor:a
+       WHERE r.month_id == to_month AND r.is_zero_balance AND r.prior_end_balance > 0
+         AND ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+       ORDER BY r.prior_credited_amt DESC;
+  PRINT am[am.acct_key AS acct_key, am.prior_end_balance AS prior_balance,
+           am.prior_credited_amt AS prior_credited_amt];
+}

@@ -1,0 +1,15 @@
+// product_txn_stats — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Transaction statistics for one product group in a month.
+// Local-tier equivalent: app/graph/queries/catalog.py::product_txn_stats
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY product_txn_stats(STRING advisor, STRING month_id, STRING group_id) FOR GRAPH phx_dm_pce_practice_demo {
+  SumAccum<INT> @@txn_count; SetAccum<STRING> @@accounts;
+  SumAccum<DOUBLE> @@amt_sum; MaxAccum<DOUBLE> @@amt_max;
+  t = SELECT x FROM phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_of_product)- phx_dm_pce_product:p
+      WHERE p.group_id == group_id AND x.month_id == month_id
+        AND ((advisor == "all") OR x.advisor_sid == advisor)
+      ACCUM @@txn_count += 1, @@accounts += x.acct_key,
+            @@amt_sum += x.credited_amt, @@amt_max += x.credited_amt;
+  PRINT @@txn_count AS txn_count, @@accounts.size() AS distinct_accounts,
+        @@amt_sum / @@txn_count AS avg_amt, @@amt_max AS max_amt;
+}

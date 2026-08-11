@@ -1,0 +1,9 @@
+// month_meta — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Trading days, baseline and partial flags for one month.
+// Local-tier equivalent: app/graph/queries/catalog.py::month_meta
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY month_meta(STRING month_id) FOR GRAPH phx_dm_pce_practice_demo {
+  m = SELECT x FROM phx_dm_pce_month:x WHERE x.month_id == month_id;
+  PRINT m[m.trading_days AS trading_days, m.is_baseline AS is_baseline,
+          m.is_partial AS is_partial];
+}

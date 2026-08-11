@@ -1,0 +1,17 @@
+// fee_reduction_by_rpg — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Fee-reduction profile grouped by related-pricing-group.
+// Local-tier equivalent: app/graph/queries/catalog.py::fee_reduction_by_rpg
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY fee_reduction_by_rpg(STRING advisor, STRING month_id) FOR GRAPH phx_dm_pce_practice_demo {
+  SumAccum<INT> @account_count; SumAccum<DOUBLE> @reduction_sum; SumAccum<INT> @above;
+  rpg = SELECT g FROM phx_dm_pce_rpg:g -(reverse_phx_dm_pce_txn_in_rpg)- phx_dm_pce_revenue_transaction:t
+        WHERE t.month_id == month_id AND t.standard_rate_bps > 0
+          AND ((advisor == "all") OR t.advisor_sid == advisor)
+        ACCUM g.@account_count += 1,
+              g.@reduction_sum += round((t.standard_rate_bps - t.client_rate_bps) / t.standard_rate_bps * 100),
+              CASE WHEN round((t.standard_rate_bps - t.client_rate_bps) / t.standard_rate_bps * 100) > 10
+                   THEN g.@above += 1 END;
+  PRINT rpg[rpg.rpg_id AS rpg_id, rpg.@account_count AS account_count,
+            rpg.@reduction_sum / rpg.@account_count AS blended_reduction_pct,
+            rpg.@above AS accounts_above_threshold];
+}

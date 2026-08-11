@@ -1,0 +1,12 @@
+// transfers_in — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Accounts transferred TO this advisor in a date range.
+// Local-tier equivalent: app/graph/queries/catalog.py::transfers_in
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY transfers_in(STRING advisor, DATETIME from_dt, DATETIME to_dt) FOR GRAPH phx_dm_pce_practice_demo {
+  t = SELECT x FROM phx_dm_pce_account_transfer:x -(phx_dm_pce_transfer_to)- phx_dm_pce_advisor:a
+      WHERE x.transfer_ts >= from_dt AND x.transfer_ts <= to_dt
+        AND ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+      ORDER BY x.transfer_ts ASC;
+  PRINT t[t.acct_key AS acct_key, t.from_advisor_sid AS from_advisor_sid,
+          t.transfer_ts AS transfer_ts];
+}

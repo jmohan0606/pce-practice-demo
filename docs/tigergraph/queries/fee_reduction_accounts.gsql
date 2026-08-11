@@ -1,0 +1,18 @@
+// fee_reduction_accounts — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Accounts whose fee reduction exceeds a threshold.
+// Local-tier equivalent: app/graph/queries/catalog.py::fee_reduction_accounts
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY fee_reduction_accounts(STRING advisor, STRING month_id, DOUBLE threshold_pct = 10) FOR GRAPH phx_dm_pce_practice_demo {
+  MaxAccum<DOUBLE> @std; MaxAccum<DOUBLE> @cli; MaxAccum<DOUBLE> @grid;
+  MaxAccum<STRING> @rpg_id; MaxAccum<STRING> @advisor_sid;
+  accts = SELECT c FROM phx_dm_pce_account:c -(phx_dm_pce_account_has_txn)- phx_dm_pce_revenue_transaction:t
+          WHERE t.month_id == month_id AND t.standard_rate_bps > 0
+            AND ((advisor == "all") OR t.advisor_sid == advisor)
+          ACCUM c.@std += t.standard_rate_bps, c.@cli += t.client_rate_bps,
+                c.@grid += t.grid_reduction, c.@rpg_id += t.rpg, c.@advisor_sid += t.advisor_sid
+          HAVING round((c.@std - c.@cli) / c.@std * 100) > threshold_pct;
+  PRINT accts[accts.acct_key AS acct_key, accts.@advisor_sid AS advisor_sid,
+              accts.@std AS standard_bps, accts.@cli AS client_bps,
+              round((accts.@std - accts.@cli) / accts.@std * 100) AS reduction_pct,
+              accts.@grid AS grid_reduction, accts.@rpg_id AS rpg_id];
+}

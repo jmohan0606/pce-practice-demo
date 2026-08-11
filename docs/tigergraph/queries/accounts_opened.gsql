@@ -1,0 +1,17 @@
+// accounts_opened — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Accounts opened in a date range, with first month of revenue.
+// Local-tier equivalent: app/graph/queries/catalog.py::accounts_opened
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY accounts_opened(STRING advisor, DATETIME from_dt, DATETIME to_dt) FOR GRAPH phx_dm_pce_practice_demo {
+  MinAccum<STRING> @first_rev_month; SumAccum<DOUBLE> @first_month_revenue;
+  opened = SELECT c FROM phx_dm_pce_account:c -(phx_dm_pce_account_has_am)- phx_dm_pce_account_month:r
+                       -(phx_dm_pce_am_by_advisor)- phx_dm_pce_advisor:a
+           WHERE c.account_open_dt >= from_dt AND c.account_open_dt <= to_dt
+             AND ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+           ACCUM CASE WHEN r.credited_amt > 0 THEN c.@first_rev_month += r.month_id END;
+  opened = SELECT c FROM opened:c -(phx_dm_pce_account_has_am)- phx_dm_pce_account_month:r
+           WHERE r.month_id == c.@first_rev_month
+           ACCUM c.@first_month_revenue += r.credited_amt;
+  PRINT opened[opened.acct_key AS acct_key, opened.account_open_dt AS account_open_dt,
+               opened.@first_month_revenue AS first_month_revenue];
+}

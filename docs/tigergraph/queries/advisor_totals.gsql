@@ -1,0 +1,12 @@
+// advisor_totals — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Advisor (or cohort) total revenue across a transition.
+// Local-tier equivalent: app/graph/queries/catalog.py::advisor_totals
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY advisor_totals(STRING advisor, STRING from_month, STRING to_month) FOR GRAPH phx_dm_pce_practice_demo {
+  SumAccum<DOUBLE> @@from_amt; SumAccum<DOUBLE> @@to_amt;
+  mr = SELECT m FROM phx_dm_pce_monthly_revenue:m -(phx_dm_pce_mr_by_advisor)- phx_dm_pce_advisor:a
+       WHERE ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+       ACCUM CASE WHEN m.month_id == from_month THEN @@from_amt += m.credited_amt END,
+             CASE WHEN m.month_id == to_month THEN @@to_amt += m.credited_amt END;
+  PRINT @@from_amt AS from_amt, @@to_amt AS to_amt, @@to_amt - @@from_amt AS change_amt;
+}

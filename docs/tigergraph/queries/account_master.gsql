@@ -1,0 +1,10 @@
+// account_master — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// One account's master facts.
+// Local-tier equivalent: app/graph/queries/catalog.py::account_master
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY account_master(STRING acct_key) FOR GRAPH phx_dm_pce_practice_demo {
+  c = SELECT x FROM phx_dm_pce_account:x WHERE x.acct_key == acct_key;
+  PRINT c[c.account_class_cd AS account_class_cd, c.managed_platform_cd AS managed_platform_cd,
+          c.is_managed AS is_managed, c.opened_in_scope AS opened_in_scope,
+          c.primary_eci_id AS primary_eci_id];
+}

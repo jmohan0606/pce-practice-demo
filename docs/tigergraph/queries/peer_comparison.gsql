@@ -1,0 +1,15 @@
+// peer_comparison — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Cohort ranking on a metric for one month.
+// Local-tier equivalent: app/graph/queries/catalog.py::peer_comparison
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY peer_comparison(STRING month_id, STRING metric, STRING advisor) FOR GRAPH phx_dm_pce_practice_demo {
+  SumAccum<DOUBLE> @value;
+  adv = SELECT a FROM phx_dm_pce_advisor:a -(reverse_phx_dm_pce_mr_by_advisor)- phx_dm_pce_monthly_revenue:m
+        WHERE a.in_cohort AND m.month_id == month_id  // cohort totals: in_cohort = true only
+        ACCUM CASE WHEN metric == "credited_amt" THEN a.@value += m.credited_amt
+                   WHEN metric == "txn_count" THEN a.@value += m.txn_count END
+        ORDER BY a.@value DESC;
+  // metric == "net_flows" traverses phx_dm_pce_flow_by_advisor instead.
+  PRINT adv[adv.advisor_sid AS advisor_sid, adv.@value AS value];
+  // rank + cohort_median assigned in the envelope; advisor narrows the result
+}

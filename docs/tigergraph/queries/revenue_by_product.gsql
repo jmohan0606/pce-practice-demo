@@ -1,0 +1,17 @@
+// revenue_by_product — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Credited revenue by product group for one month.
+// Local-tier equivalent: app/graph/queries/catalog.py::revenue_by_product
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY revenue_by_product(STRING advisor, STRING month_id) FOR GRAPH phx_dm_pce_practice_demo {
+  TYPEDEF TUPLE<STRING group_id, STRING group_name, STRING class_id,
+                DOUBLE credited_amt, INT txn_count, INT distinct_accounts> ROW;
+  SumAccum<DOUBLE> @amt; SumAccum<INT> @txn; SumAccum<INT> @accts;
+  ListAccum<ROW> @@rows;
+  mr = SELECT m FROM phx_dm_pce_monthly_revenue:m -(phx_dm_pce_mr_by_advisor)- phx_dm_pce_advisor:a
+       WHERE m.month_id == month_id
+         AND ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor);
+  grp = SELECT g FROM mr:m -(phx_dm_pce_mr_in_group)- phx_dm_pce_product_group:g
+        ACCUM g.@amt += m.credited_amt, g.@txn += m.txn_count, g.@accts += m.distinct_accounts
+        POST-ACCUM @@rows += ROW(g.group_id, g.group_name, g.class_id, g.@amt, g.@txn, g.@accts);
+  PRINT @@rows;
+}

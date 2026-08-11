@@ -1,0 +1,17 @@
+// revenue_change_by_product — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Product-group revenue change between two months.
+// Local-tier equivalent: app/graph/queries/catalog.py::revenue_change_by_product
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY revenue_change_by_product(STRING advisor, STRING from_month, STRING to_month) FOR GRAPH phx_dm_pce_practice_demo {
+  SumAccum<DOUBLE> @from_amt; SumAccum<DOUBLE> @to_amt;
+  mr = SELECT m FROM phx_dm_pce_monthly_revenue:m -(phx_dm_pce_mr_by_advisor)- phx_dm_pce_advisor:a
+       WHERE (m.month_id == from_month OR m.month_id == to_month)
+         AND ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor);
+  grp = SELECT g FROM mr:m -(phx_dm_pce_mr_in_group)- phx_dm_pce_product_group:g
+        ACCUM CASE WHEN m.month_id == from_month THEN g.@from_amt += m.credited_amt
+                   ELSE g.@to_amt += m.credited_amt END;
+  PRINT grp[grp.group_id AS group_id, grp.group_name AS group_name,
+            grp.@from_amt AS from_amt, grp.@to_amt AS to_amt,
+            grp.@to_amt - grp.@from_amt AS change_amt];
+  // change_pct computed by the caller when from_amt != 0 (null otherwise)
+}

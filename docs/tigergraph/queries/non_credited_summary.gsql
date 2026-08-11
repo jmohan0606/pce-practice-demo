@@ -1,0 +1,12 @@
+// non_credited_summary — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
+// Non-credited amounts by reason code for one month.
+// Local-tier equivalent: app/graph/queries/catalog.py::non_credited_summary
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY non_credited_summary(STRING advisor, STRING month_id) FOR GRAPH phx_dm_pce_practice_demo {
+  MapAccum<STRING, SumAccum<DOUBLE>> @@amt; MapAccum<STRING, SumAccum<INT>> @@cnt;
+  t = SELECT x FROM phx_dm_pce_revenue_transaction:x
+      WHERE x.month_id == month_id AND x.reason_cd != "" AND x.reason_cd != "__NONE__"
+        AND ((advisor == "all") OR x.advisor_sid == advisor)
+      ACCUM @@amt += (x.reason_cd -> x.non_credited_amt), @@cnt += (x.reason_cd -> 1);
+  PRINT @@amt AS non_credited_amt, @@cnt AS txn_count;
+}
