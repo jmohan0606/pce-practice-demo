@@ -1,0 +1,126 @@
+server health: {'healthy': True, 'llm': {'mode': 'claude', 'model': 'claude-sonnet-4-5-20250929', 'reachable': True}}
+
+==============================================================================
+A — prerequisite: publish v1 on the SERVER (upload -> extract -> publish)
+==============================================================================
+already published: v1 (RSV_v1) — skipping re-extraction
+ASSERT PASS: v1 published on the server (pre-existing)
+
+==============================================================================
+STEP 8 — generate insights for ALL advisors (progress + failure isolation)
+==============================================================================
+job: {'job_id': '7c3ed1ef21a6', 'run_count': 21}
+  progress 0/21  current=all  elapsed=0s
+  progress 1/21  current=V000006  elapsed=620s
+  progress 16/21  current=V000011  elapsed=1326s
+  progress 21/21  current=None  elapsed=1331s
+
+batch finished in 1331s: complete
+  all      complete  findings=10
+  V000006  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000008  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000002  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000016  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000014  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000015  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000004  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000003  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000005  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000013  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000007  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000009  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000010  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000001  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000012  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000011  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000017  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000019  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000020  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+  V000018  failed    findings=0  error=BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'mes
+ASSERT PASS: batch visited every advisor (no abort on failure)
+ASSERT PASS: failures (20) isolated — the rest completed
+
+==============================================================================
+STEP 9 — agent query log for the aggregate ('all') run
+==============================================================================
+  seq   1  month_meta                   rows=   1  0ms  params={"month_id": "202604"}
+  seq   2  month_meta                   rows=   1  0ms  params={"month_id": "202605"}
+  seq   3  revenue_change_by_product    rows=  25  1ms  params={"advisor": "all", "from_month": "202604", "to_month": "202605"}
+  seq   4  top_txns                     rows=  20  1ms  params={"advisor": "all", "month_id": "202605", "group_id": "twhs_structured", "limit":
+  seq   5  top_txns                     rows=  10  1ms  params={"advisor": "all", "month_id": "202604", "group_id": "twhs_structured", "limit":
+  seq   6  revenue_by_product           rows=  25  1ms  params={"advisor": "all", "month_id": "202604"}
+  seq   7  account_txns                 rows=   2  0ms  params={"acct_key": "1597", "month_id": "202604"}
+  seq   8  accounts_for_month           rows= 219  0ms  params={"advisor": "all", "month_id": "202604"}
+  seq   9  accounts_for_month           rows= 219  0ms  params={"advisor": "all", "month_id": "202605"}
+  seq  10  accounts_absent              rows=   0  0ms  params={"advisor": "all", "from_month": "202604", "to_month": "202605"}
+  seq  11  top_txns                     rows=  10  1ms  params={"advisor": "all", "month_id": "202604", "group_id": "life_annuities", "limit": 
+  seq  12  top_txns                     rows=  10  1ms  params={"advisor": "all", "month_id": "202605", "group_id": "life_annuities", "limit": 
+  seq  13  product_txn_stats            rows=   1  2ms  params={"advisor": "all", "month_id": "202604", "group_id": "life_annuities"}
+  seq  14  product_txn_stats            rows=   1  1ms  params={"advisor": "all", "month_id": "202605", "group_id": "life_annuities"}
+  seq  15  product_txn_stats            rows=   1  1ms  params={"advisor": "all", "month_id": "202604", "group_id": "cash_mgmt_mmkt"}
+  seq  16  product_txn_stats            rows=   1  1ms  params={"advisor": "all", "month_id": "202605", "group_id": "cash_mgmt_mmkt"}
+  seq  17  top_txns                     rows=  15  1ms  params={"advisor": "all", "month_id": "202605", "group_id": "managed_accounts", "limit"
+  seq  18  product_txn_stats            rows=   1  1ms  params={"advisor": "all", "month_id": "202604", "group_id": "managed_accounts"}
+  seq  19  product_txn_stats            rows=   1  1ms  params={"advisor": "all", "month_id": "202605", "group_id": "managed_accounts"}
+  seq  20  top_txns                     rows=  10  1ms  params={"advisor": "all", "month_id": "202605", "group_id": "twhs_fi_municipal", "limit
+  seq  21  product_txn_stats            rows=   1  1ms  params={"advisor": "all", "month_id": "202604", "group_id": "twhs_fi_municipal"}
+  seq  22  product_txn_stats            rows=   1  1ms  params={"advisor": "all", "month_id": "202605", "group_id": "twhs_fi_municipal"}
+  seq  23  accounts_opened              rows=   4  0ms  params={"advisor": "all", "from_dt": "2026-05-01", "to_dt": "2026-05-31"}
+  seq  24  transfers_in                 rows=   0  0ms  params={"advisor": "all", "from_dt": "2026-05-01", "to_dt": "2026-05-31"}
+  seq  25  transfers_out                rows=   0  0ms  params={"advisor": "all", "from_dt": "2026-05-01", "to_dt": "2026-05-31"}
+  seq  26  top_txns                     rows=  10  1ms  params={"advisor": "all", "month_id": "202605", "group_id": "lending_sbl", "limit": 10}
+  seq  27  product_txn_stats            rows=   1  1ms  params={"advisor": "all", "month_id": "202604", "group_id": "lending_sbl"}
+  seq  28  product_txn_stats            rows=   1  1ms  params={"advisor": "all", "month_id": "202605", "group_id": "lending_sbl"}
+  seq  29  account_txns                 rows=   6  0ms  params={"acct_key": "3004", "month_id": "202605"}
+  seq  30  fee_reduction_accounts       rows=  13  1ms  params={"advisor": "all", "month_id": "202605", "threshold_pct": 10}
+  seq  31  accounts_zeroed              rows=  10  0ms  params={"advisor": "all", "from_month": "202604", "to_month": "202605"}
+  seq  32  account_master               rows=   1  0ms  params={"acct_key": "2486"}
+  seq  33  account_txns                 rows=   8  0ms  params={"acct_key": "2486", "month_id": "202604"}
+  seq  34  account_txns                 rows=   5  0ms  params={"acct_key": "2437", "month_id": "202604"}
+  seq  35  top_txns                     rows=  10  1ms  params={"advisor": "all", "month_id": "202604", "group_id": "trails_mutual_funds", "lim
+  seq  36  top_txns                     rows=  10  1ms  params={"advisor": "all", "month_id": "202605", "group_id": "trails_mutual_funds", "lim
+query_count=36  budget_hit=False
+ASSERT PASS: log rows in contiguous sequence
+
+AGGREGATE NARRATIVE:
+**Credited revenue rose $62,456.40** between the two months.
+
+The largest identified driver was **Structured Products: One Account, Two Syndicate Allocations Drive 93% of Increase** ($58,078.21).
+
+BULLETS:
+  • **Structured Products: One Account, Two Syndicate Allocations Drive 93% of Increase** — $58,078.21. Account 1597 generated $58,078 in May via two syndicate allocations ($30,636 and $27,442), representing 95% of the May total and 93% of the month-over-month increase. All other accounts contributed the remaining $3,069 increase. Syndicate allocations are typically one-time events tied to new issue participation.
+  • **Lost Accounts: 10 Accounts with $49,921 April Revenue Went to Zero Balance in May** — ($49,921.13). Ten accounts with substantial April revenue ($49,921 total, 5.7% of April total) dropped to zero balance in May. Top losses: account 2486 ($10,871), 2437 ($7,554), 2458 ($6,420), 2451 ($5,735), and 2500 ($5,448). Combined prior balances totaled $11.1M. No transfers were recorded for these accounts, classifying them as lost business under rule R_LOST_ACCOUNT_RSV_v1. This $49,921 loss offset roughly 80% of the $62,456 gross increase, meaning the underlying book growth was approximately $112,377.
+  • **New Accounts Contributed $16,815 in May Revenue** — $16,815.30. Four new accounts opened in May and generated first-month revenue totaling $16,815. Account 3004 (opened May 6) led with $7,223, followed by 3046 ($6,028), 3018 ($2,987), and 3032 ($578). This represents 27% of the $62,456 total increase, indicating new account acquisition was a meaningful but not dominant driver of the month-over-month growth.
+  • **Municipal Bonds: 51% Revenue Increase Driven Entirely by Higher Average Transaction Size** — $14,344.61. Municipal Bonds revenue increased $14,345 (+51.3%) from $27,946 to $42,290. Transaction count remained stable at 30 and distinct accounts held at 28 (both unchanged). Average transaction size jumped from $932 to $1,410 (+51.3%), and maximum transaction rose from $2,347 to $2,637. The entire increase is attributable to higher revenue per transaction, likely driven by larger trade sizes or higher bond yields.
+
+FINDINGS:
+  [REAL] Structured Products: One Account, Two Syndicate Allocations Drive 93% of Increase  impact=58078.21  driver=One-Time  evidence_rows=20  rule_key=None
+  [DERIVED] Lost Accounts: 10 Accounts with $49,921 April Revenue Went to Zero Balance in May  impact=-49921.13  driver=Lost Accounts  evidence_rows=10  rule_key=R_LOST_ACCOUNT_RSV_v1
+  [DERIVED] New Accounts Contributed $16,815 in May Revenue  impact=16815.3  driver=New Accounts  evidence_rows=4  rule_key=R_NEW_ACCOUNT_RSV_v1
+  [DERIVED] Municipal Bonds: 51% Revenue Increase Driven Entirely by Higher Average Transaction Size  impact=14344.61  driver=Fee Rate  evidence_rows=1  rule_key=None
+  [DERIVED] Life & Annuities: Revenue Decline Due to Fewer Transactions and Lower Average Size  impact=-9613.82  driver=Mix  evidence_rows=1  rule_key=None
+  [DERIVED] Managed Accounts: Growth Driven by 13 Additional Accounts Offsetting Lower Average Transaction Size  impact=8666.33  driver=New Accounts  evidence_rows=1  rule_key=None
+  [DERIVED] Money Market Funds: Account Count Drop and Lower Average Transaction Size  impact=-7331.98  driver=Mix  evidence_rows=1  rule_key=None
+  [DERIVED] Security Based Lending: 25.6% Revenue Increase Driven by Higher Transaction Size  impact=6255.36  driver=Fee Rate  evidence_rows=1  rule_key=None
+  [REAL] Lost Account 2486 Contributed $1,434 to Mutual Fund Trails Decline  impact=-1433.87  driver=Lost Accounts  evidence_rows=10  rule_key=R_LOST_ACCOUNT_RSV_v1
+  [REAL] Fee Discounts Above Threshold Present But Grid Reductions Inconsistently Applied  impact=None  driver=Fee Rate  evidence_rows=13  rule_key=R_FEE_REDUCTION_SHARING_RSV_v1
+
+==============================================================================
+STEP 10 — re-running one advisor supersedes, does not duplicate
+==============================================================================
+  progress 0/1  current=V000002  elapsed=0s
+  progress 1/1  current=None  elapsed=5s
+run_id unchanged: True  generation 3 -> 4
+ASSERT PASS: same run_id, incremented generation (superseded, not duplicated)
+
+==============================================================================
+STEP 7-style — every number in the aggregate narrative appears in the findings
+==============================================================================
+unverified numbers: none
+ASSERT PASS: zero unverified figures (checked against API-visible evidence, 20-row cap)
+
+==============================================================================
+RESULT
+==============================================================================
+all assertions passed — and the app is now populated with these runs
+EXIT=0

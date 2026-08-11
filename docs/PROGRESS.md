@@ -1,15 +1,20 @@
 # Build Progress
 
 ## Current position
-Round: C — COMPLETE except ONE item blocked on Anthropic API credits
-      (account hit "credit balance too low" at ~11:52 UTC mid-e2e; see
-      docs/ROUND_C_COMPLETE.md "Blocked")
-Task: after credits are added: (1) python3 scripts/e2e_test.py — steps 8 & 10 are the
-      only unproven ones (1-7, 9 passed with real Claude, output in
-      docs/ROUND_C_E2E_OUTPUT.txt); (2) POST /api/insights/generate for advisor=all on
-      both transitions against the running server so the browser shows real-Claude runs;
-      (3) make ports 8001/3001 Public (needs gh codespace scope or the Ports panel).
-Last updated: 2026-08-11 (Round C session)
+Round: C — COMPLETE except the all-advisors batch, STOPPED EARLY on operator
+      instruction after API credits ran out a second time (aggregate run COMPLETE,
+      20 per-advisor runs FAILED on "credit balance too low"; no new runs started).
+Task: to finish the per-advisor sweep later: add credits, then
+      `python3 scripts/e2e_finish.py` (it skips the already-published v1 and re-runs
+      the batch; supersede semantics replace the FAILED rows in place).
+      Port visibility for 8001/3001 still needs the Ports panel (gh token lacks the
+      codespace scope).
+State on the LIVE server (process-local): rule set v1 PUBLISHED (from the sample PDF);
+      insight runs for 202604->202605: `all` COMPLETE with 10 findings (real Claude,
+      36 logged queries, numeric assertion passed — docs/ROUND_C_E2E_FINISH_OUTPUT.txt),
+      V000001..V000020 FAILED with the credit error recorded. AI Insights page renders
+      the real aggregate run; Advisor page honestly shows the failed state.
+Last updated: 2026-08-11 (Round C session, after credit-limited batch)
 
 ## Task checklist (Round C)
 - [x] 0.1 Param validation before population fetch (evaluator + compiler attribute params;

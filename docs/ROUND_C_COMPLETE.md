@@ -138,7 +138,31 @@ defect.
   25-row log was superseded by the step-8 re-run of the same key — supersede semantics
   working exactly as specified, if inconveniently for the transcript.)
 
-### Blocked — steps 8 and 10, and browser-visible generated data
+### Update (later the same day) — batch run with restored credits, stopped early
+
+After credits were restored, `scripts/e2e_finish.py` ran the remaining steps against
+the LIVE server (so the runs double as the app's data — full transcript in
+`docs/ROUND_C_E2E_FINISH_OUTPUT.txt`):
+
+- v1 published on the server from the sample PDF (8 drafts approved).
+- **The aggregate all-advisors run COMPLETED with real Claude**: 10 findings, 36
+  logged queries in contiguous sequence, budget not hit, and the numeric assertion
+  passed — zero unverified figures. Highlights: the two syndicate allocations
+  ($58,078.21, 93% of the increase), 10 lost accounts (($49,921.13), cited to
+  R_LOST_ACCOUNT_RSV_v1 — the rule fixed in task 0.2), and grid reductions
+  inconsistently applied to 13 discounted accounts (cited to
+  R_FEE_REDUCTION_SHARING_RSV_v1).
+- The 20 per-advisor runs then FAILED: the added credits were consumed by the
+  aggregate run and the account returned "credit balance too low" again. Failure
+  isolation held (every failure recorded with its error; batch never aborted).
+- **The batch was stopped early on operator instruction** — the per-advisor sweep is
+  NOT complete. To finish later: add credits, then `python3 scripts/e2e_finish.py`
+  (v1 publish is skipped when present; supersede replaces the FAILED rows in place).
+
+The AI Insights page now renders the completed aggregate run's real data; the Advisor
+page shows the honest FAILED state for individual advisors.
+
+### The original blocker record — steps 8 and 10, and browser-visible generated data
 
 At ~11:52 UTC the Anthropic account ran out of credits
 (`Your credit balance is too low to access the Anthropic API`). Step 8's 21-run batch
