@@ -27,15 +27,17 @@ from app.shared.logging import get_logger
 _log = get_logger("app.insights.service")
 
 
-def _resolve_llm(role: str):
+def _resolve_llm_client(role: str):
+    """The role's client OBJECT (not just .generate) so the turn-logging
+    wrapper can read response.usage through generate_with_usage."""
     from app.llm.roles import build_role_llm
 
     role_llm = build_role_llm(role)
     if role_llm is not None:
-        return role_llm.generate
+        return role_llm
     from app.llm.client import get_llm_client
 
-    return get_llm_client().generate
+    return get_llm_client()
 
 
 def _published_version() -> dict:
@@ -66,17 +68,25 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
     run = store.begin_run(advisor_sid, from_month, to_month, version["version_id"])
     tools = MinerTools(run["run_id"])
     try:
+        from app.llm.usage import wrap_llm
+
+        # Every real LLM call is turn-logged (tokens from response.usage, cost,
+        # latency). Explicit overrides (verify scripts) pass through unwrapped.
+        miner = miner_llm or wrap_llm(_resolve_llm_client("insights_miner"),
+                                      run["run_id"], "insights_miner")
+        reporter = reporter_llm or wrap_llm(_resolve_llm_client("insights_reporter"),
+                                            run["run_id"], "insights_reporter")
         mined = mine(advisor_sid=advisor_sid, from_month=from_month, to_month=to_month,
-                     rules=rules, transition=transition, tools=tools,
-                     llm=miner_llm or _resolve_llm("insights_miner"))
+                     rules=rules, transition=transition, tools=tools, llm=miner)
         # C3: the Reporter receives FINDINGS ONLY (plus the transition totals,
         # themselves a stored query result on this run) and a text LLM callable.
-        reported = report(mined["findings"], transition,
-                          reporter_llm or _resolve_llm("insights_reporter"))
+        reported = report(mined["findings"], transition, reporter)
         completed = store.complete_run(
             run["run_id"], narrative=reported["narrative"], bullets=reported["bullets"],
             findings=mined["findings"], query_count=mined["query_count"],
-            budget_hit=mined["budget_hit"], coverage_ratio=mined["coverage_ratio"])
+            budget_hit=mined["budget_hit"],
+            budget_hit_tokens=mined.get("budget_hit_tokens", False),
+            coverage_ratio=mined["coverage_ratio"])
         completed["unanswerable"] = mined["unanswerable"]
         completed["fallback_used"] = reported.get("fallback_used", False)
         return completed

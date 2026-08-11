@@ -58,3 +58,4 @@ CREATE DIRECTED EDGE phx_dm_pce_finding_in_run (FROM phx_dm_pce_finding, TO phx_
 CREATE DIRECTED EDGE phx_dm_pce_finding_matched_rule (FROM phx_dm_pce_finding, TO phx_dm_pce_rule) WITH REVERSE_EDGE="phx_dm_pce_rule_produced_finding";
 CREATE DIRECTED EDGE phx_dm_pce_evidence_of_finding (FROM phx_dm_pce_evidence_row, TO phx_dm_pce_finding) WITH REVERSE_EDGE="phx_dm_pce_finding_has_evidence";
 CREATE DIRECTED EDGE phx_dm_pce_query_in_run (FROM phx_dm_pce_agent_query_log, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_query";
+CREATE DIRECTED EDGE phx_dm_pce_turn_in_run (FROM phx_dm_pce_agent_turn_log, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_turn";

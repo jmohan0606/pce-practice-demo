@@ -68,8 +68,10 @@ def check_ddl() -> None:
     edges = re.findall(r"CREATE DIRECTED EDGE (\w+)", e)
     drop_edges = re.findall(r"DROP EDGE (\w+)", d)
     drop_vertices = re.findall(r"DROP VERTEX (\w+)", d)
-    check("2a. 24 vertices in 01_vertices.gsql", len(vertices) == 24, f"found {len(vertices)}")
-    check("2b. 36 edges in 02_edges.gsql", len(edges) == 36, f"found {len(edges)}")
+    # >= : later rounds legitimately add app-written vertices/edges (agent_turn_log
+    # in the cost-fix session, opportunity in task 5) — same precedent as check 8b.
+    check("2a. >= 24 vertices in 01_vertices.gsql", len(vertices) >= 24, f"found {len(vertices)}")
+    check("2b. >= 36 edges in 02_edges.gsql", len(edges) >= 36, f"found {len(edges)}")
     check("2c. drop order is exact reverse of create order",
           drop_edges == list(reversed(edges)) and drop_vertices == list(reversed(vertices)))
     loads = 0
@@ -80,7 +82,9 @@ def check_ddl() -> None:
         quoted += text.count('QUOTE="double"')
     check('2d. QUOTE="double" on every LOAD', loads > 0 and loads == quoted, f"{quoted}/{loads} LOADs")
     catalog = json.loads((tg / "schema_catalog.json").read_text(encoding="utf-8"))
-    check("2e. schema_catalog.json covers all 24 vertices", len(catalog.get("vertices", {})) == 24)
+    check("2e. schema_catalog.json covers every DDL vertex",
+          set(vertices) <= set(catalog.get("vertices", {})),
+          f"missing={sorted(set(vertices) - set(catalog.get('vertices', {}))) or 'none'}")
 
 
 # 3 — product model

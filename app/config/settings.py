@@ -156,8 +156,12 @@ class Settings(BaseSettings):
     insights_reporter_api_version: str = Field(default="", alias="INSIGHTS_REPORTER_API_VERSION")
     insights_reporter_temperature: float = Field(default=1.0, alias="INSIGHTS_REPORTER_TEMPERATURE")
 
-    # --- Agent loop budget (BUILD_PLAN §3.4) ---
+    # --- Agent loop budgets (BUILD_PLAN §3.4; cost-fix session) ---
     miner_query_budget: int = Field(default=40, alias="MINER_QUERY_BUDGET")
+    # Hard ceiling on prompt tokens (input + cache read + cache write) one run
+    # may consume. When exceeded the loop stops, budget_hit_tokens=true, and
+    # whatever findings exist are emitted — a run can never spend without limit.
+    max_run_input_tokens: int = Field(default=60_000, alias="MAX_RUN_INPUT_TOKENS")
 
     # --- Storage paths ---
     chroma_path: str = Field(default="./chroma", alias="CHROMA_PATH")

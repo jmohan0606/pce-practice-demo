@@ -206,14 +206,27 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
     done = False
     turns = 0
     parse_failures = 0
+    budget_hit_tokens = False
+    # Hard token ceiling — a run must never be able to spend without limit.
+    # prompt_tokens_total exists only on the TurnLoggingLLM wrapper; scripted /
+    # mock callables report nothing and are unmetered (they cost nothing).
+    from app.config.settings import get_settings
+    max_prompt_tokens = get_settings().max_run_input_tokens
 
     while not done and turns < MAX_TURNS:
+        if getattr(llm, "prompt_tokens_total", 0) >= max_prompt_tokens:
+            budget_hit_tokens = True
+            _log.warning("miner %s: MAX_RUN_INPUT_TOKENS (%d) exceeded after %d turns "
+                         "— stopping and emitting the %d finding(s) that exist",
+                         tools.run_id, max_prompt_tokens, turns, len(findings))
+            break
         turns += 1
         prompt = _render_prompt(opening, transcript, tools, len(findings))
         raw = llm(prompt, {"system_prompt": system_prompt})
         action = _parse_action(raw)
         if isinstance(action, str):
             parse_failures += 1
+            _tag(llm, "parse_failure")
             transcript.append(("assistant", raw))
             transcript.append(("system", f"RESPONSE REJECTED: {action}. Reply with one "
                                          f"valid JSON action object only."))
@@ -225,6 +238,8 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
         parse_failures = 0
         transcript.append(("assistant", json.dumps(action, default=str)))
         kind = str(action.get("action") or "").lower()
+        _tag(llm, kind or "unknown",
+             str(action.get("query_name") or "") if kind == "query" else "")
 
         if kind == "done":
             done = True
@@ -282,8 +297,15 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
                      "likely double-counting" if coverage > 2.0 else "thin coverage")
 
     return {"findings": findings, "query_count": tools.queries_run,
-            "budget_hit": tools.budget_hit, "unanswerable": unanswerable,
-            "coverage_ratio": coverage, "turns": turns}
+            "budget_hit": tools.budget_hit, "budget_hit_tokens": budget_hit_tokens,
+            "unanswerable": unanswerable, "coverage_ratio": coverage, "turns": turns}
+
+
+def _tag(llm, action_kind: str, query_name: str = "") -> None:
+    """Annotate the wrapper's just-logged turn; plain callables have no log."""
+    tag = getattr(llm, "tag_last", None)
+    if callable(tag):
+        tag(action_kind, query_name)
 
 
 def tools_catalog() -> list[dict]:

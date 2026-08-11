@@ -30,6 +30,7 @@ CREATE GRAPH phx_dm_pce_practice_demo (
   phx_dm_pce_finding,
   phx_dm_pce_evidence_row,
   phx_dm_pce_agent_query_log,
+  phx_dm_pce_agent_turn_log,
   // edges — product chain
   phx_dm_pce_product_in_group,
   phx_dm_pce_group_in_class,
@@ -75,5 +76,6 @@ CREATE GRAPH phx_dm_pce_practice_demo (
   phx_dm_pce_finding_in_run,
   phx_dm_pce_finding_matched_rule,
   phx_dm_pce_evidence_of_finding,
-  phx_dm_pce_query_in_run
+  phx_dm_pce_query_in_run,
+  phx_dm_pce_turn_in_run
 )

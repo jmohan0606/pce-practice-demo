@@ -1,5 +1,22 @@
 # Build Progress
 
+## Cost & UI fix session (docs/spec/SESSION_PROMPT_COST_AND_UI_FIXES.md)
+- [x] Hard rule 2: ANTHROPIC_MODEL=claude-haiku-4-5-20251001 in .env; settings default
+      already Haiku; all four roles inherit it (no per-role overrides set)
+- [x] Task 1: token/cost logging — phx_dm_pce_agent_turn_log vertex (DDL, schema_catalog,
+      graph, drop, SCHEMA_SPEC, phx_dm_pce_turn_in_run edge); ClaudeLLMClient returns
+      response.usage via generate_with_usage (never estimated); TurnLoggingLLM wrapper
+      (app/llm/usage.py) logs every miner/reporter/extractor/conflict-auditor call with
+      est_cost_usd (app/llm/pricing.py); rollups total_*_tokens/est_cost_usd/wall_ms +
+      budget_hit_tokens on phx_dm_pce_insight_run; MAX_RUN_INPUT_TOKENS=60000 hard stop
+      in the miner loop. verify a/b/c: 25/25, 19/19, 12/12 (2a/2b/2e widened to >=,
+      DECISIONS.md)
+- [ ] Task 2: context engineering (messages array + cache_control, pruning, budgets)
+- [ ] Task 3: Trace screen + /api/trace endpoints
+- [ ] Task 4: UI corrections (4.1–4.6)
+- [ ] Task 5: schema additions (opportunity, document_type, checklist)
+- [ ] Task 6: one cheap verification run + ROUND_C_FIX_COMPLETE.md
+
 ## Current position
 Round: C — COMPLETE except the all-advisors batch, STOPPED EARLY on operator
       instruction after API credits ran out a second time (aggregate run COMPLETE,

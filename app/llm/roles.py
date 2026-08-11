@@ -149,6 +149,21 @@ def default_api_version_for(mode: str, settings=None) -> str | None:
     }.get(_normalize_mode(mode))
 
 
+ZERO_USAGE = {"input_tokens": 0, "output_tokens": 0,
+              "cache_read_tokens": 0, "cache_write_tokens": 0}
+
+
+def _adapter_with_usage(client, prompt: str, context: dict | None) -> dict:
+    """{"text","usage","model"} from any adapter — real usage when the adapter
+    exposes generate_with_usage (Claude), zero usage otherwise (mock/azure/cdao
+    report none; zeros are honest, not estimates)."""
+    if hasattr(client, "generate_with_usage"):
+        return client.generate_with_usage(prompt, context)
+    text = client.generate(prompt, context)
+    model = (client.describe() or {}).get("model", "") if hasattr(client, "describe") else ""
+    return {"text": text, "usage": dict(ZERO_USAGE), "model": model}
+
+
 # --- Role client construction with single-retry auto-fallback ----------------
 
 SERVED_ROLE_CONFIG = "role_config"
@@ -222,19 +237,25 @@ class RoleLLM:
         return self._active is not None
 
     def generate(self, prompt: str, context: dict | None = None) -> str:
+        return self.generate_with_usage(prompt, context)["text"]
+
+    def generate_with_usage(self, prompt: str, context: dict | None = None) -> dict:
+        """Same fallback semantics as generate(), but usage survives when the
+        active adapter reports it ({"text","usage","model"}; zero usage on
+        adapters without a usage path — never estimated)."""
         if self._active is None:
             raise RuntimeError(
                 f"role {self.cfg.role}: no LLM available (configured client and "
                 f"default agent LLM both failed)")
         try:
-            return self._active.generate(prompt, context)
+            return _adapter_with_usage(self._active, prompt, context)
         except Exception as exc:  # noqa: BLE001 — first-call failure → one retry
             if self._fallback_tried:
                 raise  # already on the default agent LLM — honest failure
             self._fall_back(f"first call failed: {exc}")
             if self._active is None:
                 raise
-            return self._active.generate(prompt, context)
+            return _adapter_with_usage(self._active, prompt, context)
 
     def describe(self) -> dict:
         inner = self._active.describe() if self._active is not None else {}

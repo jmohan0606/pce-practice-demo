@@ -290,10 +290,16 @@
         "status": "STRING",
         "query_count": "INT",
         "budget_hit": "BOOL",
+        "budget_hit_tokens": "BOOL",
         "started_at": "DATETIME",
         "completed_at": "DATETIME",
         "narrative": "STRING",
-        "bullets_json": "STRING"
+        "bullets_json": "STRING",
+        "total_input_tokens": "INT",
+        "total_output_tokens": "INT",
+        "total_cache_read_tokens": "INT",
+        "est_cost_usd": "DOUBLE",
+        "wall_ms": "INT"
       }
     },
     "phx_dm_pce_finding": {
@@ -331,6 +337,24 @@
         "params_json": "STRING",
         "row_count": "INT",
         "latency_ms": "INT"
+      }
+    },
+    "phx_dm_pce_agent_turn_log": {
+      "primary_id": "turn_id",
+      "attributes": {
+        "turn_id": "STRING",
+        "run_id": "STRING",
+        "seq_no": "INT",
+        "agent_name": "STRING",
+        "model": "STRING",
+        "input_tokens": "INT",
+        "output_tokens": "INT",
+        "cache_read_tokens": "INT",
+        "cache_write_tokens": "INT",
+        "latency_ms": "INT",
+        "action_kind": "STRING",
+        "query_name": "STRING",
+        "est_cost_usd": "DOUBLE"
       }
     }
   },
@@ -514,6 +538,11 @@
       "from": "phx_dm_pce_agent_query_log",
       "to": "phx_dm_pce_insight_run",
       "reverse": "phx_dm_pce_run_has_query"
+    },
+    "phx_dm_pce_turn_in_run": {
+      "from": "phx_dm_pce_agent_turn_log",
+      "to": "phx_dm_pce_insight_run",
+      "reverse": "phx_dm_pce_run_has_turn"
     }
   }
 }

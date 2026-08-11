@@ -202,13 +202,18 @@ def _needs_input_stub(document_id: str, reason: str, window_index: int,
     }
 
 
-def _resolve_llm() -> Callable[[str, dict], str]:
-    role = build_role_llm("rule_extractor")
-    if role is not None:
-        return role.generate
-    from app.llm.client import get_llm_client
+def _resolve_llm(document_id: str) -> Callable[[str, dict], str]:
+    """The rule_extractor role's client, wrapped so every window call is
+    turn-logged (document extraction is a large cost — it is measured) under
+    the synthetic run id ``doc_extract|<document_id>``."""
+    from app.llm.usage import wrap_llm
 
-    return get_llm_client().generate
+    client = build_role_llm("rule_extractor")
+    if client is None:
+        from app.llm.client import get_llm_client
+
+        client = get_llm_client()
+    return wrap_llm(client, f"doc_extract|{document_id}", "rule_extractor")
 
 
 def extract_rules_for_document(document_id: str, chunks: list[dict],
@@ -220,7 +225,7 @@ def extract_rules_for_document(document_id: str, chunks: list[dict],
     `llm` overrides the transport for deterministic tests; default resolves the
     rule_extractor role config (app.llm.roles) falling back to the shared client.
     `persist=True` stores results in the rule store's draft pool."""
-    generate = llm or _resolve_llm()
+    generate = llm or _resolve_llm(document_id)
     system_prompt = build_system_prompt()
     windows = build_windows(chunks)
     _log.info("extracting rules for %s: %d chunks in %d window(s)",
@@ -233,6 +238,9 @@ def extract_rules_for_document(document_id: str, chunks: list[dict],
         prompt = build_window_prompt(document_id, window)
         try:
             raw = generate(prompt, {"system_prompt": system_prompt})
+            tag = getattr(generate, "tag_last", None)
+            if callable(tag):
+                tag("extract_window", f"window_{index:02d}")
         except Exception as exc:  # noqa: BLE001 — honest failure per window
             extracted.append(_needs_input_stub(
                 document_id, f"LLM call failed: {type(exc).__name__}: {exc}", index, window))

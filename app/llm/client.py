@@ -127,8 +127,24 @@ class ClaudeLLMClient:
         # must comfortably hold a full rules array / agent action.
         self.max_tokens = settings.anthropic_max_tokens
 
+    @staticmethod
+    def _usage_dict(response) -> dict:
+        """The four token counts, read from the SDK response — NEVER estimated."""
+        usage = getattr(response, "usage", None)
+        return {
+            "input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
+            "output_tokens": int(getattr(usage, "output_tokens", 0) or 0),
+            "cache_read_tokens": int(getattr(usage, "cache_read_input_tokens", 0) or 0),
+            "cache_write_tokens": int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
+        }
+
     @logged_adapter_call("llm")
     def generate(self, prompt: str, context: dict | None = None) -> str:
+        return self.generate_with_usage(prompt, context)["text"]
+
+    def generate_with_usage(self, prompt: str, context: dict | None = None) -> dict:
+        """Single-string path, but the response object is NOT discarded:
+        returns {"text", "usage", "model"} with usage from response.usage."""
         system_prompt, user_content = _render_messages(prompt, context)
         response = self._client.messages.create(
             model=self.model,
@@ -136,7 +152,8 @@ class ClaudeLLMClient:
             system=system_prompt,
             messages=[{"role": "user", "content": user_content}],
         )
-        return "".join(block.text for block in response.content if block.type == "text")
+        text = "".join(block.text for block in response.content if block.type == "text")
+        return {"text": text, "usage": self._usage_dict(response), "model": self.model}
 
     def describe(self) -> dict:
         return {"mode": "claude", "model": self.model}

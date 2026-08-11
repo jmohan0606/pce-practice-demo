@@ -292,8 +292,10 @@ CREATE VERTEX phx_dm_pce_rule (PRIMARY_ID rule_key STRING, version_id STRING, ru
 
 CREATE VERTEX phx_dm_pce_insight_run (PRIMARY_ID run_id STRING, advisor_sid STRING,
   from_month_id STRING, to_month_id STRING, version_id STRING, status STRING,
-  query_count INT, budget_hit BOOL, started_at DATETIME, completed_at DATETIME,
-  narrative STRING, bullets_json STRING) WITH primary_id_as_attribute="true";
+  query_count INT, budget_hit BOOL, budget_hit_tokens BOOL, started_at DATETIME,
+  completed_at DATETIME, narrative STRING, bullets_json STRING,
+  total_input_tokens INT, total_output_tokens INT, total_cache_read_tokens INT,
+  est_cost_usd DOUBLE, wall_ms INT) WITH primary_id_as_attribute="true";
 
 CREATE VERTEX phx_dm_pce_finding (PRIMARY_ID finding_id STRING, run_id STRING, title STRING,
   summary STRING, impact_amt DOUBLE, driver_tag STRING, product_id STRING,
@@ -305,10 +307,20 @@ CREATE VERTEX phx_dm_pce_evidence_row (PRIMARY_ID evidence_id STRING, finding_id
 CREATE VERTEX phx_dm_pce_agent_query_log (PRIMARY_ID query_id STRING, run_id STRING,
   seq_no INT, agent_name STRING, query_name STRING, params_json STRING,
   row_count INT, latency_ms INT) WITH primary_id_as_attribute="true";
+
+-- One row per LLM turn (miner, reporter, extractor, conflict auditor). All four
+-- token fields come from the provider's response.usage — never estimated.
+CREATE VERTEX phx_dm_pce_agent_turn_log (PRIMARY_ID turn_id STRING, run_id STRING,
+  seq_no INT, agent_name STRING, model STRING, input_tokens INT, output_tokens INT,
+  cache_read_tokens INT, cache_write_tokens INT, latency_ms INT, action_kind STRING,
+  query_name STRING, est_cost_usd DOUBLE) WITH primary_id_as_attribute="true";
 ```
 
 `rule_key = version_id ||'|'|| rule_code`. `run_id = advisor_sid ||'|'|| from_month_id ||'|'||
-to_month_id ||'|'|| version_id`. Every per-entity key embeds its scope — R16, applied at design time.
+to_month_id ||'|'|| version_id`. `turn_id = run_id ||'|'|| seq_no` (extractor / conflict-auditor
+turns use the synthetic run ids `doc_extract|<document_id>` / `conflict_audit|<scope>` — no
+`phx_dm_pce_turn_in_run` edge instance exists for those). Every per-entity key embeds its
+scope — R16, applied at design time.
 
 ---
 
@@ -370,9 +382,10 @@ CREATE DIRECTED EDGE phx_dm_pce_finding_in_run (FROM phx_dm_pce_finding, TO phx_
 CREATE DIRECTED EDGE phx_dm_pce_finding_matched_rule (FROM phx_dm_pce_finding, TO phx_dm_pce_rule) WITH REVERSE_EDGE="phx_dm_pce_rule_produced_finding";
 CREATE DIRECTED EDGE phx_dm_pce_evidence_of_finding (FROM phx_dm_pce_evidence_row, TO phx_dm_pce_finding) WITH REVERSE_EDGE="phx_dm_pce_finding_has_evidence";
 CREATE DIRECTED EDGE phx_dm_pce_query_in_run (FROM phx_dm_pce_agent_query_log, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_query";
+CREATE DIRECTED EDGE phx_dm_pce_turn_in_run (FROM phx_dm_pce_agent_turn_log, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_turn";
 ```
 
-**24 vertices (16 source-loaded + 8 app-written) · 36 edge types.** Drop order is the reverse of create order.
+**25 vertices (16 source-loaded + 9 app-written) · 37 edge types.** Drop order is the reverse of create order.
 
 ---
 

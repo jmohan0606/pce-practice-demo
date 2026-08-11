@@ -213,13 +213,17 @@ def audit_conflicts(new_rules: list[dict], published_rules: list[dict] | None = 
     generate = llm
     if generate is None:
         try:
-            role = build_role_llm("rule_conflict_auditor")
-            if role is not None:
-                generate = role.generate
-            else:
+            client = build_role_llm("rule_conflict_auditor")
+            if client is None:
                 from app.llm.client import get_llm_client
 
-                generate = get_llm_client().generate
+                client = get_llm_client()
+            # Turn-log the enrichment call (same measurement as the miner and
+            # extractor) under a synthetic run id scoped to the drafts' document.
+            from app.llm.usage import wrap_llm
+
+            scope = (new_rules[0].get("document_id") if new_rules else None) or "adhoc"
+            generate = wrap_llm(client, f"conflict_audit|{scope}", "rule_conflict_auditor")
         except Exception as exc:  # noqa: BLE001 — enrichment is optional; detection is not
             _log.warning("no LLM available for conflict-audit enrichment — "
                          "deterministic proposals stand: %s", exc)

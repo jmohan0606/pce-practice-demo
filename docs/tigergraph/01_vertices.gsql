@@ -122,8 +122,10 @@ CREATE VERTEX phx_dm_pce_rule (PRIMARY_ID rule_key STRING, version_id STRING, ru
 
 CREATE VERTEX phx_dm_pce_insight_run (PRIMARY_ID run_id STRING, advisor_sid STRING,
   from_month_id STRING, to_month_id STRING, version_id STRING, status STRING,
-  query_count INT, budget_hit BOOL, started_at DATETIME, completed_at DATETIME,
-  narrative STRING, bullets_json STRING) WITH primary_id_as_attribute="true";
+  query_count INT, budget_hit BOOL, budget_hit_tokens BOOL, started_at DATETIME,
+  completed_at DATETIME, narrative STRING, bullets_json STRING,
+  total_input_tokens INT, total_output_tokens INT, total_cache_read_tokens INT,
+  est_cost_usd DOUBLE, wall_ms INT) WITH primary_id_as_attribute="true";
 
 CREATE VERTEX phx_dm_pce_finding (PRIMARY_ID finding_id STRING, run_id STRING, title STRING,
   summary STRING, impact_amt DOUBLE, driver_tag STRING, product_id STRING,
@@ -135,3 +137,11 @@ CREATE VERTEX phx_dm_pce_evidence_row (PRIMARY_ID evidence_id STRING, finding_id
 CREATE VERTEX phx_dm_pce_agent_query_log (PRIMARY_ID query_id STRING, run_id STRING,
   seq_no INT, agent_name STRING, query_name STRING, params_json STRING,
   row_count INT, latency_ms INT) WITH primary_id_as_attribute="true";
+
+// One row per LLM turn (miner, reporter, extractor, conflict auditor). Token
+// fields come from the provider's response.usage — never estimated.
+// turn_id = run_id || '|' || seq_no.
+CREATE VERTEX phx_dm_pce_agent_turn_log (PRIMARY_ID turn_id STRING, run_id STRING,
+  seq_no INT, agent_name STRING, model STRING, input_tokens INT, output_tokens INT,
+  cache_read_tokens INT, cache_write_tokens INT, latency_ms INT, action_kind STRING,
+  query_name STRING, est_cost_usd DOUBLE) WITH primary_id_as_attribute="true";

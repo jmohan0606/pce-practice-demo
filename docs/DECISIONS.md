@@ -100,6 +100,16 @@ Context: C3 requires every numeric token to appear in the findings, but the mock
 Decision: verify_numbers() allows findings figures (impact_amt, evidence cells, counts) PLUS the transition totals passed to the reporter; date phrasing (month names/years/month ids) is excluded from extraction. Anything else trips the template fallback.
 Reversible: yes
 
+## 2026-08-11 · Cost-fix session task 1 · Turn log has no CSV loading job; verify_round_a counts widened
+Context: SESSION_PROMPT_COST_AND_UI_FIXES task 1 says "Add DDL, loading job entry, schema_catalog" for phx_dm_pce_agent_turn_log — but app-written vertices have no CSV loading jobs anywhere in this repo; they are written at runtime through the store's mirror entries (file "runtime:<vertex>").
+Decision: The turn log follows the same pattern as phx_dm_pce_agent_query_log: DDL + schema_catalog + graph membership + runtime mirror entry in InsightStore; no docs/tigergraph/loading/*.gsql file. verify_round_a checks 2a/2b/2e widened to >= (precedent: check 8b in Round B) since the schema legitimately grew to 25 vertices / 37 edges.
+Reversible: yes
+
+## 2026-08-11 · Cost-fix session task 1 · Extractor/auditor turns log under synthetic run ids
+Context: Turn rows need a run_id, but document extraction and conflict audits have no insight run.
+Decision: doc_extract|<document_id> and conflict_audit|<document_id|adhoc> as synthetic run ids in the same turn log; no phx_dm_pce_turn_in_run edge instance exists for those rows. The Trace summary aggregates them as "document extraction" cost.
+Reversible: yes
+
 ## 2026-08-11 · Round B · section_path is the full heading trail joined with " > "
 Context: B2's spec example shows a leaf ("3.2 Discount Sharing"); nested sections need ancestry for provenance.
 Decision: section_path renders the dotted heading trail joined with " > " (e.g. "3 Adjustments > 3.2 Discount Sharing").
