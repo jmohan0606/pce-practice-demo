@@ -15,11 +15,22 @@ Last updated: 2026-08-11 (Round C session)
 - [x] 1 LLM_MODE=claude (claude-sonnet-4-5-20250929) + EMBEDDING_MODE=local
       (all-MiniLM-L6-v2, EMBEDDING_DIM=384) — scripts/check_llm.py ran live: real Claude
       sentence + 384-dim embedding, output in ROUND_C_COMPLETE.md
-- [ ] 2 C1 query catalog (24 queries, local impls + GSQL files)
-- [ ] 2 C2 Insights Miner (3 tools, 40-query budget, agent_query_log, evidence rows)
-- [ ] 2 C3 Insights Reporter (findings only, numeric assertion in code, template fallback)
-- [ ] 2 C4 async runs (generate/status/get, supersede on re-run)
-- [ ] 2 C5 AI Insights + Advisor screens per mockup
+- [x] 2 C1 query catalog — app/graph/queries/catalog.py (24 queries, typed params
+      validated BEFORE execution, run_catalog_query envelope) + 24 GSQL files under
+      docs/tigergraph/queries/; all 24 smoke-tested against mock data
+- [x] 2 C2 Insights Miner — app/insights/{store,tools}.py + app/agents/insights_miner.py
+      (JSON-action loop, 40-query budget, every tool call logged with seq_no, evidence
+      rows copied from the retained producing-query result, coverage ratio internal)
+- [x] 2 C3 Insights Reporter — app/agents/insights_reporter.py (findings-only by
+      construction: imports json/logging/re/typing ONLY; regex numeric assertion;
+      deterministic template fallback that self-verifies)
+- [x] 2 C4 async runs — app/insights/service.py JobManager (daemon thread, per-advisor
+      progress, failure isolation) + /api/insights router (generate/status/get/query-log/
+      runs/peer-rank; coverage stripped from every response)
+- [x] 2 C5 AI Insights + Advisor screens — narrative block, tinted transition cards,
+      ranked findings with evidence tables + rule citations, pivot regroups without
+      refetch, honest empty states; npm run build passes
+- [x] scripts/verify_round_c.py — 12/12 PASS (scripted-LLM determinism; real Claude in e2e)
 - [ ] 3 docs/sample/comp_plan_2026_sample.pdf (all rules incl. NEEDS_INPUT referral cap)
 - [ ] 4 scripts/e2e_test.py with real AI, full output pasted
 - [ ] 5 both servers on public forwarded URLs; docs/ROUND_C_COMPLETE.md

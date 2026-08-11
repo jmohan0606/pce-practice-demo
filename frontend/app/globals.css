@@ -136,3 +136,42 @@ tr.tot .up,tr.tot .dn{font-weight:700}
 @media(max-width:880px){.grid2{grid-template-columns:1fr}.wrap{padding:16px 12px 48px}
   th,td{padding:8px 9px}.plot{height:220px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* ---- Round C: AI Insights + Advisor (verbatim from docs/ui/mockups.html) ---- */
+.narr{background:#FCFCFE;border:1px solid var(--ai-br);border-left:3px solid var(--ai);
+  border-radius:0 5px 5px 0;padding:16px 18px;margin-bottom:16px}
+.narr p{margin:0 0 12px;line-height:1.6}
+.narr ul{margin:0;padding-left:19px}
+.narr li{margin-bottom:7px;line-height:1.55}
+.narr li:last-child{margin-bottom:0}
+.tcards{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.tcard{border:1px solid var(--rule);border-radius:5px;overflow:hidden}
+.tcard-h{padding:12px 15px;border-bottom:1px solid var(--rule);display:flex;
+  justify-content:space-between;align-items:baseline;gap:10px}
+.tcard-h .mm{font-size:12.5px;color:var(--slate)}
+.tcard-h .amt{font-size:15px;font-weight:600;margin-top:3px}
+.tcard.p .tcard-h{background:var(--pos-bg)}
+.tcard.n .tcard-h{background:var(--neg-bg)}
+.finding{border-bottom:1px solid var(--rule-2)}
+.finding:last-child{border-bottom:0}
+.finding-h{padding:12px 15px;display:flex;justify-content:space-between;align-items:flex-start;
+  gap:12px;cursor:pointer}
+.finding-h:hover{background:#F7FAFD}
+.finding-t{font-weight:600;font-size:13px}
+.finding-m{color:var(--slate);font-size:12.5px;margin-top:4px;line-height:1.5}
+.finding-b{padding:0 15px 15px;display:none}
+.finding.open .finding-b{display:block}
+.chips{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;margin-top:5px}
+.evlink{font-size:12px;color:var(--navy-hi);text-decoration:none;margin-top:7px;display:inline-block}
+.evlink:hover{text-decoration:underline}
+.ev h4{font-size:11px;letter-spacing:.03em;color:var(--slate);margin:12px 0 7px}
+.ev table{font-size:12.5px}
+.ev th{padding:7px 10px;font-size:10.5px}
+.ev td{padding:6px 10px}
+.ev-more{font-size:12px;color:var(--slate);padding:8px 10px}
+.pivot{display:flex;gap:2px;background:var(--rule-2);padding:3px;border-radius:5px}
+.pivot button{background:none;border:0;padding:6px 14px;border-radius:4px;font:inherit;
+  font-size:13px;font-weight:500;color:var(--slate);cursor:pointer}
+.pivot button[aria-selected="true"]{background:#fff;color:var(--ink);
+  box-shadow:0 1px 2px rgba(0,0,0,.07)}
+@media(max-width:880px){.tcards{grid-template-columns:1fr}}

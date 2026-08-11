@@ -90,6 +90,16 @@ Decision: EMBEDDING_MODE=local with sentence-transformers/all-MiniLM-L6-v2 at EM
 Reason: There is no EMBEDDING_MODE=mock (the Round B note claiming so was wrong — corrected in PROGRESS.md); local is the only real-vector mode available here.
 Reversible: yes (env-only)
 
+## 2026-08-11 · Round C · generate advisor="all" runs the aggregate book plus every cohort advisor
+Context: C4 defines advisor:"V…"|"all" with a per-advisor batch, but the AI Insights screen needs a whole-book narrative, and every catalog query already accepts advisor="all" as an aggregate scope.
+Decision: advisor="all" expands to the pseudo-advisor "all" (one aggregate-book run, addressable as /api/insights/all/{from}/{to}) followed by one run per cohort advisor — run_count = cohort_size + 1. The Insights screen generates/reads the aggregate runs; the Advisor screen generates/reads single-advisor runs.
+Reversible: yes
+
+## 2026-08-11 · Round C · Reporter's allowed-number set includes the transition totals
+Context: C3 requires every numeric token to appear in the findings, but the mockup narrative leads with the transition's total change — which is a stored query result on the run (advisor_totals), not a finding.
+Decision: verify_numbers() allows findings figures (impact_amt, evidence cells, counts) PLUS the transition totals passed to the reporter; date phrasing (month names/years/month ids) is excluded from extraction. Anything else trips the template fallback.
+Reversible: yes
+
 ## 2026-08-11 · Round B · section_path is the full heading trail joined with " > "
 Context: B2's spec example shows a leaf ("3.2 Discount Sharing"); nested sections need ancestry for provenance.
 Decision: section_path renders the dotted heading trail joined with " > " (e.g. "3 Adjustments > 3.2 Discount Sharing").

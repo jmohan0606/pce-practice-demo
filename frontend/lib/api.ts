@@ -209,3 +209,97 @@ export function getRules(version: string = "latest"): Promise<RulesResponse> {
 export function getRuleVersions(): Promise<RuleVersionsResponse> {
   return get("/api/rules/versions");
 }
+
+// ---------- C4 insights (shapes per ROUND_C_SPEC) ----------
+
+export interface Finding {
+  finding_id?: string;
+  title: string;
+  summary: string;
+  impact_amt: number | null;
+  driver_tag: string;
+  group_id?: string | null;
+  rule_key?: string | null;
+  provenance: "REAL" | "DERIVED";
+  confidence?: number;
+  evidence_columns: string[];
+  evidence_rows: Record<string, unknown>[];
+  evidence_total: number;
+  evidence_reason?: string | null;
+  source_query?: { query_name: string; params: Record<string, unknown> } | null;
+  rule_citation?: {
+    rule_key: string;
+    rule_code?: string;
+    rule_name?: string;
+    citation?: RuleCitation | null;
+  } | null;
+}
+export interface InsightRun {
+  run_id: string;
+  advisor_sid: string;
+  from_month_id: string;
+  to_month_id: string;
+  version_id: string;
+  status: string; // RUNNING | COMPLETE | FAILED
+  narrative: string;
+  bullets: string[];
+  findings: Finding[];
+  generated_at: string;
+  query_count: number;
+  budget_hit: boolean;
+  generation: number;
+  error?: string | null;
+}
+export interface GenerateResponse {
+  job_id: string;
+  run_count: number;
+}
+export interface JobStatus {
+  status: "running" | "complete" | "failed";
+  completed: number;
+  total: number;
+  current: string | null;
+  runs: { run_id: string | null; advisor_sid: string; status: string; finding_count: number; error?: string | null }[];
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError(0, `API unreachable at ${API_BASE}`);
+  }
+  if (!response.ok) throw new ApiError(response.status, `${response.status} for ${path}`);
+  return (await response.json()) as T;
+}
+
+export function generateInsights(advisor: string, fromMonth: string, toMonth: string, versionId?: string): Promise<GenerateResponse> {
+  return post("/api/insights/generate", {
+    advisor,
+    from_month: fromMonth,
+    to_month: toMonth,
+    version_id: versionId ?? null,
+  });
+}
+export function getInsightStatus(jobId: string): Promise<JobStatus> {
+  return get(`/api/insights/status/${encodeURIComponent(jobId)}`);
+}
+export function getInsights(advisor: string, fromMonth: string, toMonth: string, version: string = "latest"): Promise<InsightRun> {
+  return get(`/api/insights/${encodeURIComponent(advisor)}/${fromMonth}/${toMonth}?version=${encodeURIComponent(version)}`);
+}
+
+export interface PeerRank {
+  advisor_sid: string;
+  month_id: string;
+  metric: string;
+  rank: number | null;
+  cohort_size: number;
+  cohort_median: number | null;
+}
+export function getPeerRank(advisor: string, monthId: string): Promise<PeerRank> {
+  return get(`/api/insights/peer-rank?advisor=${encodeURIComponent(advisor)}&month_id=${monthId}`);
+}
