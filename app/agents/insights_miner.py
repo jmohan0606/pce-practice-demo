@@ -146,20 +146,23 @@ def summarize_result(seq_no: int, query_name: str, rows: list[dict],
     return ", ".join(parts)
 
 
-def _effective_transcript(transcript: list[dict]) -> list[tuple[str, str]]:
+def _effective_transcript(transcript: list[dict]) -> list[tuple[str, str, bool]]:
     """The transcript as the model sees it: the last RECENT_RESULTS_KEPT tool
-    results stay verbatim; older ones compress to their code-built summary."""
+    results stay verbatim; older ones compress to their code-built summary.
+    The third element flags collapsed entries — once collapsed, an entry never
+    changes again, so the prefix up to the newest collapsed entry is stable
+    across turns (a cache anchor)."""
     tool_indexes = [i for i, e in enumerate(transcript) if e["label"] == "tool"]
     collapse = (set(tool_indexes[:-RECENT_RESULTS_KEPT])
                 if len(tool_indexes) > RECENT_RESULTS_KEPT else set())
-    out: list[tuple[str, str]] = []
+    out: list[tuple[str, str, bool]] = []
     for i, entry in enumerate(transcript):
         if i in collapse:
             summary = entry.get("summary") or (entry["text"].splitlines()[0][:160]
                                                + " … (earlier result collapsed)")
-            out.append((entry["label"], summary))
+            out.append((entry["label"], summary, True))
         else:
-            out.append((entry["label"], entry["text"]))
+            out.append((entry["label"], entry["text"], False))
     return out
 
 
@@ -392,7 +395,7 @@ def _render_prompt(opening: str, transcript: list[dict],
     """Single-string fallback path (mock / scripted / non-Claude transports).
     Same pruning as the messages path — prompt caching just cannot help here."""
     parts = [opening]
-    parts += [f"[{label}] {text}" for label, text in _effective_transcript(transcript)]
+    parts += [f"[{label}] {text}" for label, text, _ in _effective_transcript(transcript)]
     parts.append(_reminder(tools, finding_count))
     return "\n\n".join(parts)
 
@@ -414,7 +417,9 @@ def _build_messages(opening: str, transcript: list[dict],
         "content": [{"type": "text", "text": opening,
                      "cache_control": {"type": "ephemeral"}}],
     }]
-    for label, text in _effective_transcript(transcript):
+    last_collapsed_block: dict | None = None
+    last_assistant_block: dict | None = None
+    for label, text, collapsed in _effective_transcript(transcript):
         role = "assistant" if label == "assistant" else "user"
         block = {"type": "text",
                  "text": text if role == "assistant" else f"[{label}] {text}"}
@@ -422,6 +427,19 @@ def _build_messages(opening: str, transcript: list[dict],
             messages[-1]["content"].append(block)
         else:
             messages.append({"role": role, "content": [block]})
+        if collapsed:
+            last_collapsed_block = block
+        if role == "assistant":
+            last_assistant_block = block
+    # Two more anchors (4 breakpoints max, with system + opening): the newest
+    # COLLAPSED entry (stable forever — readable next turn even after the
+    # window slides) and the newest assistant turn (full-prefix read on turns
+    # with no new collapse). Needed because on Haiku the system+opening prefix
+    # alone sits under the 4096-token cache minimum and silently never caches.
+    if last_collapsed_block is not None:
+        last_collapsed_block["cache_control"] = {"type": "ephemeral"}
+    if last_assistant_block is not None:
+        last_assistant_block["cache_control"] = {"type": "ephemeral"}
     reminder = {"type": "text", "text": _reminder(tools, finding_count)}
     if messages[-1]["role"] == "user":
         messages[-1]["content"].append(reminder)

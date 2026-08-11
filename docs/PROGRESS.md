@@ -49,7 +49,14 @@
       rejected by extract-rules (still chunked+embedded), upload UI selector;
       5.3 docs/spec/SCHEMA_CHANGE_CHECKLIST.md. Data regenerated (40 dummy
       opportunities); verify a/b/c 25/19/12; npm build OK.
-- [ ] Task 6: one cheap verification run + ROUND_C_FIX_COMPLETE.md
+- [x] Task 6: one Haiku run (V000002, 202604→202605): 14 turns, 12 queries, 67.5k
+      prompt tokens (19.1k uncached + 19.3k cache-read + 29.1k cache-write, 28.7%
+      hit rate — after adding two cache anchors, DECISIONS.md, because Haiku's 4096
+      cache minimum silently defeated the two static breakpoints alone), $0.0689,
+      32.4s (was ~427k tokens / 678s), 4 findings, COMPLETE with
+      budget_hit_tokens=true (the 60k ceiling demonstrably stops a run).
+      verify a/b/c 25/25, 19/19, 12/12 — full output in docs/ROUND_C_FIX_COMPLETE.md.
+      Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
 Round: C — COMPLETE except the all-advisors batch, STOPPED EARLY on operator

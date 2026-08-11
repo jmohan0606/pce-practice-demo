@@ -110,6 +110,11 @@ Context: Turn rows need a run_id, but document extraction and conflict audits ha
 Decision: doc_extract|<document_id> and conflict_audit|<document_id|adhoc> as synthetic run ids in the same turn log; no phx_dm_pce_turn_in_run edge instance exists for those rows. The Trace summary aggregates them as "document extraction" cost.
 Reversible: yes
 
+## 2026-08-11 · Cost-fix session task 6 · Two extra cache anchors in the miner's messages array
+Context: The spec's two static cache_control blocks (system + opening) never cached on Haiku — its minimum cacheable prefix is 4096 tokens and system+opening measured ~3.4k, so the first live run showed 0 cache reads AND 0 cache writes (silent, per Anthropic's documented behavior).
+Decision: _build_messages sets two additional ephemeral breakpoints (4 total, the API maximum): the newest COLLAPSED transcript entry (stable forever once collapsed — readable next turn even after the pruning window slides) and the newest assistant turn (full-prefix read on turns with no new collapse). Measured effect on the verification run: 28.7% cache hit rate vs 0%.
+Reversible: yes
+
 ## 2026-08-11 · Round B · section_path is the full heading trail joined with " > "
 Context: B2's spec example shows a leaf ("3.2 Discount Sharing"); nested sections need ancestry for provenance.
 Decision: section_path renders the dotted heading trail joined with " > " (e.g. "3 Adjustments > 3.2 Discount Sharing").
