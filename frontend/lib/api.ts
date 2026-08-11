@@ -4,7 +4,10 @@
  * ApiError (incl. 404 while those land) as an empty/graceful state, never a crash.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8001";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE ||
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  "http://localhost:8001";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {

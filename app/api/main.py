@@ -24,12 +24,22 @@ def create_app() -> FastAPI:
     # catch-all runs inside the middleware stack (V2 Round 5 A6 lesson).
     register_exception_handlers(app)
     app.add_middleware(CorrelationIdMiddleware)
+    # Codespaces: the browser reaches the frontend on its forwarded HTTPS URL,
+    # so that origin must be allowed alongside localhost.
+    import os as _os
+
+    _cors_origins = [
+        f"http://localhost:{settings.frontend_port}",
+        f"http://127.0.0.1:{settings.frontend_port}",
+    ]
+    _cs_name = _os.environ.get("CODESPACE_NAME")
+    _cs_domain = _os.environ.get("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")
+    if _cs_name and _cs_domain:
+        _cors_origins.append(
+            f"https://{_cs_name}-{settings.frontend_port}.{_cs_domain}")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            f"http://localhost:{settings.frontend_port}",
-            f"http://127.0.0.1:{settings.frontend_port}",
-        ],
+        allow_origins=_cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

@@ -123,13 +123,16 @@ class ClaudeLLMClient:
 
         self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
         self.model = model_override or settings.anthropic_model
+        # 1024 truncated real extractor output mid-JSON (Round C e2e) — the cap
+        # must comfortably hold a full rules array / agent action.
+        self.max_tokens = settings.anthropic_max_tokens
 
     @logged_adapter_call("llm")
     def generate(self, prompt: str, context: dict | None = None) -> str:
         system_prompt, user_content = _render_messages(prompt, context)
         response = self._client.messages.create(
             model=self.model,
-            max_tokens=1024,
+            max_tokens=self.max_tokens,
             system=system_prompt,
             messages=[{"role": "user", "content": user_content}],
         )

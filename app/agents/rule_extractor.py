@@ -84,7 +84,17 @@ def build_system_prompt() -> str:
         "- Extract EVERY distinct provision that could define, qualify, cap, exclude "
         "or time-bound a revenue or compensation outcome. Exhaustiveness matters more "
         "than precision.\n"
-        "- One rule per provision. Do not merge two provisions; do not split one.\n"
+        "- One rule per provision. Do not merge two provisions; do not split one. A "
+        "rate table that encodes a single formula (e.g. a discount grid, a payout "
+        "schedule) is ONE provision — extract the formula, never one rule per row.\n"
+        "- population, compute and trigger are REQUIRED on every rule and must use "
+        "the narrow grammar with fields from the list below. Express qualitative "
+        "provisions the same way (e.g. compute count(*), trigger value > 0 over the "
+        "defined population). Example, a fee-discount sharing provision:\n"
+        '  {"rule_code": "FEE_REDUCTION_SHARING", "grain": "account",\n'
+        '   "population": "is_managed = true AND month_id = :month",\n'
+        '   "compute": "round((standard_rate_bps - client_rate_bps) / standard_rate_bps * 100)",\n'
+        '   "trigger": "value > 10", "attribute": "grid_points = min(value - 10, 10)", ...}\n'
         "- Use only these expression forms:\n"
         + GRAMMAR_TEXT + "\n\n"
         "- Field names must come from this list (per grain):\n"
@@ -99,7 +109,13 @@ def build_system_prompt() -> str:
         + "|".join(GRAINS) + "), population, compute, trigger, attribute (or null), "
         "driver_tag, confidence (0..1), status (DRAFT or NEEDS_INPUT), unclear_notes "
         "(or null), citations.\n"
-        "- Return a JSON array only. No prose, no markdown fences."
+        "- If a provision needs data the field list does not carry (a date, rate or "
+        "flag that does not exist), still fill population/compute/trigger as far as "
+        "the fields allow, set status NEEDS_INPUT and name the missing piece in "
+        "unclear_notes.\n"
+        "- Return a JSON array only. No prose, no markdown fences. STRICT JSON: "
+        "escape every newline inside strings. Keep each citation excerpt under 160 "
+        "characters."
     )
 
 
@@ -120,9 +136,12 @@ def parse_llm_response(raw: str) -> list | str:
     error string. A stray markdown fence is stripped (tolerant parsing, not
     guessing); anything else unparseable is the readable error."""
     text = (raw or "").strip()
-    fenced = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.DOTALL)
-    if fenced:
-        text = fenced.group(1).strip()
+    # strip markdown fences even when the CLOSING fence is missing (a truncated
+    # response must fail on its truncated JSON, with that readable error — not
+    # on the cosmetic fence)
+    if text.startswith("```"):
+        text = re.sub(r"^```[A-Za-z]*\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError as exc:
