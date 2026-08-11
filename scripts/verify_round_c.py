@@ -136,11 +136,15 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     findings = store.run_findings(run["run_id"])
     evidence_total = sum(len(f["evidence_rows"]) for f in findings)
     log = store.run_query_log(run["run_id"])
+    # Round E task 2: pre-matched RULE findings (origin="rule") join the run in
+    # addition to the scripted miner's 2 agent findings.
+    agent_findings = [f for f in findings if f.get("origin") != "rule"]
     check(2, "a full run for one advisor completes and persists run+findings+evidence",
-          run["status"] == "COMPLETE" and len(findings) == 2 and evidence_total > 0
-          and len(log) > 0,
-          f"status={run['status']}, findings={len(findings)}, evidence rows={evidence_total}, "
-          f"log rows={len(log)}")
+          run["status"] == "COMPLETE" and len(agent_findings) == 2
+          and len(findings) >= 2 and evidence_total > 0 and len(log) > 0,
+          f"status={run['status']}, findings={len(findings)} "
+          f"({len(agent_findings)} agent + {len(findings) - len(agent_findings)} rule), "
+          f"evidence rows={evidence_total}, log rows={len(log)}")
 
     # 3 — every finding with non-null impact has a source_query
     bad3 = [f["title"] for f in findings

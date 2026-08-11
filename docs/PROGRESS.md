@@ -18,6 +18,13 @@
       field/table (the client conversation list). LLM cost $1.13 (+$0.50 for the
       first, truncated-chunk run that exposed the bug). verify a/b 25/25, 19/19
       (B3-11/12/16/17 updated for the new lifecycle), verify c 12/12.
+- [x] Task 2 (PROVISIONAL, DECISIONS.md): published rules pre-evaluate in code before
+      the agent loop; fired rules land as pre-matched findings (rule_key, citation,
+      evidence rows, source_query=rules_evaluate_plan); residual stated in the opening
+      with "the residual is the interesting part"; rule evaluation spends no miner
+      queries (exploration_reserved recorded, warn < 6); runs report rule_findings /
+      agent_findings / residual_amt / residual_explained_pct. verify_round_c C6-2
+      widened for rule-origin findings; 12/12.
 
 ## Cost & UI fix session (docs/spec/SESSION_PROMPT_COST_AND_UI_FIXES.md)
 - [x] Hard rule 2: ANTHROPIC_MODEL=claude-haiku-4-5-20251001 in .env; settings default

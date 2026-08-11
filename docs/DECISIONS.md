@@ -132,6 +132,12 @@ Context: The spec ordered "stop and report" if compiled was not materially above
 Decision: Proceed with the round. Recorded learning: the grammar was ONE constraint (field-to-field and string-ordering rules now compile); the equally large constraint is schema expressiveness — NOT EXISTS/anti-join, prior-month references, lookup tables and decision-date fields dominate the NEEDS_DATA list and belong in the Round D client-schema conversation.
 Reversible: n/a (observation)
 
+## 2026-08-11 · Round E task 2 · PROVISIONAL — the Miner receives pre-evaluated rule outcomes and hunts the residual
+Context: ROUND_E_SPEC task 2. **The operator is not fully convinced of this design and wants it revisited once the output is visible — treat as provisional, not settled.**
+Decision: Before the agent loop, every PUBLISHED rule evaluates in code (no LLM) for the advisor+transition; fired rules become pre-matched findings (origin="rule", rule_key + first citation + matched rows as evidence, source_query=rules_evaluate_plan); the residual (change_amt − rule impacts) is stated in the opening message with the instruction that the residual is the interesting part. Rule evaluation spends none of the 12-query budget; the reserve for free exploration is recorded per run (exploration_reserved, warned if < 6). Runs report rule_findings / agent_findings / residual_amt / residual_explained_pct.
+Sub-decision: a rule finding's impact_amt is the sum of matched values ONLY when its plan computes sum() over a *_amt field — counts and rates never pollute the residual arithmetic. For advisor="all" runs, advisor-scoped rules (:advisor_sid) report "not evaluated" honestly instead of a fake aggregate.
+Reversible: yes (and expected to be revisited)
+
 ## 2026-08-11 · Round B · section_path is the full heading trail joined with " > "
 Context: B2's spec example shows a leaf ("3.2 Discount Sharing"); nested sections need ancestry for provenance.
 Decision: section_path renders the dotted heading trail joined with " > " (e.g. "3 Adjustments > 3.2 Discount Sharing").

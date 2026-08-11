@@ -48,6 +48,74 @@ def _published_version() -> dict:
     return version
 
 
+def _monetary_impact(rule: dict, matched: list[dict]) -> float | None:
+    """Sum of matched values ONLY when the rule's compute aggregates a monetary
+    field (name contains '_amt') — a count or a rate is not an impact figure
+    and must never pollute the residual (DECISIONS.md, provisional)."""
+    plan = rule.get("plan") or {}
+    compute = plan.get("compute") or {}
+    expr = str(compute.get("expr") or "")
+    if compute.get("agg") == "sum" and "_amt" in expr:
+        return round(sum(float(m.get("value") or 0) for m in matched), 2)
+    return None
+
+
+def evaluate_published_rules(advisor_sid: str, from_month: str, to_month: str,
+                             version: dict) -> tuple[list[dict], list[dict]]:
+    """Round E task 2 (provisional): evaluate every PUBLISHED rule for this
+    advisor and transition through the evaluator — NO LLM; these are queries
+    the AI already authored. Fired rules become pre-matched findings with
+    rule_key, citation and evidence rows attached. Returns
+    (rule_findings, rule_outcomes_for_the_prompt)."""
+    from app.rules.service import evaluate_rule_set
+
+    outcome = evaluate_rule_set(
+        version["version_id"], month=to_month,
+        advisor_sid=None if advisor_sid == "all" else advisor_sid)
+    rule_map = {r["rule_key"]: r
+                for r in get_rule_store().version_rules(version["version_id"])}
+    findings: list[dict] = []
+    outcomes: list[dict] = []
+    for result in outcome["results"]:
+        rule = rule_map.get(result.get("rule_key")) or {}
+        entry = {"rule_code": result.get("rule_code"),
+                 "rule_key": result.get("rule_key"),
+                 "evaluated": result.get("evaluated", False),
+                 "matched_count": result.get("matched_count", 0),
+                 "error": result.get("error"),
+                 "empty_reason": result.get("empty_reason")}
+        outcomes.append(entry)
+        matched = result.get("matched") or []
+        if not (result.get("evaluated") and matched):
+            continue
+        impact = _monetary_impact(rule, matched)
+        citations = rule.get("citations") or []
+        evidence_rows = matched[:50]
+        findings.append({
+            "title": f"{rule.get('rule_name') or result.get('rule_code')} — "
+                     f"{len(matched)} match(es) in {to_month}",
+            "summary": (f"Rule {result.get('rule_code')} fired for "
+                        f"{len(matched)} {rule.get('grain') or 'entity'}(s) in {to_month}. "
+                        f"{rule.get('statement') or ''}").strip(),
+            "impact_amt": impact,
+            "driver_tag": rule.get("driver_tag") or "Other",
+            "group_id": None,
+            "rule_key": result.get("rule_key"),
+            "provenance": "REAL",
+            "confidence": 1.0,
+            "evidence_columns": sorted(evidence_rows[0].keys()) if evidence_rows else [],
+            "evidence_rows": evidence_rows,
+            "evidence_reason": None,
+            "citation": citations[0] if citations else None,
+            "origin": "rule",
+            "source_query": {"query_name": "rules_evaluate_plan",
+                             "params": {"rule_code": result.get("rule_code"),
+                                        "month": to_month,
+                                        "advisor_sid": advisor_sid}},
+        })
+    return findings, outcomes
+
+
 def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
                              version_id: str | None = None,
                              miner_llm=None, reporter_llm=None) -> dict:
@@ -65,6 +133,14 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
         "advisor": advisor_sid, "from_month": from_month, "to_month": to_month,
     })["rows"][0]
 
+    # Round E task 2 (PROVISIONAL — DECISIONS.md): rules evaluate in code before
+    # the agent loop; the agent is pointed at the residual.
+    rule_findings, rule_outcomes = evaluate_published_rules(
+        advisor_sid, from_month, to_month, version)
+    rule_impacts = sum(f["impact_amt"] for f in rule_findings
+                       if f["impact_amt"] is not None)
+    residual_amt = round(float(transition.get("change_amt") or 0.0) - rule_impacts, 2)
+
     run = store.begin_run(advisor_sid, from_month, to_month, version["version_id"])
     tools = MinerTools(run["run_id"])
     try:
@@ -77,10 +153,17 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
         reporter = reporter_llm or wrap_llm(_resolve_llm_client("insights_reporter"),
                                             run["run_id"], "insights_reporter")
         mined = mine(advisor_sid=advisor_sid, from_month=from_month, to_month=to_month,
-                     rules=rules, transition=transition, tools=tools, llm=miner)
+                     rules=rules, transition=transition, tools=tools, llm=miner,
+                     rule_findings=rule_findings, rule_outcomes=rule_outcomes,
+                     residual_amt=residual_amt)
         # C3: the Reporter receives FINDINGS ONLY (plus the transition totals,
         # themselves a stored query result on this run) and a text LLM callable.
         reported = report(mined["findings"], transition, reporter)
+        agent_findings = [f for f in mined["findings"] if f.get("origin") != "rule"]
+        agent_impacts = sum(abs(f["impact_amt"]) for f in agent_findings
+                            if f["impact_amt"] is not None)
+        residual_explained_pct = (round(agent_impacts / abs(residual_amt) * 100, 1)
+                                  if residual_amt else None)
         completed = store.complete_run(
             run["run_id"], narrative=reported["narrative"], bullets=reported["bullets"],
             findings=mined["findings"], query_count=mined["query_count"],
@@ -89,6 +172,12 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
             coverage_ratio=mined["coverage_ratio"])
         completed["unanswerable"] = mined["unanswerable"]
         completed["fallback_used"] = reported.get("fallback_used", False)
+        # Round E task 2 report-per-run figures
+        completed["rule_findings"] = len(rule_findings)
+        completed["agent_findings"] = len(agent_findings)
+        completed["residual_amt"] = residual_amt
+        completed["residual_explained_pct"] = residual_explained_pct
+        completed["exploration_reserved"] = mined.get("exploration_reserved")
         return completed
     except Exception as exc:  # noqa: BLE001 — honest failure recorded on the run
         _log.exception("insight run %s failed", run["run_id"])

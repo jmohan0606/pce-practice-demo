@@ -92,12 +92,42 @@ def build_system_prompt() -> str:
 def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
                           rules: list[dict], transition: dict,
                           month_meta: dict[str, dict], catalog: list[dict],
-                          initial: dict) -> str:
+                          initial: dict,
+                          rule_outcomes: list[dict] | None = None,
+                          rule_findings: list[dict] | None = None,
+                          residual_amt: float | None = None) -> str:
     rule_lines = [
         f"- [{r.get('rule_key')}] {r.get('rule_code')} (driver: {r.get('driver_tag')}): "
         f"{r.get('statement') or r.get('plain_description')} Example: {r.get('worked_example')}"
         for r in rules
     ]
+    # Round E task 2: rule outcomes were computed in CODE before this loop; the
+    # agent's job is the residual — what the rules do NOT explain.
+    rule_block = ""
+    if rule_outcomes is not None:
+        outcome_lines = []
+        for o in rule_outcomes:
+            if o.get("error"):
+                outcome_lines.append(f"- {o['rule_code']}: not evaluated ({o['error']})")
+            elif o.get("empty_reason"):
+                outcome_lines.append(f"- {o['rule_code']}: empty ({o['empty_reason']})")
+            else:
+                outcome_lines.append(f"- {o['rule_code']}: {o['matched_count']} match(es)")
+        fired = [f for f in (rule_findings or [])]
+        fired_lines = [
+            f"- {f['title']}"
+            + (f" — impact {f['impact_amt']}" if f.get("impact_amt") is not None else "")
+            for f in fired]
+        rule_block = (
+            "\n\nRULE OUTCOMES (already evaluated in code — no queries spent, "
+            "already recorded as findings; do NOT re-derive them):\n"
+            + "\n".join(outcome_lines)
+            + ("\n\nPre-matched rule findings on this run:\n" + "\n".join(fired_lines)
+               if fired_lines else "")
+            + f"\n\nRESIDUAL: change_amt minus the rule findings' impacts = "
+              f"{residual_amt}. THE RESIDUAL IS THE INTERESTING PART — investigate "
+              f"what the rules do NOT explain. Discovered surprises beyond the "
+              f"rule set are expected and desirable.")
     return (
         f"Explain this transition.\n\n"
         f"ADVISOR: {advisor_sid}  ('all' = the whole cohort book)\n"
@@ -106,6 +136,7 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
         f"MONTH METADATA: {json.dumps(month_meta)}\n\n"
         f"PUBLISHED RULE SET (what matters in this business):\n"
         + "\n".join(rule_lines)
+        + rule_block
         + "\n\nQUERY CATALOG (name, params, returns):\n"
         + "\n".join(
             f"- {q['query_name']}({', '.join(p['name'] + ('' if p['required'] else '?')
@@ -226,15 +257,25 @@ def _validate_finding(payload: dict, tools: MinerTools) -> tuple[dict | None, st
             "no source query attached — qualitative observation"),
         "source_query": ({"query_name": source["query_name"], "params": source["params"]}
                          if source else None),
+        "origin": "agent",
     }
     return result, None
 
 
+EXPLORATION_RESERVE = 6  # Round E task 2: queries reserved for free exploration
+
+
 def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
          transition: dict, tools: MinerTools,
-         llm: Callable[[str, dict], str]) -> dict:
-    """Run the investigation loop. Returns
-    {findings, query_count, budget_hit, unanswerable, coverage_ratio, turns}."""
+         llm: Callable[[str, dict], str],
+         rule_findings: list[dict] | None = None,
+         rule_outcomes: list[dict] | None = None,
+         residual_amt: float | None = None) -> dict:
+    """Run the investigation loop. Rule findings arrive PRE-MATCHED (evaluated
+    in code, Round E task 2) and count toward the result; the agent is pointed
+    at the residual with >= EXPLORATION_RESERVE queries kept for exploration.
+    Returns {findings, query_count, budget_hit, unanswerable, coverage_ratio,
+    turns, exploration_reserved}."""
     month_meta = {}
     for mid in (from_month, to_month):
         meta = tools.run_graph_query("month_meta", {"month_id": mid})
@@ -243,10 +284,20 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
         "revenue_change_by_product",
         {"advisor": advisor_sid, "from_month": from_month, "to_month": to_month})
 
+    # The guard against the agent becoming a rule-reporter: rule evaluation ran
+    # OUTSIDE the query budget, so the full budget minus the opening queries
+    # remains for exploration — assert the reserve holds and record it.
+    exploration_reserved = tools.remaining
+    if exploration_reserved < EXPLORATION_RESERVE:
+        _log.warning("miner %s: only %d queries left for exploration (< %d reserve)",
+                     tools.run_id, exploration_reserved, EXPLORATION_RESERVE)
+
     system_prompt = build_system_prompt()
     opening = build_opening_message(
         advisor_sid, from_month, to_month, rules, transition, month_meta,
-        tools_catalog(), initial)
+        tools_catalog(), initial,
+        rule_outcomes=rule_outcomes, rule_findings=rule_findings,
+        residual_amt=residual_amt)
 
     # {"label", "text", "summary"?} entries after the opening. Query results
     # carry a code-built factual summary used when they age out of the window.
@@ -255,7 +306,7 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
     # it (Claude); scripted/mock callables keep the single-string path.
     use_conversation = bool(getattr(llm, "supports_conversation", False)) \
         and callable(getattr(llm, "converse", None))
-    findings: list[dict] = []
+    findings: list[dict] = list(rule_findings or [])  # pre-matched, code-evaluated
     unanswerable: list[str] = []
     done = False
     turns = 0
@@ -369,7 +420,8 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
 
     return {"findings": findings, "query_count": tools.queries_run,
             "budget_hit": tools.budget_hit, "budget_hit_tokens": budget_hit_tokens,
-            "unanswerable": unanswerable, "coverage_ratio": coverage, "turns": turns}
+            "unanswerable": unanswerable, "coverage_ratio": coverage, "turns": turns,
+            "exploration_reserved": exploration_reserved}
 
 
 def _tag(llm, action_kind: str, query_name: str = "") -> None:
