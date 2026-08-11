@@ -7,3 +7,14 @@ __pycache__/
 node_modules/
 .next/
 chroma/
+
+.env
+logs/
+chroma/
+data/checkpoints/
+data/uploads/
+__pycache__/
+*.pyc
+.venv/
+frontend/node_modules/
+frontend/.next/

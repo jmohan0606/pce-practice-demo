@@ -1,0 +1,7 @@
+// Loading job for phx_dm_pce_account
+// CSV contract: header row required, columns in DDL order (primary id first):
+//   acct_key,account_no_raw,account_class_cd,account_class_nm,account_lob_cd,account_purpose_cd,managed_platform_cd,service_channel_cd,account_open_dt,is_managed,opened_in_scope,primary_eci_id
+CREATE LOADING JOB load_phx_dm_pce_account FOR GRAPH phx_dm_pce_practice_demo {
+  DEFINE FILENAME f;
+  LOAD f TO VERTEX phx_dm_pce_account VALUES($"acct_key", $"account_no_raw", $"account_class_cd", $"account_class_nm", $"account_lob_cd", $"account_purpose_cd", $"managed_platform_cd", $"service_channel_cd", $"account_open_dt", $"is_managed", $"opened_in_scope", $"primary_eci_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+}

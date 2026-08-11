@@ -1,0 +1,7 @@
+// Loading job for phx_dm_pce_advisor_flow_month
+// CSV contract: header row required, columns in DDL order (primary id first):
+//   afm_id,advisor_sid,month_id,flow_product_cd,flow_product_desc,comp_group_type,total_inflows,total_outflows,total_net_flows,credited_flows,departed_advisor_sid,departed_advisor_excl_am,lob_trfr_excl_am,oi_pa_referral_cap_adj_am,large_flow_cap_adj_am,forced_closure_excl_am
+CREATE LOADING JOB load_phx_dm_pce_advisor_flow_month FOR GRAPH phx_dm_pce_practice_demo {
+  DEFINE FILENAME f;
+  LOAD f TO VERTEX phx_dm_pce_advisor_flow_month VALUES($"afm_id", $"advisor_sid", $"month_id", $"flow_product_cd", $"flow_product_desc", $"comp_group_type", $"total_inflows", $"total_outflows", $"total_net_flows", $"credited_flows", $"departed_advisor_sid", $"departed_advisor_excl_am", $"lob_trfr_excl_am", $"oi_pa_referral_cap_adj_am", $"large_flow_cap_adj_am", $"forced_closure_excl_am") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+}

@@ -1,0 +1,7 @@
+// Loading job for phx_dm_pce_team_agreement
+// CSV contract: header row required, columns in DDL order (primary id first):
+//   agreement_key,agreement_id,team_rep_cd,agreement_type,status_cd,prm_advisor_sid,prm_share_pct,sec_advisor_sid,sec_share_pct,start_ts,end_ts
+CREATE LOADING JOB load_phx_dm_pce_team_agreement FOR GRAPH phx_dm_pce_practice_demo {
+  DEFINE FILENAME f;
+  LOAD f TO VERTEX phx_dm_pce_team_agreement VALUES($"agreement_key", $"agreement_id", $"team_rep_cd", $"agreement_type", $"status_cd", $"prm_advisor_sid", $"prm_share_pct", $"sec_advisor_sid", $"sec_share_pct", $"start_ts", $"end_ts") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+}

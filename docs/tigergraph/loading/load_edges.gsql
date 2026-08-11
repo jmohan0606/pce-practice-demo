@@ -1,0 +1,69 @@
+// Combined loading job for all source-derivable edges (27).
+// One CSV per edge type, named exactly for the type, columns: from_id,to_id.
+// App-written edges (rules & insights block) are excluded — the app writes those directly.
+CREATE LOADING JOB load_phx_dm_pce_edges FOR GRAPH phx_dm_pce_practice_demo {
+  DEFINE FILENAME f_product_in_group;
+  DEFINE FILENAME f_group_in_class;
+  DEFINE FILENAME f_txn_by_advisor;
+  DEFINE FILENAME f_txn_for_account;
+  DEFINE FILENAME f_txn_of_product;
+  DEFINE FILENAME f_txn_in_month;
+  DEFINE FILENAME f_mr_by_advisor;
+  DEFINE FILENAME f_mr_in_month;
+  DEFINE FILENAME f_mr_of_product;
+  DEFINE FILENAME f_mr_in_group;
+  DEFINE FILENAME f_am_for_account;
+  DEFINE FILENAME f_am_by_advisor;
+  DEFINE FILENAME f_am_in_month;
+  DEFINE FILENAME f_account_in_household;
+  DEFINE FILENAME f_rel_of_account;
+  DEFINE FILENAME f_rel_to_household;
+  DEFINE FILENAME f_map_of_account;
+  DEFINE FILENAME f_map_to_household;
+  DEFINE FILENAME f_account_in_rpg;
+  DEFINE FILENAME f_txn_in_rpg;
+  DEFINE FILENAME f_transfer_of_account;
+  DEFINE FILENAME f_transfer_from;
+  DEFINE FILENAME f_transfer_to;
+  DEFINE FILENAME f_team_primary;
+  DEFINE FILENAME f_team_secondary;
+  DEFINE FILENAME f_flow_by_advisor;
+  DEFINE FILENAME f_flow_in_month;
+
+  // product chain
+  LOAD f_product_in_group TO EDGE phx_dm_pce_product_in_group VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_group_in_class TO EDGE phx_dm_pce_group_in_class VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  // transactions
+  LOAD f_txn_by_advisor TO EDGE phx_dm_pce_txn_by_advisor VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_txn_for_account TO EDGE phx_dm_pce_txn_for_account VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_txn_of_product TO EDGE phx_dm_pce_txn_of_product VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_txn_in_month TO EDGE phx_dm_pce_txn_in_month VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  // monthly aggregates
+  LOAD f_mr_by_advisor TO EDGE phx_dm_pce_mr_by_advisor VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_mr_in_month TO EDGE phx_dm_pce_mr_in_month VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_mr_of_product TO EDGE phx_dm_pce_mr_of_product VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_mr_in_group TO EDGE phx_dm_pce_mr_in_group VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  // account month
+  LOAD f_am_for_account TO EDGE phx_dm_pce_am_for_account VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_am_by_advisor TO EDGE phx_dm_pce_am_by_advisor VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_am_in_month TO EDGE phx_dm_pce_am_in_month VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  // household / eci
+  LOAD f_account_in_household TO EDGE phx_dm_pce_account_in_household VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_rel_of_account TO EDGE phx_dm_pce_rel_of_account VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_rel_to_household TO EDGE phx_dm_pce_rel_to_household VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_map_of_account TO EDGE phx_dm_pce_map_of_account VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_map_to_household TO EDGE phx_dm_pce_map_to_household VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  // rpg
+  LOAD f_account_in_rpg TO EDGE phx_dm_pce_account_in_rpg VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_txn_in_rpg TO EDGE phx_dm_pce_txn_in_rpg VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  // transfers
+  LOAD f_transfer_of_account TO EDGE phx_dm_pce_transfer_of_account VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_transfer_from TO EDGE phx_dm_pce_transfer_from VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_transfer_to TO EDGE phx_dm_pce_transfer_to VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  // team
+  LOAD f_team_primary TO EDGE phx_dm_pce_team_primary VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_team_secondary TO EDGE phx_dm_pce_team_secondary VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  // flows
+  LOAD f_flow_by_advisor TO EDGE phx_dm_pce_flow_by_advisor VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_flow_in_month TO EDGE phx_dm_pce_flow_in_month VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+}

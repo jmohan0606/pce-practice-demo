@@ -1,0 +1,79 @@
+// pce-practice-demo — graph creation (24 vertex types + 36 edge types)
+// Reverse edges are implied by the WITH REVERSE_EDGE clauses in 02_edges.gsql.
+// Run after 01_vertices.gsql and 02_edges.gsql.
+USE GLOBAL
+
+CREATE GRAPH phx_dm_pce_practice_demo (
+  // vertices — source-loaded (16)
+  phx_dm_pce_month,
+  phx_dm_pce_revenue_class,
+  phx_dm_pce_product_group,
+  phx_dm_pce_product,
+  phx_dm_pce_advisor,
+  phx_dm_pce_account,
+  phx_dm_pce_household,
+  phx_dm_pce_account_eci_rel,
+  phx_dm_pce_account_eci_map,
+  phx_dm_pce_rpg,
+  phx_dm_pce_team_agreement,
+  phx_dm_pce_revenue_transaction,
+  phx_dm_pce_monthly_revenue,
+  phx_dm_pce_account_month,
+  phx_dm_pce_account_transfer,
+  phx_dm_pce_advisor_flow_month,
+  // vertices — app-written (8)
+  phx_dm_pce_document,
+  phx_dm_pce_document_chunk,
+  phx_dm_pce_rule_set_version,
+  phx_dm_pce_rule,
+  phx_dm_pce_insight_run,
+  phx_dm_pce_finding,
+  phx_dm_pce_evidence_row,
+  phx_dm_pce_agent_query_log,
+  // edges — product chain
+  phx_dm_pce_product_in_group,
+  phx_dm_pce_group_in_class,
+  // edges — transactions
+  phx_dm_pce_txn_by_advisor,
+  phx_dm_pce_txn_for_account,
+  phx_dm_pce_txn_of_product,
+  phx_dm_pce_txn_in_month,
+  // edges — monthly aggregates
+  phx_dm_pce_mr_by_advisor,
+  phx_dm_pce_mr_in_month,
+  phx_dm_pce_mr_of_product,
+  phx_dm_pce_mr_in_group,
+  // edges — account month
+  phx_dm_pce_am_for_account,
+  phx_dm_pce_am_by_advisor,
+  phx_dm_pce_am_in_month,
+  // edges — household / eci
+  phx_dm_pce_account_in_household,
+  phx_dm_pce_rel_of_account,
+  phx_dm_pce_rel_to_household,
+  phx_dm_pce_map_of_account,
+  phx_dm_pce_map_to_household,
+  // edges — rpg
+  phx_dm_pce_account_in_rpg,
+  phx_dm_pce_txn_in_rpg,
+  // edges — transfers
+  phx_dm_pce_transfer_of_account,
+  phx_dm_pce_transfer_from,
+  phx_dm_pce_transfer_to,
+  // edges — team
+  phx_dm_pce_team_primary,
+  phx_dm_pce_team_secondary,
+  // edges — flows
+  phx_dm_pce_flow_by_advisor,
+  phx_dm_pce_flow_in_month,
+  // edges — rules & insights (app-written)
+  phx_dm_pce_chunk_of_document,
+  phx_dm_pce_rule_in_version,
+  phx_dm_pce_rule_cites_chunk,
+  phx_dm_pce_run_uses_version,
+  phx_dm_pce_run_for_advisor,
+  phx_dm_pce_finding_in_run,
+  phx_dm_pce_finding_matched_rule,
+  phx_dm_pce_evidence_of_finding,
+  phx_dm_pce_query_in_run
+)

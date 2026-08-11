@@ -1,0 +1,32 @@
+product_id,product_cd,product_sub_cd,product_name,sor,file_key,group_id,grid_type
+OISC|,OISC,,Managed Accounts — OISC,PCR,product_hierarchy,managed_accounts,PRODUCT_TYPE
+OIS1|,OIS1,,Managed Accounts — OIS1,PCR,product_hierarchy,managed_accounts,PRODUCT_TYPE
+JPMC|,JPMC,,Managed Accounts — JPMC,PCR,product_hierarchy,managed_accounts,PRODUCT_TYPE
+MAP|,MAP,,Managed Accounts — MAP,PCR,product_hierarchy,managed_accounts,PRODUCT_TYPE
+UMA|,UMA,,Managed – Unified Managed Accounts,PCR,product_hierarchy,managed_uma,PRODUCT_TYPE
+ATMF|,ATMF,,Trails – Mutual Funds,PCR,product_hierarchy,trails_mutual_funds,PRODUCT_TYPE
+ITMF|,ITMF,,Trails – Life & Annuities — ITMF,PCR,product_hierarchy,trails_life_annuities,PRODUCT_TYPE
+ADVA|,ADVA,,Trails – Life & Annuities — ADVA,PCR,product_hierarchy,trails_life_annuities,PRODUCT_TYPE
+MMKT|,MMKT,,Cash Management – Money Market Funds,PCR,product_hierarchy,cash_mgmt_mmkt,PRODUCT_TYPE
+PRDP|,PRDP,,Cash Management – Premium Deposits,PCR,product_hierarchy,cash_mgmt_prdp,PRODUCT_TYPE
+PCS|,PCS,,Referrals & Revenue Share – Situational Partnership,PCR,product_hierarchy,referrals_sit_partnership,PRODUCT_TYPE
+529T|,529T,,529 Plans,PCR,product_hierarchy,plans_529,PRODUCT_TYPE
+DAF|,DAF,,Donor Advised Funds,PCR,product_hierarchy,donor_advised_funds,PRODUCT_TYPE
+STRT|,STRT,,Structured Products,PCR,product_hierarchy,twhs_structured,PRODUCT_TYPE
+ELIS|EQ,ELIS,EQ,Equities,PCR,product_hierarchy,twhs_equities,PRODUCT_TYPE
+ELIS|OP,ELIS,OP,Options,PCR,product_hierarchy,twhs_options,PRODUCT_TYPE
+MUFD|,MUFD,,Mutual Funds,PCR,product_hierarchy,twhs_mutual_funds,PRODUCT_TYPE
+FCXX|,FCXX,,Fixed Income – Corporate Bonds,PCR,product_hierarchy,twhs_fi_corporate,PRODUCT_TYPE
+FMXX|,FMXX,,Fixed Income – Municipal Bonds,PCR,product_hierarchy,twhs_fi_municipal,PRODUCT_TYPE
+FGXX|,FGXX,,Fixed Income – Government Bonds,PCR,product_hierarchy,twhs_fi_government,PRODUCT_TYPE
+FCOT|,FCOT,,Fixed Income – Other,PCR,product_hierarchy,twhs_fi_other,PRODUCT_TYPE
+FCCD|,FCCD,,Cash Management – Brokered CDs,PCR,product_hierarchy,twhs_cash_mgmt_cds,PRODUCT_TYPE
+FIX|,FIX,,Life & Annuities — FIX,PCR,product_hierarchy,life_annuities,PRODUCT_TYPE
+VARI|,VARI,,Life & Annuities — VARI,PCR,product_hierarchy,life_annuities,PRODUCT_TYPE
+LIFE|,LIFE,,Life & Annuities — LIFE,PCR,product_hierarchy,life_annuities,PRODUCT_TYPE
+ALTI|,ALTI,,Alternative Investments,PCR,product_hierarchy,alternative_investments,PRODUCT_TYPE
+DCCR|,DCCR,,Defined Contribution Advisory,PCR,product_hierarchy,defined_contribution_advisory,PRODUCT_TYPE
+LEND|SBL,LEND,SBL,Lending – Security Based Lending,PCR,product_hierarchy,lending_sbl,PRODUCT_TYPE
+LEND|MGN,LEND,MGN,Lending – Margin,PCR,product_hierarchy,lending_margin,PRODUCT_TYPE
+EDK|,EDK,,Referrals & Revenue Share – Everyday 401K,PCR,product_hierarchy,referrals_everyday_401k,PRODUCT_TYPE
+MISC|,MISC,,Miscellaneous Level Two,PCR,product_hierarchy,unmapped,PRODUCT_TYPE

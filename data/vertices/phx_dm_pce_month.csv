@@ -1,0 +1,4 @@
+month_id,month_name,start_dt,end_dt,trading_days,is_baseline,is_partial
+202604,Apr 2026,2026-04-01 00:00:00,2026-04-30 00:00:00,21,true,false
+202605,May 2026,2026-05-01 00:00:00,2026-05-31 00:00:00,21,false,false
+202606,Jun 2026,2026-06-01 00:00:00,2026-06-30 00:00:00,12,false,true

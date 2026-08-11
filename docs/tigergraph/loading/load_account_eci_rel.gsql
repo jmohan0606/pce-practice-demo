@@ -1,0 +1,7 @@
+// Loading job for phx_dm_pce_account_eci_rel
+// CSV contract: header row required, columns in DDL order (primary id first):
+//   rel_id,acct_key,eci_id,enterprise_relationship_code,party_role_name,client_employee_ind,is_owner_role
+CREATE LOADING JOB load_phx_dm_pce_account_eci_rel FOR GRAPH phx_dm_pce_practice_demo {
+  DEFINE FILENAME f;
+  LOAD f TO VERTEX phx_dm_pce_account_eci_rel VALUES($"rel_id", $"acct_key", $"eci_id", $"enterprise_relationship_code", $"party_role_name", $"client_employee_ind", $"is_owner_role") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+}

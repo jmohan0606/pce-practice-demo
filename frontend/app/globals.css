@@ -1,0 +1,45 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* shadcn semantic variables mapped to the mockups.html palette */
+    --background: 216 22% 96%;        /* canvas #F4F6F9 */
+    --foreground: 212 21% 15%;        /* ink #1A2430 */
+    --card: 0 0% 100%;
+    --primary: 212 61% 22%;           /* navy #16365C */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 214 26% 91%;         /* rule #E2E7ED */
+    --secondary-foreground: 212 21% 15%;
+    --muted: 213 27% 94%;             /* rule-2 #EFF2F6 */
+    --muted-foreground: 211 16% 42%;  /* slate #5A6B7D */
+    --accent: 213 27% 94%;
+    --accent-foreground: 212 21% 15%;
+    --destructive: 3 71% 41%;         /* neg #B3261E */
+    --destructive-foreground: 0 0% 100%;
+    --success: 150 72% 29%;           /* pos #157F4C */
+    --success-foreground: 0 0% 100%;
+    --warning: 39 100% 27%;           /* derived text #8A5A00 */
+    --warning-foreground: 0 0% 100%;
+    --border: 214 26% 91%;            /* rule #E2E7ED */
+  }
+  body {
+    @apply bg-pm-canvas font-app text-pm-ink antialiased;
+    font-size: 14px;
+    line-height: 1.5;
+    font-variant-numeric: tabular-nums;
+  }
+  h1, h2, h3, h4 {
+    @apply font-semibold tracking-[-0.01em];
+  }
+}
+
+@layer utilities {
+  /* Financial numerals: tabular figures, right-aligned. Apply to numeric table cells. */
+  .num {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+  }
+}
