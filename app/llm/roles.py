@@ -257,6 +257,28 @@ class RoleLLM:
                 raise
             return _adapter_with_usage(self._active, prompt, context)
 
+    @property
+    def supports_conversation(self) -> bool:
+        return hasattr(self._active, "generate_conversation")
+
+    def generate_conversation(self, system_blocks: list[dict],
+                              messages: list[dict]) -> dict:
+        """Messages-array path with the same one-retry fallback — but only when
+        the fallback client also supports it (else the caller's single-string
+        fallback engages via supports_conversation)."""
+        if self._active is None or not self.supports_conversation:
+            raise RuntimeError(f"role {self.cfg.role}: active client has no "
+                               f"messages-array path")
+        try:
+            return self._active.generate_conversation(system_blocks, messages)
+        except Exception as exc:  # noqa: BLE001 — first-call failure → one retry
+            if self._fallback_tried:
+                raise
+            self._fall_back(f"first call failed: {exc}")
+            if self._active is None or not self.supports_conversation:
+                raise
+            return self._active.generate_conversation(system_blocks, messages)
+
     def describe(self) -> dict:
         inner = self._active.describe() if self._active is not None else {}
         return {**inner, "role": self.cfg.role, "served_path": self.served_path}

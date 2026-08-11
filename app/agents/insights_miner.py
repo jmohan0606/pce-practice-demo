@@ -38,9 +38,10 @@ from app.shared.logging import get_logger
 
 _log = get_logger("app.agents.insights_miner")
 
-MAX_TURNS = 60           # hard stop on LLM turns (the query budget is separate)
-ROWS_SHOWN_TO_MODEL = 20  # rows echoed into the transcript per result
-RECENT_RESULTS_KEPT = 10  # older tool results collapse to one-line summaries
+MAX_TURNS = 20            # hard stop on LLM turns (the query budget is separate)
+ROWS_SHOWN_TO_MODEL = 25  # rows echoed into the transcript per result (row_count always shown)
+RECENT_RESULTS_KEPT = 3   # older tool results collapse to code-built one-line summaries
+TOOL_RESULT_CHAR_CAP = 1500  # per-payload character cap on tool results
 
 VALID_TAGS = ("Fee Rate", "Market", "One-Time", "Inherited", "New Accounts",
               "Lost Accounts", "Transfers", "Referrals", "Period Length",
@@ -116,6 +117,50 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
         + json.dumps(initial["rows"][:ROWS_SHOWN_TO_MODEL], default=str)
         + "\n\nBegin. One JSON action per turn."
     )
+
+
+def _cap(text: str) -> str:
+    if len(text) <= TOOL_RESULT_CHAR_CAP:
+        return text
+    return text[:TOOL_RESULT_CHAR_CAP] + " …(payload capped)"
+
+
+def summarize_result(seq_no: int, query_name: str, rows: list[dict],
+                     row_count: int) -> str:
+    """One-line FACTUAL summary of a tool result, built from the result data in
+    code — no LLM call. Superseded results compress to this instead of losing
+    their signal to a blind first-line truncation."""
+    parts = [f"[seq {seq_no}] {query_name} → {row_count} rows"]
+    if rows:
+        numeric_cols = [c for c, v in rows[0].items()
+                        if isinstance(v, (int, float)) and not isinstance(v, bool)][:3]
+        for col in numeric_cols:
+            values = [r[col] for r in rows
+                      if isinstance(r.get(col), (int, float)) and not isinstance(r.get(col), bool)]
+            if not values:
+                continue
+            if len(values) == 1:
+                parts.append(f"{col}={round(values[0], 2)}")
+            else:
+                parts.append(f"{col} min {round(min(values), 2)} max {round(max(values), 2)}")
+    return ", ".join(parts)
+
+
+def _effective_transcript(transcript: list[dict]) -> list[tuple[str, str]]:
+    """The transcript as the model sees it: the last RECENT_RESULTS_KEPT tool
+    results stay verbatim; older ones compress to their code-built summary."""
+    tool_indexes = [i for i, e in enumerate(transcript) if e["label"] == "tool"]
+    collapse = (set(tool_indexes[:-RECENT_RESULTS_KEPT])
+                if len(tool_indexes) > RECENT_RESULTS_KEPT else set())
+    out: list[tuple[str, str]] = []
+    for i, entry in enumerate(transcript):
+        if i in collapse:
+            summary = entry.get("summary") or (entry["text"].splitlines()[0][:160]
+                                               + " … (earlier result collapsed)")
+            out.append((entry["label"], summary))
+        else:
+            out.append((entry["label"], entry["text"]))
+    return out
 
 
 def _parse_action(raw: str) -> dict | str:
@@ -200,7 +245,13 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
         advisor_sid, from_month, to_month, rules, transition, month_meta,
         tools_catalog(), initial)
 
-    transcript: list[tuple[str, str]] = []  # (label, text) after the opening
+    # {"label", "text", "summary"?} entries after the opening. Query results
+    # carry a code-built factual summary used when they age out of the window.
+    transcript: list[dict] = []
+    # 2.1: proper messages array with cache_control when the transport supports
+    # it (Claude); scripted/mock callables keep the single-string path.
+    use_conversation = bool(getattr(llm, "supports_conversation", False)) \
+        and callable(getattr(llm, "converse", None))
     findings: list[dict] = []
     unanswerable: list[str] = []
     done = False
@@ -221,22 +272,28 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
                          tools.run_id, max_prompt_tokens, turns, len(findings))
             break
         turns += 1
-        prompt = _render_prompt(opening, transcript, tools, len(findings))
-        raw = llm(prompt, {"system_prompt": system_prompt})
+        if use_conversation:
+            raw = llm.converse(
+                _system_blocks(system_prompt),
+                _build_messages(opening, transcript, tools, len(findings)))
+        else:
+            prompt = _render_prompt(opening, transcript, tools, len(findings))
+            raw = llm(prompt, {"system_prompt": system_prompt})
         action = _parse_action(raw)
         if isinstance(action, str):
             parse_failures += 1
             _tag(llm, "parse_failure")
-            transcript.append(("assistant", raw))
-            transcript.append(("system", f"RESPONSE REJECTED: {action}. Reply with one "
-                                         f"valid JSON action object only."))
+            transcript.append({"label": "assistant", "text": raw})
+            transcript.append({"label": "system",
+                               "text": f"RESPONSE REJECTED: {action}. Reply with one "
+                                       f"valid JSON action object only."})
             if parse_failures >= 3:
                 _log.warning("miner %s: 3 consecutive parse failures — stopping",
                              tools.run_id)
                 break
             continue
         parse_failures = 0
-        transcript.append(("assistant", json.dumps(action, default=str)))
+        transcript.append({"label": "assistant", "text": json.dumps(action, default=str)})
         kind = str(action.get("action") or "").lower()
         _tag(llm, kind or "unknown",
              str(action.get("query_name") or "") if kind == "query" else "")
@@ -244,47 +301,58 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
         if kind == "done":
             done = True
         elif kind == "query":
+            query_name = str(action.get("query_name") or "")
             try:
-                result = tools.run_graph_query(str(action.get("query_name") or ""),
-                                               action.get("params") or {})
+                result = tools.run_graph_query(query_name, action.get("params") or {})
                 shown = result["rows"][:ROWS_SHOWN_TO_MODEL]
-                note = ("" if result["row_count"] <= ROWS_SHOWN_TO_MODEL
-                        else f" (showing {ROWS_SHOWN_TO_MODEL} of {result['row_count']})")
-                transcript.append(("tool", f"seq {result['seq_no']} — "
-                                           f"{result['row_count']} rows{note}:\n"
-                                           + json.dumps(shown, default=str)))
+                # row_count ALWAYS follows the rows so the agent knows the true size
+                transcript.append({
+                    "label": "tool",
+                    "text": (f"seq {result['seq_no']} — {query_name} showing "
+                             f"{len(shown)} row(s):\n"
+                             + _cap(json.dumps(shown, default=str))
+                             + f"\nrow_count={result['row_count']}"),
+                    "summary": summarize_result(result["seq_no"], query_name,
+                                                result["rows"], result["row_count"]),
+                })
             except BudgetExhausted:
-                transcript.append(("system", "QUERY BUDGET EXHAUSTED. Emit your remaining "
-                                             "findings now, then {\"action\":\"done\"}."))
+                transcript.append({"label": "system",
+                                   "text": "QUERY BUDGET EXHAUSTED. Emit your remaining "
+                                           "findings now, then {\"action\":\"done\"}."})
             except CatalogError as exc:
-                transcript.append(("tool", f"QUERY ERROR: {exc}"))
+                transcript.append({"label": "tool", "text": f"QUERY ERROR: {exc}"})
         elif kind == "get_schema":
             schema = tools.get_schema()
-            transcript.append(("tool", json.dumps(schema, default=str)[:6000]))
+            transcript.append({"label": "tool",
+                               "text": _cap(json.dumps(schema, default=str))})
         elif kind == "search":
             rows = tools.search_documents(str(action.get("query") or ""),
                                           int(action.get("top_k") or 5))
-            transcript.append(("tool", json.dumps(rows, default=str)[:4000]))
+            transcript.append({"label": "tool",
+                               "text": _cap(json.dumps(rows, default=str))})
         elif kind == "finding":
             finding, error = _validate_finding(action, tools)
             if error:
-                transcript.append(("system", f"FINDING REJECTED: {error}"))
+                transcript.append({"label": "system", "text": f"FINDING REJECTED: {error}"})
             else:
                 findings.append(finding)
-                transcript.append(("system", f"finding #{len(findings)} recorded: "
-                                             f"{finding['title']!r} with "
-                                             f"{len(finding['evidence_rows'])} evidence rows"))
+                transcript.append({"label": "system",
+                                   "text": f"finding #{len(findings)} recorded: "
+                                           f"{finding['title']!r} with "
+                                           f"{len(finding['evidence_rows'])} evidence rows"})
         elif kind == "unanswerable":
             question = str(action.get("question") or "").strip()
             if question:
                 unanswerable.append(question)
                 tools._store.log_query(tools.run_id, tools.agent_name,
                                        "unanswerable", {"question": question}, 0, 0)
-            transcript.append(("system", "recorded as unanswerable — the catalog grows "
-                                         "from these between rounds"))
+            transcript.append({"label": "system",
+                               "text": "recorded as unanswerable — the catalog grows "
+                                       "from these between rounds"})
         else:
-            transcript.append(("system", f"unknown action {kind!r} — use query / "
-                                         f"get_schema / search / finding / unanswerable / done"))
+            transcript.append({"label": "system",
+                               "text": f"unknown action {kind!r} — use query / "
+                                       f"get_schema / search / finding / unanswerable / done"})
 
     findings.sort(key=lambda f: -(abs(f["impact_amt"]) if f["impact_amt"] is not None else 0))
 
@@ -314,19 +382,49 @@ def tools_catalog() -> list[dict]:
     return catalog_signatures()
 
 
-def _render_prompt(opening: str, transcript: list[tuple[str, str]],
+def _reminder(tools: MinerTools, finding_count: int) -> str:
+    return (f"[system] queries remaining: {tools.remaining} · findings recorded: "
+            f"{finding_count}. Next JSON action:")
+
+
+def _render_prompt(opening: str, transcript: list[dict],
                    tools: MinerTools, finding_count: int) -> str:
-    """One user message carrying the whole conversation. Older tool results
-    collapse to one-line summaries so the context stays bounded."""
+    """Single-string fallback path (mock / scripted / non-Claude transports).
+    Same pruning as the messages path — prompt caching just cannot help here."""
     parts = [opening]
-    tool_indexes = [i for i, (label, _) in enumerate(transcript) if label == "tool"]
-    collapse = set(tool_indexes[:-RECENT_RESULTS_KEPT]) if len(tool_indexes) > RECENT_RESULTS_KEPT else set()
-    for i, (label, text) in enumerate(transcript):
-        if i in collapse:
-            first = text.splitlines()[0][:160]
-            parts.append(f"[{label}] {first} … (earlier result collapsed)")
-        else:
-            parts.append(f"[{label}] {text}")
-    parts.append(f"[system] queries remaining: {tools.remaining} · findings recorded: "
-                 f"{finding_count}. Next JSON action:")
+    parts += [f"[{label}] {text}" for label, text in _effective_transcript(transcript)]
+    parts.append(_reminder(tools, finding_count))
     return "\n\n".join(parts)
+
+
+def _system_blocks(system_prompt: str) -> list[dict]:
+    """Static block 1: byte-identical every turn → cache read from turn 2 on."""
+    return [{"type": "text", "text": system_prompt,
+             "cache_control": {"type": "ephemeral"}}]
+
+
+def _build_messages(opening: str, transcript: list[dict],
+                    tools: MinerTools, finding_count: int) -> list[dict]:
+    """The proper messages array (2.1). The opening block (rules + catalog +
+    initial observation) carries cache_control and is byte-identical every turn;
+    conversation turns are APPENDED after it, never rebuilt into one string.
+    Consecutive same-role entries merge into one message's content blocks."""
+    messages: list[dict] = [{
+        "role": "user",
+        "content": [{"type": "text", "text": opening,
+                     "cache_control": {"type": "ephemeral"}}],
+    }]
+    for label, text in _effective_transcript(transcript):
+        role = "assistant" if label == "assistant" else "user"
+        block = {"type": "text",
+                 "text": text if role == "assistant" else f"[{label}] {text}"}
+        if messages[-1]["role"] == role:
+            messages[-1]["content"].append(block)
+        else:
+            messages.append({"role": role, "content": [block]})
+    reminder = {"type": "text", "text": _reminder(tools, finding_count)}
+    if messages[-1]["role"] == "user":
+        messages[-1]["content"].append(reminder)
+    else:
+        messages.append({"role": "user", "content": [reminder]})
+    return messages

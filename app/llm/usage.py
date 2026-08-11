@@ -75,6 +75,18 @@ class TurnLoggingLLM:
     # generate() alias so the wrapper also satisfies the LLMClient duck type
     generate = __call__
 
+    @property
+    def supports_conversation(self) -> bool:
+        return bool(getattr(self.inner, "supports_conversation", False)) \
+            and hasattr(self.inner, "generate_conversation")
+
+    def converse(self, system_blocks: list[dict], messages: list[dict]) -> str:
+        """Messages-array path (cache_control-aware) — logged like every turn."""
+        start = time.perf_counter()
+        result = self.inner.generate_conversation(system_blocks, messages)
+        self._record(result, (time.perf_counter() - start) * 1000)
+        return result["text"]
+
     def tag_last(self, action_kind: str, query_name: str = "") -> None:
         """Callers annotate the just-logged turn once they know what it did."""
         if self._last_turn is not None:

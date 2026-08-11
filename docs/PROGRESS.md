@@ -11,7 +11,17 @@
       budget_hit_tokens on phx_dm_pce_insight_run; MAX_RUN_INPUT_TOKENS=60000 hard stop
       in the miner loop. verify a/b/c: 25/25, 19/19, 12/12 (2a/2b/2e widened to >=,
       DECISIONS.md)
-- [ ] Task 2: context engineering (messages array + cache_control, pruning, budgets)
+- [x] Task 2: context engineering — miner sends a real messages array (system +
+      opening blocks carry cache_control ephemeral, byte-identical every turn;
+      turns appended, not rebuilt) via ClaudeLLMClient.generate_conversation;
+      single-string path kept for mock/scripted/non-Claude. Pruning:
+      RECENT_RESULTS_KEPT 10→3, payload cap 1500 chars, ROWS_SHOWN 25 with
+      row_count= always appended; superseded results compress to code-built
+      factual one-liners (summarize_result — no LLM). Budgets MAX_TURNS 60→20,
+      query budget 40→12 (MINER_QUERY_BUDGET). verify a/b/c still 25/19/12.
+      NOTE: Haiku's minimum cacheable prefix is 4096 tokens — the opening block
+      (rules+catalog+initial) makes the cached prefix large enough; the system
+      block alone would not be.
 - [ ] Task 3: Trace screen + /api/trace endpoints
 - [ ] Task 4: UI corrections (4.1–4.6)
 - [ ] Task 5: schema additions (opportunity, document_type, checklist)

@@ -155,6 +155,23 @@ class ClaudeLLMClient:
         text = "".join(block.text for block in response.content if block.type == "text")
         return {"text": text, "usage": self._usage_dict(response), "model": self.model}
 
+    supports_conversation = True
+
+    def generate_conversation(self, system_blocks: list[dict],
+                              messages: list[dict]) -> dict:
+        """Proper messages-array path with per-block cache_control — the caller
+        (the Insights Miner) keeps its two static blocks byte-identical every
+        turn so they bill at cache-read rates from turn 2 onward. Other agents
+        keep the single-string generate() path."""
+        response = self._client.messages.create(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            system=system_blocks,
+            messages=messages,
+        )
+        text = "".join(block.text for block in response.content if block.type == "text")
+        return {"text": text, "usage": self._usage_dict(response), "model": self.model}
+
     def describe(self) -> dict:
         return {"mode": "claude", "model": self.model}
 

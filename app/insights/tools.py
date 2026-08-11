@@ -19,7 +19,7 @@ from app.shared.logging import get_logger
 
 _log = get_logger("app.insights.tools")
 
-QUERY_BUDGET = 40
+QUERY_BUDGET = 12  # cost-fix session 2.4 (was 40); MINER_QUERY_BUDGET overrides
 
 
 class BudgetExhausted(RuntimeError):
@@ -30,7 +30,11 @@ class MinerTools:
     """The ONLY capabilities the Miner has. The Reporter never sees this object."""
 
     def __init__(self, run_id: str, agent_name: str = "insights_miner",
-                 budget: int = QUERY_BUDGET) -> None:
+                 budget: int | None = None) -> None:
+        if budget is None:
+            from app.config.settings import get_settings
+
+            budget = get_settings().miner_query_budget
         self.run_id = run_id
         self.agent_name = agent_name
         self.budget = budget
