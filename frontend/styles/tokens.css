@@ -1,0 +1,13 @@
+/* Design tokens — copied verbatim from docs/ui/mockups.html :root. Do not re-derive. */
+:root{
+  --navy:#16365C; --navy-hi:#1E4675; --ink:#1A2430; --slate:#5A6B7D; --slate-2:#8A9AAA;
+  --rule:#E2E7ED; --rule-2:#EFF2F6; --canvas:#F4F6F9; --panel:#FBFCFD;
+  --rec:#C5B88F; --nrec:#6699C2;
+  --pos:#157F4C; --pos-bg:#E8F5EE; --pos-br:#B5D9C6;
+  --neg:#B3261E; --neg-bg:#FBECEA; --neg-br:#EFC6C2;
+  --real-bg:#E6F4EC; --real-tx:#1A6B42;
+  --der-bg:#FBF0DC; --der-tx:#8A5A00;
+  --tag-bg:#EDF1F5; --tag-tx:#4A5B6D;
+  --ai:#4C4EA3; --ai-bg:#EEEEF8; --ai-br:#C9CAE8;
+  --tot-bg:#EAF0F7;
+}

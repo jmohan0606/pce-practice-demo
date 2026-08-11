@@ -200,8 +200,10 @@ def check_health() -> None:
     body = r.json() if ok else {}
     check("8a. GET /api/health returns 200 and healthy=true",
           ok and body.get("healthy") is True, f"status {r.status_code}")
+    # >= 16: the 16 foundation vertex types must all be counted; later rounds
+    # legitimately add app-written types (Round B: rule + rule_set_version at seed).
     check("8b. health reports graph tier + per-vertex counts",
-          body.get("graph", {}).get("tier") is not None and len(body.get("vertex_counts", {})) == 16,
+          body.get("graph", {}).get("tier") is not None and len(body.get("vertex_counts", {})) >= 16,
           f"tier={body.get('graph', {}).get('tier')}, {len(body.get('vertex_counts', {}))} vertex types")
     llm = body.get("llm", {})
     check("8c. health reports LLM reachability honestly",

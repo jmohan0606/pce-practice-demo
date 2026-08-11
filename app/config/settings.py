@@ -128,6 +128,10 @@ class Settings(BaseSettings):
         default="sentence-transformers/all-MiniLM-L6-v2", alias="LOCAL_EMBEDDING_MODEL"
     )
 
+    # --- Knowledge chunking (Round B, spec B2.2) ---
+    chunk_max_chars: int = Field(default=1800, alias="CHUNK_MAX_CHARS")
+    chunk_overlap_chars: int = Field(default=200, alias="CHUNK_OVERLAP_CHARS")
+
     # --- Per-agent LLM role config (four PCE agents). All optional; empty = the
     # active LLM_MODE's own defaults, per field — see app/llm/roles.py.
     rule_extractor_mode: str = Field(default="", alias="RULE_EXTRACTOR_MODE")

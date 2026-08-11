@@ -7,7 +7,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-DEFAULT_COLLECTION = "pce_knowledge_base"
+# Round B (spec B2.3): the plan-document corpus lives in ONE Chroma collection.
+DEFAULT_COLLECTION = "pce_plan_documents"
 
 
 class KnowledgeDocumentType(StrEnum):
@@ -46,6 +47,10 @@ class KnowledgeChunk(BaseModel):
     chunk_index: int
     chunk_text: str
     chunk_summary: str | None = None
+    # Round B provenance (spec B2.2) — page_no must never be wrong.
+    page_no: int = 1
+    section_path: str = "(preamble)"
+    has_table: bool = False
     metadata: dict = Field(default_factory=dict)
 
 

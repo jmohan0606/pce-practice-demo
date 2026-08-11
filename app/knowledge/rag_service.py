@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 from app.knowledge.models import DEFAULT_COLLECTION, KnowledgeSearchRequest
+
+# SPY POINT (verify_round_b check 10): every LLM call this module can make goes
+# through this ONE module-level name. Patch `app.knowledge.rag_service.get_llm_client`
+# with a spy and it observes exactly the calls made — the honest not-found path
+# below the 0.30 floor must trigger it ZERO times.
 from app.llm.client import get_llm_client
 
 
@@ -52,6 +57,10 @@ class RagGenerationService:
                 "document_category": result.metadata.get("document_category", ""),
                 "similarity": result.score,
                 "excerpt": result.chunk_text,
+                # Round B provenance (spec B2.2) — carried through Chroma metadata.
+                "page_no": result.metadata.get("page_no"),
+                "section_path": result.metadata.get("section_path"),
+                "has_table": bool(result.metadata.get("has_table", False)),
             })
         return sources
 

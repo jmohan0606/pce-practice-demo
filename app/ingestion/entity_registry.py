@@ -20,6 +20,23 @@ _BATCH_OVERRIDES: dict[str, int] = {
     "account_month": 1000,
 }
 
+# Vertex columns that hold an account key and must pass through the ONE shared
+# normalize_account_key on ingest. acct_src_raw is deliberately absent — the raw
+# source value is preserved verbatim for audit.
+_ACCOUNT_KEY_COLUMNS = {"acct_key", "acct_src_key"}
+_ACCOUNT_VERTEX = f"{_PREFIX}account"
+
+
+def _normalize_columns(entry: dict) -> list[str]:
+    if entry["kind"] == "vertex":
+        return [c for c in (entry.get("columns") or {}) if c in _ACCOUNT_KEY_COLUMNS]
+    cols = []
+    if entry.get("from_type") == _ACCOUNT_VERTEX and entry.get("from_column"):
+        cols.append(entry["from_column"])
+    if entry.get("to_type") == _ACCOUNT_VERTEX and entry.get("to_column"):
+        cols.append(entry["to_column"])
+    return cols
+
 
 def _entity_name(target: str) -> str:
     return target[len(_PREFIX):] if target.startswith(_PREFIX) else target
@@ -56,6 +73,7 @@ def _configs() -> dict[str, IngestionEntityConfig]:
             to_type=entry.get("to_type"),
             from_column=entry.get("from_column"),
             to_column=entry.get("to_column"),
+            normalize_columns=_normalize_columns(entry),
         )
     return configs
 

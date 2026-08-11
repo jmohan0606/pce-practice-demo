@@ -1,38 +1,46 @@
 # Build Progress
 
 ## Current position
-Round: A — COMPLETE (verify_round_a.py 25/25, see docs/ROUND_A_COMPLETE.md)
-Task: next session starts Round B (dashboard, RAG, rules — BUILD_PLAN §5)
-Last updated: 2026-08-11 ~10:20 UTC
+Round: B — COMPLETE (verify_round_b.py 17/17 AND verify_round_a.py 25/25, see docs/ROUND_B_COMPLETE.md)
+Task: next session starts Round C (insights agents, advisor page — docs/spec/ROUND_C_SPEC.md)
+Last updated: 2026-08-11 ~13:30 UTC
 
-## Task checklist (Round A)
-- [x] 1. Port §2 port list — app/config (main thread), app/graph (6 files), app/ingestion (12), app/shared (7) +
-      app/api/middleware (2) + app/llm (3), app/knowledge (8, from v1), frontend base shell (port 3001).
-      All py_compile clean; integration import test passed; zero phx_dm_v2_/iperform leftovers (grep-verified).
-- [x] 2. docs/tigergraph/ — 24 vertices, 36 edges, create graph, drop-all in exact reverse order,
-      16 vertex loading jobs + load_edges.gsql, QUOTE="double" on 43/43 LOADs, schema_catalog.json. Structural checks ALL PASSED.
-- [x] 3. app/revenue/products.py — 24-group seed + unmapped; resolve_product with ELIS/LEND sub-code splits (sanity run observed).
-- [x] 4. app/revenue/aggregation.py — build_monthly_revenue + independent verify (tamper detection observed).
-- [x] 5. Mock data generator ran (seed 42): 43 files, 4,605 vertex rows, 15,367 edge rows; all demo scenarios verified present.
-- [x] 6. scripts/load_mock_data.py loaded all 43 entities through the ported pipeline; manifest verification ok=True, 0 mismatches (observed).
-- [x] 7. GET /api/health live-tested via uvicorn + curl: healthy=true, tier 4, 16 vertex counts, honest LLM state (observed).
-- [x] 8. scripts/verify_round_a.py: 25/25 PASS, exit 0 (output pasted in docs/ROUND_A_COMPLETE.md).
+## Task checklist (Round B)
+- [x] B1 Dashboard — 4 API endpoints (exact B1.1 shapes, mock-tier queries in app/graph/queries/pce_dashboard.py),
+      frontend restructured to B1.2 (tokens verbatim from mockups.html, format.ts everywhere,
+      negatives in parentheses, filters only where they act); npm build passes, 5 pages serve.
+- [x] B2 RAG — pdfplumber/docx/pptx parsing, table-preserving SectionChunker (1800/200),
+      Chroma-first dual write with rollback, sha256 dedup, 0.30 floor with zero LLM calls below,
+      five /api/documents endpoints, scripts/make_test_pdf.py.
+- [x] B3 Rules — grammar + compiler (schema_catalog field resolution), evaluator with baseline
+      guard + transfer exclusion, immutable RuleStore with graph mirroring, v0 seed (6 rules,
+      exact B3.7), extractor (6-chunk windows, 1 overlap, NEEDS_INPUT never dropped),
+      conflict auditor (proposals only), /api/rules endpoints.
+- [x] Main thread — routers + ensure_v0_seed wired in app/api/main.py;
+      normalize_account_key wired into ingestion (manifest-derived normalize_columns,
+      13 entities; padded keys normalise, 0 churn on clean data).
+- [x] scripts/verify_round_b.py — 17/17 PASS (output pasted in docs/ROUND_B_COMPLETE.md).
+- [x] Regression: verify_round_a.py 25/25 (8b widened to >=16 vertex types — rule seed adds 2).
 
 ## Verified working
-- FastAPI starts on 8001; /api/health green (graph mock tier 4, all counts); server output observed via curl
-- Ingestion end-to-end on mock data: 43/43 entities, counts == manifest, fail-loud path exercised by design
-- Monthly aggregates match an independent recomputation from the transaction CSV (1,008 rows, 0 mismatches)
-- verify_round_a.py 25/25
+- Full app in-process: health + 4 dashboard + documents + rules endpoints all 200 (mock modes)
+- Product contribution math: rows==subtotals==total, share_pct 100.01, 25/25 groups, no dupes
+- Table-bearing PDF → whole table in one has_table chunk; re-upload dedups; rollback leaves no orphans
+- v0→v1 publish lifecycle with SUPERSEDED-and-queryable prior version; conflicts proposed never applied
+- Ingestion normalises padded account keys; clean data re-ingests as 100% SKIP
 
 ## Known broken / deferred
-- frontend not npm-installed/built yet (Round B first step)
-- knowledge chunker still V1 900-char window (Round B rework per plan)
-- GSQL structurally verified only — no live TigerGraph reachable from this box
-- LLM_MODE=cdao unreachable here (no cdao package) — expected on the build box; use LLM_MODE=mock locally
+- Insights page empty state, Advisor page KPIs-only (Round C)
+- Extractor end-to-end needs the client cdao environment (mock-verified deterministically here)
+- GSQL still not executed against a live TigerGraph (none reachable)
+- pdfplumber was missing from this box despite the confirmed list — now installed (0.11.10) and
+  in pyproject's rag extra; re-check the other confirmed packages in the client environment
 
 ## Notes for the next session
-- Read docs/ROUND_A_COMPLETE.md "For the next round" — interface contracts and gotchas.
+- Read docs/ROUND_B_COMPLETE.md "Deviations / notes" + DECISIONS.md Round B entries.
 - reference/v1 and reference/v2 are read-only; copy out, never import across.
-- normalize_account_key in app/shared/ids.py is the ONE account-key normalisation.
-- cdao GPT-5: blank api_version → omit argument, temperature=1, never max_tokens; LLM_MODE=cdao → cdao_openai adapter.
-- docs/DECISIONS.md has all port-time decisions.
+- Local test modes: EMBEDDING_MODE=mock LLM_MODE=mock (cdao only exists client-side).
+- B2→B3 contract: extract_rules_for_document(document_id, chunks) with chunk dicts
+  {chunk_id, text/chunk_text, page_no, section_path, has_table}.
+- LLM spy point for no-call assertions: app.knowledge.rag_service.get_llm_client.
+- Rule store is process-local, mirrored to graph; seed runs at startup AND lazily via router dep.

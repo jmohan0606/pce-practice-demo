@@ -41,6 +41,9 @@ class IngestionEntityConfig(BaseModel):
     to_type: str | None = None
     from_column: str | None = None
     to_column: str | None = None
+    # Columns holding account keys — normalised through THE shared
+    # normalize_account_key before validation/hash/write (SCHEMA_SPEC §0).
+    normalize_columns: list[str] = Field(default_factory=list)
 
 
 class IngestionBatchStatus(BaseModel):

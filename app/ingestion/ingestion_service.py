@@ -18,7 +18,7 @@ from app.ingestion.models import (
 )
 from app.ingestion.tigergraph_upsert import TigerGraphUpsertClient
 from app.ingestion.validation_engine import ValidationEngine
-from app.shared.ids import timestamp_id
+from app.shared.ids import normalize_account_key, timestamp_id
 
 # Persist the batch checkpoint every N rows (plus at every batch boundary and on
 # completion/failure) — one SQLite fsync per N rows instead of per row.
@@ -242,6 +242,14 @@ class IngestionService:
             for row_number, record in enumerate(reader, start=1):
                 if row_number < start_row:
                     continue
+
+                # Account keys go through THE shared normalisation before anything
+                # else sees them — the primary key, delta hash, validation and the
+                # graph write all operate on the normalised value, so a real CSV
+                # with padded/zero-prefixed keys joins cleanly against the graph.
+                for col in config.normalize_columns:
+                    if record.get(col) is not None:
+                        record[col] = normalize_account_key(record[col])
 
                 primary_key = _record_pk(record)
                 try:

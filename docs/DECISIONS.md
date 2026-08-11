@@ -37,3 +37,43 @@ Context: The prior commit is titled "Round A: foundation, ported graph/ingestion
 Decision: Treat Round A as starting from task 1; do not trust the commit message.
 Reason: Verified via git show --stat.
 Reversible: n/a (observation)
+
+## 2026-08-11 · Round B · Account-key normalisation is manifest-derived in the ingestion path
+Context: normalize_account_key existed but only the mock generator used it; real CSVs will arrive with padded/zero-prefixed keys.
+Decision: The entity registry derives normalize_columns per entity from the manifest — vertex columns named acct_key/acct_src_key, plus edge endpoint columns whose from_type/to_type is phx_dm_pce_account — and IngestionService normalises those values on every record before primary key, validation, delta hash and graph write. acct_src_raw is deliberately excluded (raw source value preserved for audit).
+Reason: One derivation rule instead of a hand-kept column list; normalisation before hashing means already-clean data re-ingests as SKIP (verified: 0 churn on mock data) while padded keys land normalised (verified via dry run).
+Reversible: yes
+
+## 2026-08-11 · Round B · Transition txn_count is the to-month's count
+Context: B1.1's transitions example shows one txn_count per transition without saying which month it belongs to.
+Decision: txn_count = the destination (to) month's transaction count.
+Reason: The mockup's May→Jun card shows ~10,880, consistent with partial June — i.e. the to-month.
+Reversible: yes
+
+## 2026-08-11 · Round B · change_pct is null when from_amt is 0
+Context: Spec keeps zero-in-one-month rows (a real signal) but a percent change from zero is undefined.
+Decision: change_pct: null in the API; the UI renders "—". direction is "up" for change ≥ 0. With class=RECURRING|NON_RECURRING the total and share_pct are of the filtered scope so shares still sum to 100.
+Reversible: yes
+
+## 2026-08-11 · Round B · Rule persistence: internal store + graph mirror
+Context: The graph schema's phx_dm_pce_rule vertex lacks fields the B3.1 rule object needs (driver_tag, citations, unclear_notes, evaluation_order).
+Decision: app/rules/store.py RuleStore holds full rule dicts and mirrors the schema-catalogued subset to phx_dm_pce_rule / phx_dm_pce_rule_set_version via the tiered graph client on every write.
+Reason: Keeps the graph honest to its schema while losing nothing from the richer rule object; same upsert path persists on a live TigerGraph.
+Reversible: yes
+
+## 2026-08-11 · Round B · LOST_ACCOUNT seeded literally as specced
+Context: B3.7's LOST_ACCOUNT compute sum(credited_amt) / trigger value > 0 matches 0 accounts on the mock data even in 202605/202606 (zero-balance prior-present rows have credited_amt 0 in the current month).
+Decision: Seed the rule exactly per the B3.7 table rather than reinterpreting compute as prior-month revenue.
+Reason: The spec says "write these exactly"; reinterpretation is an operator edit, which the immutable-edit flow exists for.
+Reversible: yes (edit mints a new rule row in a new version)
+
+## 2026-08-11 · Round B · verify_round_a 8b widened to >= 16 vertex types
+Context: The B3 v0 seed writes phx_dm_pce_rule + phx_dm_pce_rule_set_version at startup, so health now honestly reports 18 vertex-type counts and Round A's "== 16" check failed.
+Decision: 8b now requires >= 16; the 16 foundation types must all still be counted.
+Reason: Later rounds legitimately add app-written vertex types; suppressing them from health would be dishonest.
+Reversible: yes
+
+## 2026-08-11 · Round B · section_path is the full heading trail joined with " > "
+Context: B2's spec example shows a leaf ("3.2 Discount Sharing"); nested sections need ancestry for provenance.
+Decision: section_path renders the dotted heading trail joined with " > " (e.g. "3 Adjustments > 3.2 Discount Sharing").
+Reversible: yes
