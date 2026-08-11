@@ -84,6 +84,12 @@ Context: Review found parameter validation was order-dependent: a missing `:advi
 Decision: `evaluate_plan` validates every parameter declared in the compiled plan BEFORE fetching rows; the compiler now also collects params referenced in the attribute expression. verify_round_b B3-18/B3-19 pin both fixes.
 Reversible: yes
 
+## 2026-08-11 · Round C task 1 · Local embeddings are a Codespace-only substitute
+Context: Anthropic has no embedding API and the cdao gateway exists only in the client environment, so real-embedding work on this Codespace needs a third path.
+Decision: EMBEDDING_MODE=local with sentence-transformers/all-MiniLM-L6-v2 at EMBEDDING_DIM=384 on the Codespace ONLY. The client environment uses cdao `text-embedding-3-large-1` at its own dimension — ROUND_D preflight D0.2 must OBSERVE that dimension from a live embed rather than assume 3072, and the Chroma collection must be rebuilt on any dim change (vectors of different dims never mix).
+Reason: There is no EMBEDDING_MODE=mock (the Round B note claiming so was wrong — corrected in PROGRESS.md); local is the only real-vector mode available here.
+Reversible: yes (env-only)
+
 ## 2026-08-11 · Round B · section_path is the full heading trail joined with " > "
 Context: B2's spec example shows a leaf ("3.2 Discount Sharing"); nested sections need ancestry for provenance.
 Decision: section_path renders the dotted heading trail joined with " > " (e.g. "3 Adjustments > 3.2 Discount Sharing").

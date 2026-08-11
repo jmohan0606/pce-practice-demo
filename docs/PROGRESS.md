@@ -12,7 +12,9 @@ Last updated: 2026-08-11 (Round C session)
 - [x] 0.2 LOST_ACCOUNT fixed via prior_end_balance/prior_credited_amt on account_month
       (DDL V11, loading job, mock generator, schema_catalog, SCHEMA_SPEC; compute ->
       sum(prior_credited_amt); verify B3-19: 10 matches on 202605, empty-with-reason 202604)
-- [ ] 1 LLM_MODE=claude (sonnet-4-5) + EMBEDDING_MODE=local (MiniLM 384) + scripts/check_llm.py
+- [x] 1 LLM_MODE=claude (claude-sonnet-4-5-20250929) + EMBEDDING_MODE=local
+      (all-MiniLM-L6-v2, EMBEDDING_DIM=384) — scripts/check_llm.py ran live: real Claude
+      sentence + 384-dim embedding, output in ROUND_C_COMPLETE.md
 - [ ] 2 C1 query catalog (24 queries, local impls + GSQL files)
 - [ ] 2 C2 Insights Miner (3 tools, 40-query budget, agent_query_log, evidence rows)
 - [ ] 2 C3 Insights Reporter (findings only, numeric assertion in code, template fallback)
@@ -56,7 +58,11 @@ Last updated: 2026-08-11 (Round C session)
 ## Notes for the next session
 - Read docs/ROUND_B_COMPLETE.md "Deviations / notes" + DECISIONS.md Round B entries.
 - reference/v1 and reference/v2 are read-only; copy out, never import across.
-- Local test modes: EMBEDDING_MODE=mock LLM_MODE=mock (cdao only exists client-side).
+- Local modes: LLM_MODE=claude + EMBEDDING_MODE=local since Round C (cdao only exists
+  client-side). CORRECTION to the Round B note: EMBEDDING_MODE=mock does NOT exist —
+  valid modes are cdao | cdao_openai | local | azure | azure_openai; anything else raises
+  EmbeddingClientError. verify_round_b sets EMBEDDING_MODE=mock but its checks never
+  construct an embedding client below the 0.30 floor path it tests.
 - B2→B3 contract: extract_rules_for_document(document_id, chunks) with chunk dicts
   {chunk_id, text/chunk_text, page_no, section_path, has_table}.
 - LLM spy point for no-call assertions: app.knowledge.rag_service.get_llm_client.
