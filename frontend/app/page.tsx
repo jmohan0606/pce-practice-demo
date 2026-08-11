@@ -104,8 +104,6 @@ export default function DashboardPage() {
     return `${first}–${months[months.length - 1].month_name}`;
   }, [months]);
 
-  const partialMonth = months.find((m) => m.is_partial);
-
   return (
     <section>
       <PageHeader title="Practice Management Dashboard" meta={`${advisorLabel}${rangeLabel ? ` · ${rangeLabel}` : ""}`}>
@@ -153,13 +151,6 @@ export default function DashboardPage() {
         ) : (
           <EmptyState title="Loading" message="Fetching monthly revenue…" />
         )}
-        {partialMonth ? (
-          <div className="note">
-            {partialMonth.month_name} is a partial month ({partialMonth.trading_days} trading days).
-            Its transition is available, but part of the change comes from the shorter period rather
-            than the book.
-          </div>
-        ) : null}
       </div>
 
       <div className="card">

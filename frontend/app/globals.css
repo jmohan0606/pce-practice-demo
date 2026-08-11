@@ -77,7 +77,11 @@ select,.btn{font:inherit;font-size:13px;border:1px solid var(--rule);background:
   cursor:pointer;border:1px solid;font-family:inherit}
 .apill.up{color:var(--pos);border-color:var(--pos-br)}
 .apill.dn{color:var(--neg);border-color:var(--neg-br)}
-.apill[aria-pressed="true"]{background:var(--navy);color:#fff;border-color:var(--navy)}
+/* Selection must not mask the colour coding (4.4): 2px navy border + light
+   tint; the green/red text and arrow stay. */
+.apill[aria-pressed="true"]{border:2px solid var(--navy);padding:3px 10px}
+.apill.up[aria-pressed="true"]{background:var(--pos-bg)}
+.apill.dn[aria-pressed="true"]{background:var(--neg-bg)}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;font-size:11px;letter-spacing:.03em;color:#DCE4EE;font-weight:600;
   padding:11px 14px;background:var(--navy)}

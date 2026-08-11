@@ -215,7 +215,7 @@
         "file_key": "file_key",
         "trade_description": "trade_description"
       },
-      "expected_rows": 1772,
+      "expected_rows": 2047,
       "order": 12
     },
     {
@@ -235,7 +235,7 @@
         "txn_count": "txn_count",
         "distinct_accounts": "distinct_accounts"
       },
-      "expected_rows": 1059,
+      "expected_rows": 1024,
       "order": 13
     },
     {
@@ -338,7 +338,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1772,
+      "expected_rows": 2047,
       "order": 19
     },
     {
@@ -350,7 +350,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1772,
+      "expected_rows": 2047,
       "order": 20
     },
     {
@@ -362,7 +362,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1772,
+      "expected_rows": 2047,
       "order": 21
     },
     {
@@ -374,7 +374,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1772,
+      "expected_rows": 2047,
       "order": 22
     },
     {
@@ -386,7 +386,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1059,
+      "expected_rows": 1024,
       "order": 23
     },
     {
@@ -398,7 +398,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1059,
+      "expected_rows": 1024,
       "order": 24
     },
     {
@@ -410,7 +410,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1059,
+      "expected_rows": 1024,
       "order": 25
     },
     {
@@ -422,7 +422,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1059,
+      "expected_rows": 1024,
       "order": 26
     },
     {
@@ -542,7 +542,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 812,
+      "expected_rows": 941,
       "order": 36
     },
     {

@@ -5,8 +5,9 @@ import type { MonthRow, Transition } from "@/lib/api";
 import { arrow, money, moneyAxis, niceCeil, percent } from "@/lib/format";
 
 /** Stacked month bars (Recurring bottom, Non-Recurring top), y-axis with
- * gridlines, SVG change arrows, and selectable arrow pills between bar tops.
- * The selected pill fills navy and drives the product table below. */
+ * gridlines, straight SVG change arrows between bar tops, and selectable
+ * arrow pills. Selection shows as a navy border + light tint — the green/red
+ * colour coding stays visible (cost-fix 4.3/4.4). */
 export default function RevenueBarChart({
   months,
   transitions,
@@ -64,15 +65,7 @@ export default function RevenueBarChart({
                     <div className="sr" style={{ height: `${recShare}%` }} />
                     <div className="sn" style={{ height: `${100 - recShare}%` }} />
                   </div>
-                  <div className="mlab">
-                    {m.month_name}
-                    {m.is_partial ? (
-                      <span style={{ color: "var(--slate-2)" }}>
-                        {" "}
-                        · {m.trading_days} Trading Days
-                      </span>
-                    ) : null}
-                  </div>
+                  <div className="mlab">{m.month_name}</div>
                 </div>
               );
             })}
@@ -110,11 +103,10 @@ export default function RevenueBarChart({
                 const x2 = (i + 1.5) * colWidth - 0.2 * colWidth;
                 const y1 = Math.max(topPct(fromMonth) - 3, 0);
                 const y2 = Math.max(topPct(toMonth) - 3, 0);
-                const cy = Math.max(Math.min(y1, y2) - 10, 0);
                 return (
                   <path
                     key={t.from_month_id}
-                    d={`M${x1},${y1} Q${(x1 + x2) / 2},${cy} ${x2},${y2}`}
+                    d={`M${x1},${y1} L${x2},${y2}`}
                     stroke={up ? "#157F4C" : "#B3261E"}
                     strokeWidth="2.5"
                     fill="none"

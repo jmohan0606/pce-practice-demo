@@ -61,12 +61,14 @@ CSV `month_id,month_name,start_dt,end_dt,trading_days,is_baseline,is_partial`
 
 Three rows, hand-written:
 ```
-202604,Apr 2026,2026-04-01,2026-04-30,<count>,true,false
-202605,May 2026,2026-05-01,2026-05-31,<count>,false,false
-202606,Jun 2026,2026-06-01,2026-06-30,<count>,false,true
+202604,Apr 2026,2026-04-01,2026-04-30,30,true,false
+202605,May 2026,2026-05-01,2026-05-31,31,false,false
+202606,Jun 2026,2026-06-01,2026-06-30,30,false,false
 ```
-`trading_days` = `count(DISTINCT trade_dt)` per month. Needed so the Insights Miner can size the
-partial-June effect.
+`trading_days` = `count(DISTINCT trade_dt)` per month. Phase 0 in the client environment
+confirmed June is COMPLETE (`min_trade_dt=2026-06-01`, `max_trade_dt=2026-06-30`, 30 distinct
+dates) — the source table accrues daily, so every calendar day has rows and the counts are the
+calendar-day counts 30 / 31 / 30. `is_partial=false` on all three months.
 
 ### V2 · `phx_dm_pce_revenue_class`
 ```sql

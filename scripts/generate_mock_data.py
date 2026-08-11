@@ -50,17 +50,21 @@ EDIR = DATA / "edges"
 
 MONTHS = [
     # month_id, name, start, end, trading_days, is_baseline, is_partial
-    ("202604", "Apr 2026", "2026-04-01 00:00:00", "2026-04-30 00:00:00", 21, True, False),
-    ("202605", "May 2026", "2026-05-01 00:00:00", "2026-05-31 00:00:00", 21, False, False),
-    ("202606", "Jun 2026", "2026-06-01 00:00:00", "2026-06-30 00:00:00", 12, False, True),
+    # 4.5: Phase 0 in the client environment confirmed June is COMPLETE
+    # (min_trade_dt=2026-06-01, max_trade_dt=2026-06-30, 30 distinct dates).
+    # This table accrues daily — every calendar day has rows — so the
+    # trading-day counts are the calendar-day counts 30 / 31 / 30.
+    ("202604", "Apr 2026", "2026-04-01 00:00:00", "2026-04-30 00:00:00", 30, True, False),
+    ("202605", "May 2026", "2026-05-01 00:00:00", "2026-05-31 00:00:00", 31, False, False),
+    ("202606", "Jun 2026", "2026-06-01 00:00:00", "2026-06-30 00:00:00", 30, False, False),
 ]
-# June is partial — trade activity through 17 Jun (12 of 21 trading days).
-JUNE_FACTOR = 12 / 21
+# June is a complete month (Phase 0 confirmation) — no partial-month scaling.
+JUNE_FACTOR = 1.0
 
 TRADE_DAYS = {
-    "202604": [f"2026-04-{d:02d}" for d in (1, 2, 3, 6, 7, 8, 9, 10, 13, 14, 15, 16, 17, 20, 21, 22, 23, 24, 27, 28, 29)],
-    "202605": [f"2026-05-{d:02d}" for d in (1, 4, 5, 6, 7, 8, 11, 12, 13, 14, 15, 18, 19, 20, 21, 22, 26, 27, 28, 29, 30)],
-    "202606": [f"2026-06-{d:02d}" for d in (1, 2, 3, 4, 5, 8, 9, 10, 11, 15, 16, 17)],
+    "202604": [f"2026-04-{d:02d}" for d in range(1, 31)],
+    "202605": [f"2026-05-{d:02d}" for d in range(1, 32)],
+    "202606": [f"2026-06-{d:02d}" for d in range(1, 31)],
 }
 
 SURNAMES = ["Alvarez", "Mehta", "Okafor", "Lindqvist", "Tanaka", "Rossi", "Novak", "Osei",
