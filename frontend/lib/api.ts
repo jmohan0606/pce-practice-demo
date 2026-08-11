@@ -213,6 +213,28 @@ export function getRuleVersions(): Promise<RuleVersionsResponse> {
   return get("/api/rules/versions");
 }
 
+// 4.6: rules are immutable — edit creates a new DRAFT row; approve + publish
+// mint the next version. The original version is never mutated.
+export interface RuleDetail extends Rule {
+  rule_key?: string;
+  compiled?: boolean;
+  compile_error?: string | null;
+  plan?: unknown;
+  document_id?: string | null;
+}
+export function getRulesDetailed(version: string): Promise<{ version: RuleVersion | null; rules: RuleDetail[] }> {
+  return get(`/api/rules?version=${encodeURIComponent(version)}`);
+}
+export function editRule(ruleKey: string, changes: Record<string, unknown>): Promise<{ rule: RuleDetail; note?: string }> {
+  return post(`/api/rules/${encodeURIComponent(ruleKey)}/edit`, { changes });
+}
+export function approveRule(ruleKey: string, approvedBy: string = "operator"): Promise<{ rule: RuleDetail }> {
+  return post(`/api/rules/${encodeURIComponent(ruleKey)}/approve`, { approved_by: approvedBy });
+}
+export function publishRules(approvedBy: string = "operator", notes: string = ""): Promise<{ version: RuleVersion }> {
+  return post("/api/rules/publish", { approved_by: approvedBy, notes });
+}
+
 // ---------- C4 insights (shapes per ROUND_C_SPEC) ----------
 
 export interface Finding {

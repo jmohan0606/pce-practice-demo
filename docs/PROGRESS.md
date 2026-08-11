@@ -28,7 +28,18 @@
       visible at a glance), /api/trace/summary (per-advisor, document-extraction,
       conflict-audit, full-refresh projection). Projection line under the insights
       Generate button (avg of previous runs; greyed with no history). npm build OK.
-- [ ] Task 4: UI corrections (4.1–4.6)
+- [x] Task 4: UI corrections — 4.1 AI Insights + Advisor merged into one page with a
+      Practice/Advisor toggle (tabs: Dashboard · AI Insights · Documents & Rules ·
+      Rule Versions · Trace); 4.2 Advisor Generate runs exactly one advisor+transition
+      (no fan-out), the all-advisors batch lives only in Practice behind a confirm
+      dialog showing the cost projection; 4.3 straight SVG arrows (arrowheads kept);
+      4.4 selected pill = 2px navy border + pos/neg tint, green/red text preserved;
+      4.5 June complete — is_partial=false for 202606, trading days 30/31/30 in mock
+      generator + SCHEMA_SPEC, "12 Trading Days" caption and partial-month note
+      removed, mock data regenerated (verify a/b/c re-passed); 4.6 Rule Versions
+      expand to every rule (name, description, source citation, compiled query,
+      status) with Edit that creates a draft → approve → publish (new version,
+      never mutates). npm build passes.
 - [ ] Task 5: schema additions (opportunity, document_type, checklist)
 - [ ] Task 6: one cheap verification run + ROUND_C_FIX_COMPLETE.md
 
