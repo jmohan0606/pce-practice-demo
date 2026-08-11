@@ -311,7 +311,8 @@ def compile_rule(rule: dict) -> CompiledRule | CompileError:
             )
         joins.append({"field": name, "vertex": owner, "via": via})
 
-    params = sorted(collect_params(population) | collect_params(compute))
+    params = sorted(collect_params(population) | collect_params(compute)
+                    | (collect_params(attribute) if attribute is not None else set()))
     plan = {
         "vertex": vertex,
         "filters": population,

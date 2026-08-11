@@ -81,7 +81,8 @@ WITH primary_id_as_attribute="true";
 // V11
 CREATE VERTEX phx_dm_pce_account_month (PRIMARY_ID am_id STRING, acct_key STRING,
   advisor_sid STRING, month_id STRING, end_balance DOUBLE, credited_amt DOUBLE,
-  txn_count INT, is_zero_balance BOOL, present_prior_month BOOL)
+  txn_count INT, is_zero_balance BOOL, present_prior_month BOOL,
+  prior_end_balance DOUBLE, prior_credited_amt DOUBLE)
 WITH primary_id_as_attribute="true";
 
 // V12

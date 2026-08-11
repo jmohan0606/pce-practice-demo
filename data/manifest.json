@@ -215,7 +215,7 @@
         "file_key": "file_key",
         "trade_description": "trade_description"
       },
-      "expected_rows": 1694,
+      "expected_rows": 1772,
       "order": 12
     },
     {
@@ -235,7 +235,7 @@
         "txn_count": "txn_count",
         "distinct_accounts": "distinct_accounts"
       },
-      "expected_rows": 1008,
+      "expected_rows": 1059,
       "order": 13
     },
     {
@@ -252,7 +252,9 @@
         "credited_amt": "credited_amt",
         "txn_count": "txn_count",
         "is_zero_balance": "is_zero_balance",
-        "present_prior_month": "present_prior_month"
+        "present_prior_month": "present_prior_month",
+        "prior_end_balance": "prior_end_balance",
+        "prior_credited_amt": "prior_credited_amt"
       },
       "expected_rows": 657,
       "order": 14
@@ -336,7 +338,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1694,
+      "expected_rows": 1772,
       "order": 19
     },
     {
@@ -348,7 +350,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1694,
+      "expected_rows": 1772,
       "order": 20
     },
     {
@@ -360,7 +362,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1694,
+      "expected_rows": 1772,
       "order": 21
     },
     {
@@ -372,7 +374,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1694,
+      "expected_rows": 1772,
       "order": 22
     },
     {
@@ -384,7 +386,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1008,
+      "expected_rows": 1059,
       "order": 23
     },
     {
@@ -396,7 +398,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1008,
+      "expected_rows": 1059,
       "order": 24
     },
     {
@@ -408,7 +410,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1008,
+      "expected_rows": 1059,
       "order": 25
     },
     {
@@ -420,7 +422,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1008,
+      "expected_rows": 1059,
       "order": 26
     },
     {
@@ -540,7 +542,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 801,
+      "expected_rows": 812,
       "order": 36
     },
     {

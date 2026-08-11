@@ -73,6 +73,17 @@ Decision: 8b now requires >= 16; the 16 foundation types must all still be count
 Reason: Later rounds legitimately add app-written vertex types; suppressing them from health would be dishonest.
 Reversible: yes
 
+## 2026-08-11 · Round C task 0 · LOST_ACCOUNT reads prior-month revenue (supersedes the "seeded literally" decision)
+Context: Independent review confirmed the B3.7 LOST_ACCOUNT rule can never fire: its population is exactly the rows whose current-month credited_amt is 0, and its compute sums that same field, so `value > 0` is unreachable. A spec error, not an implementation error.
+Decision: `phx_dm_pce_account_month` gains `prior_end_balance` / `prior_credited_amt` (DDL V11, loading job, mock generator, schema_catalog, SCHEMA_SPEC), and the v0 LOST_ACCOUNT compute becomes `sum(prior_credited_amt)`. Verified: 10 matches on 202605 mock data; 202604 still returns empty-with-reason (baseline guard).
+Reason: A lost account is "zero now, had revenue last month" — a same-vertex rule needs the prior month carried onto the row to see that.
+Reversible: yes
+
+## 2026-08-11 · Round C task 0 · Rule parameters validate before the population is fetched
+Context: Review found parameter validation was order-dependent: a missing `:advisor_sid` raised only when the scoped month had rows (202604 has 13 transfers) and passed silently as matched=0 when it did not (202605/202606) — a confident wrong answer the Insights Miner would read as "no transfers".
+Decision: `evaluate_plan` validates every parameter declared in the compiled plan BEFORE fetching rows; the compiler now also collects params referenced in the attribute expression. verify_round_b B3-18/B3-19 pin both fixes.
+Reversible: yes
+
 ## 2026-08-11 · Round B · section_path is the full heading trail joined with " > "
 Context: B2's spec example shows a leaf ("3.2 Discount Sharing"); nested sections need ancestry for provenance.
 Decision: section_path renders the dotted heading trail joined with " > " (e.g. "3 Adjustments > 3.2 Discount Sharing").

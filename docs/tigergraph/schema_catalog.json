@@ -182,7 +182,9 @@
         "credited_amt": "DOUBLE",
         "txn_count": "INT",
         "is_zero_balance": "BOOL",
-        "present_prior_month": "BOOL"
+        "present_prior_month": "BOOL",
+        "prior_end_balance": "DOUBLE",
+        "prior_credited_amt": "DOUBLE"
       }
     },
     "phx_dm_pce_account_transfer": {

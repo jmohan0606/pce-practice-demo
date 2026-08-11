@@ -217,12 +217,16 @@ Aggregate of V9. Totals for "All Advisors" are summed at query time, not pre-agg
 ```sql
 CREATE VERTEX phx_dm_pce_account_month (PRIMARY_ID am_id STRING, acct_key STRING,
   advisor_sid STRING, month_id STRING, end_balance DOUBLE, credited_amt DOUBLE,
-  txn_count INT, is_zero_balance BOOL, present_prior_month BOOL)
+  txn_count INT, is_zero_balance BOOL, present_prior_month BOOL,
+  prior_end_balance DOUBLE, prior_credited_amt DOUBLE)
 WITH primary_id_as_attribute="true";
 ```
 `am_id = acct_key ||'|'|| advisor_sid ||'|'|| month_id`.
 Balance from `pcr.fpic_monthly_acct_balance_tb_april / _may / _june`; revenue from V9.
 `is_zero_balance = end_balance = 0`. `present_prior_month` is false for all April rows (baseline).
+`prior_end_balance` / `prior_credited_amt` carry the previous month's balance and credited
+revenue onto the row (0 for the baseline month) — a lost account is one that is zero NOW but
+had revenue in the PRIOR month, and a same-vertex rule cannot otherwise see across months.
 This vertex answers new / lost / moved.
 
 ### V12 · `phx_dm_pce_account_transfer`

@@ -1,4 +1,5 @@
-"""Round B verification — the 17 checks from docs/spec/ROUND_B_SPEC.md.
+"""Round B verification — the 17 checks from docs/spec/ROUND_B_SPEC.md, plus
+B3-18/B3-19 regression checks for the two Round C task-0 bug fixes.
 
 Runs the real FastAPI app in-process (mock graph tier, EMBEDDING_MODE=mock,
 LLM_MODE=mock — the build-box modes; cdao exists only in the client
@@ -200,6 +201,36 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
           r.status_code == 200 and ev.get("matched_count") == 0,
           f"status={r.status_code}, matched_count={ev.get('matched_count')}, "
           f"reason={str(ev.get('empty_reason'))[:60]}")
+
+    # Round C task 0.1 regression — a missing required parameter must fail
+    # identically in every month, regardless of whether the month has rows.
+    from app.rules.service import evaluate_rule_set
+
+    errors = {}
+    for month in ("202604", "202605", "202606"):
+        out = evaluate_rule_set(v0["version_id"], month=month)  # no advisor_sid
+        ti = next(x for x in out["results"] if x["rule_code"] == "ACCOUNT_TRANSFERRED_IN")
+        errors[month] = (ti["evaluated"], ti.get("error"))
+    all_error = all(ev is False and err and ":advisor_sid" in err
+                    for ev, err in errors.values())
+    identical = len({err for _, err in errors.values()}) == 1
+    check("B3-18", "missing :advisor_sid errors identically in all three months",
+          all_error and identical,
+          f"evaluated={[v[0] for v in errors.values()]}, "
+          f"error={next(iter(errors.values()))[1]!r}")
+
+    # Round C task 0.2 regression — LOST_ACCOUNT computes prior-month revenue,
+    # so it fires on 202605 and stays empty-with-reason on the 202604 baseline.
+    lost = {}
+    for month in ("202604", "202605"):
+        out = evaluate_rule_set(v0["version_id"], month=month)
+        lost[month] = next(x for x in out["results"] if x["rule_code"] == "LOST_ACCOUNT")
+    check("B3-19", "LOST_ACCOUNT fires on 202605 and returns empty-with-reason on 202604",
+          lost["202605"]["evaluated"] and lost["202605"]["matched_count"] > 0
+          and lost["202604"]["matched_count"] == 0 and bool(lost["202604"].get("empty_reason")),
+          f"202605 matched={lost['202605']['matched_count']}, "
+          f"202604 matched={lost['202604']['matched_count']} "
+          f"reason={str(lost['202604'].get('empty_reason'))[:50]!r}")
 
     fee = next(r for r in v0_rules if r["rule_code"] == "FEE_REDUCTION_SHARING")
     draft = {k: v for k, v in fee.items()

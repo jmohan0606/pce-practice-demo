@@ -191,6 +191,17 @@ def evaluate_plan(store, plan: dict, params: dict | None = None) -> dict:
     {matched: [{key, value, attribute?}], matched_count, evaluated_rows, empty_reason?}."""
     params = dict(params or {})
     exclude_keys = {str(k) for k in params.pop("exclude_keys", []) or []}
+
+    # Validate EVERY declared parameter BEFORE fetching the population, so a
+    # missing parameter fails identically whether or not any rows exist for the
+    # requested scope (a zero-row month must never mask a malformed query).
+    missing = [name for name in plan.get("params") or []
+               if params.get(name) in (None, "")]
+    if missing:
+        raise EvaluationError(
+            f"required parameter :{missing[0]} was not supplied"
+        )
+
     vertex = plan["vertex"]
     vertex_rows = store.all_vertices(vertex)
 

@@ -316,6 +316,7 @@ def build_account_month(by_advisor: dict[str, list[dict]], txns: list[dict]) -> 
     for sid, accts in by_advisor.items():
         for a in accts:
             base_balance = RNG.uniform(150_000, 2_400_000)
+            prior_bal, prior_credited = 0.0, 0.0  # baseline month has no prior
             for month_id, *_ in MONTHS:
                 zeroed = a["_scenario"] == "zeroed_may" and month_id != "202604"
                 bal = 0.0 if zeroed else base_balance * {"202604": 1.0, "202605": 1.02, "202606": 1.01}[month_id]
@@ -328,7 +329,10 @@ def build_account_month(by_advisor: dict[str, list[dict]], txns: list[dict]) -> 
                     "end_balance": money(bal), "credited_amt": money(agg["credited"]),
                     "txn_count": str(agg["count"]), "is_zero_balance": bl(bal == 0.0),
                     "present_prior_month": bl(month_id != "202604"),
+                    "prior_end_balance": money(prior_bal),
+                    "prior_credited_amt": money(prior_credited),
                 })
+                prior_bal, prior_credited = bal, float(agg["credited"])
     return rows
 
 
@@ -427,7 +431,8 @@ VERTEX_COLUMNS = {
     "phx_dm_pce_monthly_revenue": ["mr_id", "advisor_sid", "month_id", "product_id", "group_id", "class_id",
                                     "credited_amt", "non_credited_amt", "txn_count", "distinct_accounts"],
     "phx_dm_pce_account_month": ["am_id", "acct_key", "advisor_sid", "month_id", "end_balance", "credited_amt",
-                                  "txn_count", "is_zero_balance", "present_prior_month"],
+                                  "txn_count", "is_zero_balance", "present_prior_month",
+                                  "prior_end_balance", "prior_credited_amt"],
     "phx_dm_pce_account_transfer": ["transfer_id", "acct_key", "from_advisor_sid", "to_advisor_sid", "from_rr",
                                      "to_rr", "transfer_ts", "month_id", "is_intra_team", "occd_cd"],
     "phx_dm_pce_advisor_flow_month": ["afm_id", "advisor_sid", "month_id", "flow_product_cd", "flow_product_desc",

@@ -79,7 +79,10 @@ V0_RULES: list[dict] = [
                           "record is lost in May.",
         "grain": "account",
         "population": "is_zero_balance = true AND present_prior_month = true",
-        "compute": "sum(credited_amt)",
+        # compute reads the PRIOR month's revenue: the population is exactly the
+        # rows whose CURRENT-month credited_amt is zero, so B3.7's literal
+        # sum(credited_amt) could never trigger (Round C task 0.2 spec fix).
+        "compute": "sum(prior_credited_amt)",
         "trigger": "value > 0",
         "attribute": None,
         "driver_tag": "Lost Accounts",

@@ -1,9 +1,26 @@
 # Build Progress
 
 ## Current position
-Round: B — COMPLETE (verify_round_b.py 17/17 AND verify_round_a.py 25/25, see docs/ROUND_B_COMPLETE.md)
-Task: next session starts Round C (insights agents, advisor page — docs/spec/ROUND_C_SPEC.md)
-Last updated: 2026-08-11 ~13:30 UTC
+Round: C — IN PROGRESS (docs/spec/ROUND_C_SPEC.md supersedes BUILD_PLAN §6)
+Task: task 0 DONE (both Round B bugs fixed, verify_round_b 19/19, verify_round_a 25/25);
+      IN PROGRESS -> task 1 (real Claude LLM + local embeddings)
+Last updated: 2026-08-11 (Round C session)
+
+## Task checklist (Round C)
+- [x] 0.1 Param validation before population fetch (evaluator + compiler attribute params;
+      verify B3-18: identical error in 202604/05/06)
+- [x] 0.2 LOST_ACCOUNT fixed via prior_end_balance/prior_credited_amt on account_month
+      (DDL V11, loading job, mock generator, schema_catalog, SCHEMA_SPEC; compute ->
+      sum(prior_credited_amt); verify B3-19: 10 matches on 202605, empty-with-reason 202604)
+- [ ] 1 LLM_MODE=claude (sonnet-4-5) + EMBEDDING_MODE=local (MiniLM 384) + scripts/check_llm.py
+- [ ] 2 C1 query catalog (24 queries, local impls + GSQL files)
+- [ ] 2 C2 Insights Miner (3 tools, 40-query budget, agent_query_log, evidence rows)
+- [ ] 2 C3 Insights Reporter (findings only, numeric assertion in code, template fallback)
+- [ ] 2 C4 async runs (generate/status/get, supersede on re-run)
+- [ ] 2 C5 AI Insights + Advisor screens per mockup
+- [ ] 3 docs/sample/comp_plan_2026_sample.pdf (all rules incl. NEEDS_INPUT referral cap)
+- [ ] 4 scripts/e2e_test.py with real AI, full output pasted
+- [ ] 5 both servers on public forwarded URLs; docs/ROUND_C_COMPLETE.md
 
 ## Task checklist (Round B)
 - [x] B1 Dashboard — 4 API endpoints (exact B1.1 shapes, mock-tier queries in app/graph/queries/pce_dashboard.py),
