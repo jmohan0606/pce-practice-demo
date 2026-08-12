@@ -1,14 +1,35 @@
-import type { ContributionRow, ContributionTotal, ProductContribution } from "@/lib/api";
+import type { ContributionRow, ContributionSection, ContributionTotal, ProductContribution } from "@/lib/api";
 import { arrow, money, percent } from "@/lib/format";
 
-function ChangeCells({ entry }: { entry: ContributionRow | ContributionTotal }) {
+/** Change + Change % cells. When `onDrill` is provided (product rows only —
+ * subtotals and the grand total never pass it) the Change figure is a real
+ * button: dashed underline, colour preserved, keyboard-operable. */
+function ChangeCells({
+  entry,
+  onDrill,
+}: {
+  entry: ContributionRow | ContributionTotal;
+  onDrill?: () => void;
+}) {
   const dirClass = entry.change_amt < 0 ? "dn" : entry.change_amt > 0 ? "up" : "";
+  const changeText =
+    entry.change_amt === 0 ? "—" : `${arrow(entry.change_amt)} ${money(entry.change_amt)}`;
   return (
     <>
-      <td className={`num ${dirClass}`}>
-        {entry.change_amt === 0 ? "—" : `${arrow(entry.change_amt)} ${money(entry.change_amt)}`}
+      <td className="num">
+        {onDrill && entry.change_amt !== 0 ? (
+          <button
+            className={`drill ${dirClass}`.trim()}
+            onClick={onDrill}
+            title="See what drove this change"
+          >
+            {changeText}
+          </button>
+        ) : (
+          <span className={dirClass || undefined}>{changeText}</span>
+        )}
       </td>
-      <td className={`num ${dirClass}`}>{percent(entry.change_pct)}</td>
+      <td className={`num ${dirClass}`.trim()}>{percent(entry.change_pct)}</td>
     </>
   );
 }
@@ -18,10 +39,13 @@ export default function ProductTable({
   data,
   fromLabel,
   toLabel,
+  onDrill,
 }: {
   data: ProductContribution;
   fromLabel: string;
   toLabel: string;
+  /** Round G 4.1 — makes each product row's Change figure a drill button. */
+  onDrill?: (row: ContributionRow, section: ContributionSection) => void;
 }) {
   return (
     <table>
@@ -37,7 +61,7 @@ export default function ProductTable({
       </thead>
       <tbody>
         {data.sections.map((section) => (
-          <SectionRows key={section.class_id} section={section} />
+          <SectionRows key={section.class_id} section={section} onDrill={onDrill} />
         ))}
         <tr className="tot">
           <td>Total Credited Revenue</td>
@@ -51,7 +75,13 @@ export default function ProductTable({
   );
 }
 
-function SectionRows({ section }: { section: ProductContribution["sections"][number] }) {
+function SectionRows({
+  section,
+  onDrill,
+}: {
+  section: ContributionSection;
+  onDrill?: (row: ContributionRow, section: ContributionSection) => void;
+}) {
   return (
     <>
       <tr className="sect">
@@ -65,7 +95,7 @@ function SectionRows({ section }: { section: ProductContribution["sections"][num
           </td>
           <td className="num">{money(row.from_amt)}</td>
           <td className="num">{money(row.to_amt)}</td>
-          <ChangeCells entry={row} />
+          <ChangeCells entry={row} onDrill={onDrill ? () => onDrill(row, section) : undefined} />
           <td className="num share">{percent(row.share_pct)}</td>
         </tr>
       ))}

@@ -438,6 +438,131 @@ export function getPeerRank(advisor: string, monthId: string): Promise<PeerRank>
   return get(`/api/insights/peer-rank?advisor=${encodeURIComponent(advisor)}&month_id=${monthId}`);
 }
 
+// ---------- Round G Task 4 — drill-down (shapes per ROUND_G_INTERFACE §4) ----------
+
+/** Insight scopes for drill-down runs. The advisors listing is served by its own
+ * endpoint but reports whichever scope the backend assigns it — the frontend
+ * echoes `scope`/`scope_key` from the GET payload into POST generate, so it
+ * never has to guess. */
+export type DrilldownScope = "product" | "product_advisor" | "product_account";
+
+/** Descriptive, NOT a decomposition — effects need not sum to the change,
+ * and the UI must say so (the `note` field carries the server's wording). */
+export interface MovementCauses {
+  note?: string;
+  advisor_count_from: number;
+  advisor_count_to: number;
+  advisor_effect_amt: number;
+  account_count_from: number;
+  account_count_to: number;
+  account_effect_amt: number;
+  rev_per_existing_from: number;
+  rev_per_existing_to: number;
+  rev_per_existing_effect_amt: number;
+}
+export interface DrilldownAdvisorRow {
+  advisor_sid: string;
+  advisor_name?: string;
+  from_amt: number;
+  to_amt: number;
+  change_amt: number;
+  account_count: number;
+  is_new_to_product: boolean;
+}
+export interface DrilldownAccountRow {
+  acct_key: string;
+  from_amt: number;
+  to_amt: number;
+  change_amt: number;
+  end_balance: number;
+  txn_count: number;
+}
+export type DrilldownContributionRow =
+  | DrilldownAdvisorRow
+  | DrilldownAccountRow
+  | Record<string, unknown>;
+export interface DrilldownStored {
+  generated_at: string;
+  version_id: string;
+  version_no: number;
+}
+export interface DrilldownEstimate {
+  cost_usd: number;
+  seconds: number;
+}
+/** GET always returns the deterministic parts (metrics, movement_causes,
+ * contributions); `generated` gates only the AI parts (narrative, bullets,
+ * findings, stored). `estimate` is present only when !generated. */
+export interface DrilldownLevel {
+  generated: boolean;
+  scope: DrilldownScope;
+  scope_key: string;
+  from_month: string;
+  to_month: string;
+  run_id: string | null;
+  parent_run_id: string | null;
+  metrics: Record<string, number | null>;
+  movement_causes?: MovementCauses | null;
+  contributions?: DrilldownContributionRow[];
+  narrative?: string;
+  bullets?: string[];
+  findings?: Finding[];
+  stored?: DrilldownStored | null;
+  estimate?: DrilldownEstimate | null;
+}
+export interface DrilldownTxn {
+  trade_dt: string;
+  trade_description: string;
+  product_id: string;
+  client_rate_bps: number | null;
+  credited_amt: number;
+}
+/** Transaction level: deterministic listing, never an LLM call (`llm: false`). */
+export interface DrilldownTxnLevel {
+  generated: boolean;
+  llm: false;
+  metrics: Record<string, number | null>;
+  transactions: DrilldownTxn[];
+}
+
+export function getDrilldownProduct(groupId: string, from: string, to: string): Promise<DrilldownLevel> {
+  return get(`/api/drilldown/product/${encodeURIComponent(groupId)}?from=${from}&to=${to}`);
+}
+export function getDrilldownAdvisors(groupId: string, from: string, to: string): Promise<DrilldownLevel> {
+  return get(`/api/drilldown/product/${encodeURIComponent(groupId)}/advisors?from=${from}&to=${to}`);
+}
+export function getDrilldownAccounts(
+  groupId: string,
+  advisorSid: string,
+  from: string,
+  to: string,
+): Promise<DrilldownLevel> {
+  return get(
+    `/api/drilldown/product/${encodeURIComponent(groupId)}/advisor/${encodeURIComponent(advisorSid)}/accounts?from=${from}&to=${to}`,
+  );
+}
+export function getDrilldownTxns(
+  groupId: string,
+  advisorSid: string,
+  acctKey: string,
+  from: string,
+  to: string,
+): Promise<DrilldownTxnLevel> {
+  return get(
+    `/api/drilldown/product/${encodeURIComponent(groupId)}/advisor/${encodeURIComponent(advisorSid)}/account/${encodeURIComponent(acctKey)}/txns?from=${from}&to=${to}`,
+  );
+}
+/** Waits on the generation lock server-side; a concurrent duplicate request
+ * waits and returns the first requester's stored result. */
+export function generateDrilldown(
+  scope: DrilldownScope,
+  scopeKey: string,
+  from: string,
+  to: string,
+): Promise<DrilldownLevel> {
+  return post("/api/drilldown/generate", { scope, scope_key: scopeKey, from, to });
+}
+
 // ---------- Cost & Trace (cost-fix session task 3) ----------
 
 export interface TraceTotals {

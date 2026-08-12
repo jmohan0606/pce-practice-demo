@@ -181,3 +181,69 @@ tr.tot .up,tr.tot .dn{font-weight:700}
 .pivot button[aria-selected="true"]{background:#fff;color:var(--ink);
   box-shadow:0 1px 2px rgba(0,0,0,.07)}
 @media(max-width:880px){.tcards{grid-template-columns:1fr}}
+
+/* ---- Round G Task 4: drill-down panel (verbatim from docs/ui/MOCKUP_DRILLDOWN.html) ---- */
+/* the clickable change number */
+.drill{background:none;border:0;font:inherit;font-variant-numeric:tabular-nums;
+  cursor:pointer;padding:2px 5px;margin:-2px -5px;border-radius:3px;
+  border-bottom:1px dashed currentColor}
+.drill:hover{background:var(--ai-bg);border-bottom-style:solid}
+.drill:focus-visible{outline:2px solid var(--ai);outline-offset:1px}
+.drill.up{color:var(--pos);font-weight:600}
+.drill.dn{color:var(--neg);font-weight:600}
+.scrim{position:fixed;inset:0;background:rgba(16,28,44,.28);opacity:0;pointer-events:none;
+  transition:opacity .18s;z-index:30}
+.scrim.on{opacity:1;pointer-events:auto}
+.panel{position:fixed;top:0;right:0;bottom:0;width:min(760px,94vw);background:#fff;
+  border-left:1px solid var(--rule);box-shadow:-8px 0 32px rgba(16,28,44,.14);
+  transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column;z-index:40}
+.panel.on{transform:translateX(0)}
+.p-head{padding:14px 20px;border-bottom:1px solid var(--rule);display:flex;
+  justify-content:space-between;align-items:flex-start;gap:12px}
+.crumb{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px;color:var(--slate)}
+.crumb button{background:none;border:0;font:inherit;color:var(--navy-hi);cursor:pointer;padding:0;
+  text-decoration:underline}
+.crumb .sep{color:var(--slate-2)}
+.crumb .cur{color:var(--ink);font-weight:600}
+.p-title{font-size:17px;font-weight:600;margin-top:6px}
+.p-sub{font-size:12.5px;color:var(--slate);margin-top:3px}
+.p-close{background:none;border:1px solid var(--rule);border-radius:4px;width:30px;height:30px;
+  cursor:pointer;font-size:16px;color:var(--slate);line-height:1;flex-shrink:0}
+.p-close:hover{background:var(--rule-2);color:var(--ink)}
+.p-body{overflow-y:auto;padding:18px 20px 40px;flex:1}
+.p-foot{padding:10px 20px;border-top:1px solid var(--rule);background:var(--panel);
+  font-size:12px;color:var(--slate);display:flex;justify-content:space-between;gap:12px}
+/* metric strip */
+.mstrip{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:14px;
+  padding:14px 16px;border:1px solid var(--rule);border-radius:6px;background:var(--panel);
+  margin-bottom:16px}
+.mstrip .k{font-size:10.5px;letter-spacing:.03em;color:var(--slate);text-transform:uppercase}
+.mstrip .v{font-size:17px;font-weight:600;margin-top:3px}
+.mstrip .d{font-size:11.5px;margin-top:2px}
+.mstrip .d.mut{color:var(--slate)}
+.count-drill{background:none;border:0;font:inherit;font-size:17px;font-weight:600;color:var(--navy-hi);
+  cursor:pointer;padding:0;border-bottom:1px dashed var(--navy-hi);margin-top:3px}
+.count-drill:hover{border-bottom-style:solid}
+.count-drill:focus-visible{outline:2px solid var(--ai);outline-offset:1px}
+.count-drill.sm{font-size:13px;margin-top:0}
+.btn.row-open{padding:3px 9px}
+.sec-h{font-size:12px;letter-spacing:.03em;color:var(--slate);text-transform:uppercase;
+  margin:20px 0 8px;font-weight:600}
+.why{border:1px solid var(--rule);border-radius:6px;overflow:hidden;margin-bottom:6px}
+.why table{font-size:12.5px}
+.why th{padding:8px 12px;font-size:10.5px}
+.why td{padding:7px 12px}
+.why-note{font-size:12px;color:var(--slate);margin:0 0 4px;padding:2px}
+.gen{display:flex;flex-direction:column;align-items:center;gap:10px;padding:34px 20px;
+  border:1px dashed var(--ai-br);border-radius:6px;background:#FCFCFE;text-align:center;
+  margin-bottom:16px}
+.gen .t{font-weight:600}
+.gen .m{font-size:12.5px;color:var(--slate);max-width:400px}
+.stored{font-size:11.5px;color:var(--pos);background:var(--pos-bg);border:1px solid var(--pos-br);
+  padding:2px 8px;border-radius:10px;font-weight:600}
+/* panel findings match the mockup's carded accordions (base .finding is the
+   insights-page border-bottom variant) */
+.panel .finding{border:1px solid var(--rule);border-radius:6px;margin-bottom:8px;overflow:hidden}
+.panel .finding-b{padding:0 14px 14px;border-top:1px solid var(--rule-2)}
+.panel .narr{padding:14px 16px}

@@ -12,6 +12,7 @@ import {
   getProductContribution,
   getTransitions,
 } from "@/lib/api";
+import DrilldownPanel, { useDrilldownPanel } from "@/components/DrilldownPanel";
 import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
 import ProductTable from "@/components/ProductTable";
@@ -38,6 +39,8 @@ export default function DashboardPage() {
   const [selected, setSelected] = useState(0); // default: the FIRST transition
   const [contribution, setContribution] = useState<ProductContribution | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Round G 4.2 — drill-down side panel (general component; keyed by scope)
+  const { target: drillTarget, openPanel, closePanel } = useDrilldownPanel();
 
   useEffect(() => {
     getAdvisors().then(setAdvisors).catch(() => setAdvisors(null));
@@ -176,6 +179,20 @@ export default function DashboardPage() {
                 data={contribution}
                 fromLabel={monthName(contribution.from_month_id)}
                 toLabel={monthName(contribution.to_month_id)}
+                onDrill={(row, section) =>
+                  openPanel({
+                    scope: "product",
+                    scope_key: row.group_id,
+                    from: contribution.from_month_id,
+                    to: contribution.to_month_id,
+                    labels: {
+                      title: row.group_name,
+                      from: monthName(contribution.from_month_id),
+                      to: monthName(contribution.to_month_id),
+                      sub: section.class_name,
+                    },
+                  })
+                }
               />
               <div className="note">
                 Credited revenue is the sum of post-split credited amount where the reason code is
@@ -191,6 +208,8 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      <DrilldownPanel target={drillTarget} onClose={closePanel} />
     </section>
   );
 }
