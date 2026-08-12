@@ -15,7 +15,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.insights.store import EVIDENCE_DISPLAY_CAP, get_insight_store
+from app.insights.store import get_insight_store
 from app.insights.service import get_job_manager
 from app.rules.store import get_rule_store
 
@@ -30,6 +30,9 @@ class GenerateRequest(BaseModel):
 
 
 def _serialize_finding(finding: dict) -> dict:
+    from app.config.settings import get_settings
+
+    display_cap = get_settings().evidence_display_cap
     evidence = finding.get("evidence_rows") or []
     return {
         "finding_id": finding.get("finding_id"),
@@ -39,8 +42,11 @@ def _serialize_finding(finding: dict) -> dict:
         "rule_key": finding.get("rule_key"), "provenance": finding.get("provenance"),
         "confidence": finding.get("confidence"),
         "evidence_columns": finding.get("evidence_columns") or [],
-        "evidence_rows": evidence[:EVIDENCE_DISPLAY_CAP],
-        "evidence_total": len(evidence),
+        "evidence_rows": evidence[:display_cap],
+        # Round H 2.3/4.4: the TRUE producing count — "showing N of M", never a
+        # silent cap. evidence_total is what the query produced (pre-storage
+        # cap when recorded; stored count for legacy runs).
+        "evidence_total": finding.get("evidence_source_total") or len(evidence),
         "evidence_reason": finding.get("evidence_reason"),
         "source_query": finding.get("source_query"),
         "rank_order": finding.get("rank_order"),
@@ -85,6 +91,9 @@ def _serialize_run(run: dict, findings: list[dict]) -> dict:
         "generated_at": run.get("completed_at") or run.get("started_at"),
         "query_count": run.get("query_count", 0),
         "budget_hit": bool(run.get("budget_hit")),
+        # Round H 2.3: every limit that bound, loud — name, value, effect.
+        "limit_hit": bool(_json.loads(run.get("limits_json") or "[]")),
+        "limits_hit": _json.loads(run.get("limits_json") or "[]"),
         "generation": run.get("generation", 1),
         "error": run.get("error"),
     }

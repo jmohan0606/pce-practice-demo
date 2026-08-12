@@ -44,8 +44,15 @@ from app.shared.logging import get_logger
 
 _log = get_logger("app.agents.rule_compiler")
 
-MAX_SEARCHES = 2   # document lookups the agent may make before deciding
-MAX_REPAIRS = 2    # validation-failure round-trips before giving up honestly
+# Round H task 2: settings-resolved (RULE_COMPILER_MAX_SEARCHES /
+# RULE_COMPILER_MAX_REPAIRS), not module constants.
+def _budgets() -> tuple[int, int]:
+    """(max document lookups before deciding, validation-failure round-trips
+    before giving up honestly)."""
+    from app.config.settings import get_settings
+
+    s = get_settings()
+    return s.rule_compiler_max_searches, s.rule_compiler_max_repairs
 
 
 def _schema_text() -> str:
@@ -73,7 +80,7 @@ def build_system_prompt() -> str:
         "plan is fixed and human-reviewed after you emit it — it is the query "
         "that moves money, so precision beats cleverness.\n\n"
         "Respond with EXACTLY ONE JSON object per turn (no prose, no markdown):\n"
-        "EITHER a document lookup (max " + str(MAX_SEARCHES) + ", to read neighbouring "
+        "EITHER a document lookup (max " + str(_budgets()[0]) + ", to read neighbouring "
         "provisions before deciding):\n"
         '  {"action":"search","query":"<text>","top_k":5}\n'
         "OR your final plan:\n"
@@ -194,24 +201,25 @@ def compile_rule_with_agent(rule_key: str,
     generate = llm or _resolve_llm(rule_key)
     system_prompt = build_system_prompt()
     transcript = [build_rule_prompt(rule)]
+    max_searches, max_repairs = _budgets()
     searches = 0
     repairs = 0
     last_error = "the compiler produced no usable plan"
 
-    for _ in range(1 + MAX_SEARCHES + MAX_REPAIRS):
+    for _ in range(1 + max_searches + max_repairs):
         raw = generate("\n\n".join(transcript), {"system_prompt": system_prompt})
         decoded = _parse_json(raw)
         if isinstance(decoded, str):
             repairs += 1
             last_error = decoded
-            if repairs > MAX_REPAIRS:
+            if repairs > max_repairs:
                 break
             transcript.append(f"YOUR RESPONSE WAS REJECTED: {decoded}. "
                               f"Reply with one JSON object only.")
             continue
 
         if decoded.get("action") == "search":
-            if searches >= MAX_SEARCHES:
+            if searches >= max_searches:
                 transcript.append("SEARCH BUDGET EXHAUSTED — emit your final plan JSON now.")
                 continue
             searches += 1
@@ -253,7 +261,7 @@ def compile_rule_with_agent(rule_key: str,
         last_error = scope_error or outcome["error"]
         _log.info("rule %s: plan failed validation (%s) — repair attempt %d",
                   rule_key, last_error, repairs)
-        if repairs > MAX_REPAIRS:
+        if repairs > max_repairs:
             break
         transcript.append(
             f"PLAN REJECTED by validation: {last_error}\n"

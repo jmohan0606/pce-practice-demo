@@ -9,9 +9,13 @@ exception type, message and stack trace.
 Swappable sink (config, not code) — set ``LOG_SINK`` in ``.env``:
 
     LOG_SINK=file        # LOCAL DEFAULT
-        Structured JSON written to ``logs/app.log`` via a RotatingFileHandler
-        (``LOG_ROTATE_MAX_BYTES`` per file, ``LOG_ROTATE_BACKUP_COUNT`` backups).
-        Good for local dev and any host where you tail a file.
+        Structured JSON written to ``logs/app.log``, rotated at
+        ``LOG_ROTATE_WHEN`` (default midnight) with DATED archive names
+        (``app.log.2026-08-11``); ``LOG_ROTATE_BACKUP_COUNT`` days retained
+        (default 30), ``LOG_ROTATE_UTC`` picks the archive-date clock, and
+        ``LOG_ROTATE_MAX_BYTES`` is a within-day size safety net
+        (``app.log.2026-08-11.1``). Good for local dev and any host where you
+        tail a file.
 
     LOG_SINK=stdout      # RECOMMENDED FOR ECS / FARGATE
         The exact same JSON, written to stdout. On Fargate the awslogs / FireLens
@@ -113,6 +117,56 @@ class _CorrelationFilter(logging.Filter):
         return True
 
 
+class DatedSizeRotatingFileHandler(logging.handlers.TimedRotatingFileHandler):
+    """Round H 2.5: rotate at midnight with DATED archive names
+    (``app.log.2026-08-11``), keeping the size cap as a within-day safety net —
+    a day that exceeds ``max_bytes`` rolls to ``app.log.2026-08-11.1`` (.2, …)
+    rather than losing lines. Retention (`backupCount`) applies to both."""
+
+    def __init__(self, filename, when="midnight", backup_count=30, utc=False,
+                 max_bytes=0, encoding="utf-8"):
+        super().__init__(filename, when=when, backupCount=backup_count,
+                         utc=utc, encoding=encoding)
+        self.max_bytes = int(max_bytes or 0)
+        self._size_roll = False
+
+    def shouldRollover(self, record) -> int:  # noqa: N802 — stdlib API
+        if super().shouldRollover(record):
+            self._size_roll = False
+            return 1
+        if self.max_bytes > 0:
+            msg = f"{self.format(record)}\n"
+            if self.stream is None:
+                self.stream = self._open()
+            self.stream.seek(0, 2)
+            if self.stream.tell() + len(msg.encode("utf-8")) >= self.max_bytes:
+                self._size_roll = True
+                return 1
+        return 0
+
+    def doRollover(self) -> None:  # noqa: N802 — stdlib API
+        if not self._size_roll:
+            super().doRollover()
+            return
+        # Within-day size roll: archive as <base>.<today's date>.<n>.
+        self._size_roll = False
+        if self.stream:
+            self.stream.close()
+            self.stream = None  # type: ignore[assignment]
+        date_suffix = datetime.now(timezone.utc if self.utc else None).strftime("%Y-%m-%d")
+        n = 1
+        while Path(f"{self.baseFilename}.{date_suffix}.{n}").exists():
+            n += 1
+        target = f"{self.baseFilename}.{date_suffix}.{n}"
+        if Path(self.baseFilename).exists():
+            Path(self.baseFilename).rename(target)
+        if self.backupCount > 0:
+            for old in self.getFilesToDelete():
+                Path(old).unlink(missing_ok=True)
+        if not self.delay:
+            self.stream = self._open()
+
+
 def _build_handler(settings) -> logging.Handler:
     sink = (settings.log_sink or "file").lower()
     formatter: logging.Formatter = (
@@ -128,11 +182,12 @@ def _build_handler(settings) -> logging.Handler:
         from app.config.settings import resolve_app_path
         log_dir = resolve_app_path(settings.log_dir)
         log_dir.mkdir(parents=True, exist_ok=True)
-        handler = logging.handlers.RotatingFileHandler(
+        handler = DatedSizeRotatingFileHandler(
             log_dir / settings.log_file_name,
-            maxBytes=settings.log_rotate_max_bytes,
-            backupCount=settings.log_rotate_backup_count,
-            encoding="utf-8",
+            when=settings.log_rotate_when,
+            utc=settings.log_rotate_utc,
+            max_bytes=settings.log_rotate_max_bytes,
+            backup_count=settings.log_rotate_backup_count,
         )
 
     handler.setFormatter(formatter)

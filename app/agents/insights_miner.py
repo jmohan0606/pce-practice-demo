@@ -38,14 +38,23 @@ from app.shared.logging import get_logger
 
 _log = get_logger("app.agents.insights_miner")
 
-MAX_TURNS = 20            # hard stop on LLM turns (the query budget is separate)
-ROWS_SHOWN_TO_MODEL = 25  # rows echoed into the transcript per result (row_count always shown)
-RECENT_RESULTS_KEPT = 3   # older tool results collapse to code-built one-line summaries
-TOOL_RESULT_CHAR_CAP = 1500  # per-payload character cap on tool results
+# Round H task 2: every loop limit lives in app/config/settings.py with an env
+# alias (MINER_MAX_TURNS, ROWS_SHOWN_TO_MODEL, RECENT_RESULTS_KEPT,
+# TOOL_RESULT_CHAR_CAP, MINER_WRAPUP_TURNS, MINER_EXPLORATION_RESERVE) — no
+# limit is a module constant, and every limit that binds is recorded on the run
+# as {limit_name, limit_value, limit_effect}, never a log line only.
 # Haiku's minimum cacheable prefix: a cache_control breakpoint whose prefix is
 # smaller than this silently never caches (0 reads AND 0 writes). The static
 # system+opening prefix must clear it — checked at run start and in verify.
+# (A provider property, not a tunable volume limit — deliberately a constant.)
 STATIC_PREFIX_MIN_TOKENS = 4096
+
+
+def _limits():
+    """The miner's configured limits, resolved from settings at call time."""
+    from app.config.settings import get_settings
+
+    return get_settings()
 
 VALID_TAGS = ("Fee Rate", "Market", "One-Time", "Inherited", "New Accounts",
               "Lost Accounts", "New Billing", "Transfers", "Referrals",
@@ -199,15 +208,18 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
         + "\n\n" + _schema_reference()
         + "\n\nInitial observation (seq 1, revenue_change_by_product, "
         f"{initial['row_count']} rows):\n"
-        + json.dumps(initial["rows"][:ROWS_SHOWN_TO_MODEL], default=str)
+        + json.dumps(initial["rows"][:_limits().miner_rows_shown], default=str)
         + "\n\nBegin. One JSON action per turn."
     )
 
 
 def _cap(text: str) -> str:
-    if len(text) <= TOOL_RESULT_CHAR_CAP:
+    cap = _limits().miner_tool_result_char_cap
+    if len(text) <= cap:
         return text
-    return text[:TOOL_RESULT_CHAR_CAP] + " …(payload capped)"
+    return (text[:cap]
+            + f" …(payload capped at {cap} of {len(text)} chars — a partial "
+              f"payload, not the full result)")
 
 
 def summarize_result(seq_no: int, query_name: str, rows: list[dict],
@@ -232,14 +244,15 @@ def summarize_result(seq_no: int, query_name: str, rows: list[dict],
 
 
 def _effective_transcript(transcript: list[dict]) -> list[tuple[str, str, bool]]:
-    """The transcript as the model sees it: the last RECENT_RESULTS_KEPT tool
+    """The transcript as the model sees it: the last miner_recent_results_kept tool
     results stay verbatim; older ones compress to their code-built summary.
     The third element flags collapsed entries (kept for observability; cache
     anchors deliberately do NOT sit here — collapsing rewrites the middle of
     the transcript, so nothing after the opening block is anchor-stable)."""
+    kept = _limits().miner_recent_results_kept
     tool_indexes = [i for i, e in enumerate(transcript) if e["label"] == "tool"]
-    collapse = (set(tool_indexes[:-RECENT_RESULTS_KEPT])
-                if len(tool_indexes) > RECENT_RESULTS_KEPT else set())
+    collapse = (set(tool_indexes[:-kept])
+                if len(tool_indexes) > kept else set())
     out: list[tuple[str, str, bool]] = []
     for i, entry in enumerate(transcript):
         if i in collapse:
@@ -316,8 +329,6 @@ def _validate_finding(payload: dict, tools: MinerTools) -> tuple[dict | None, st
     return result, None
 
 
-EXPLORATION_RESERVE = 6  # Round E task 2: queries reserved for free exploration
-WRAPUP_TURNS = 3  # Round G task 2: query-free turns granted when the token ceiling trips
 
 
 def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
@@ -328,9 +339,13 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
          residual_amt: float | None = None) -> dict:
     """Run the investigation loop. Rule findings arrive PRE-MATCHED (evaluated
     in code, Round E task 2) and count toward the result; the agent is pointed
-    at the residual with >= EXPLORATION_RESERVE queries kept for exploration.
+    at the residual with >= miner_exploration_reserve queries kept for
+    exploration. Round H task 2: EVERY limit that binds (token ceiling, query
+    budget, turn cap, rows shown) triggers a wrap-up — never a mid-thought
+    cut — and is recorded in the returned ``limits_hit`` list as
+    {limit_name, limit_value, limit_effect}.
     Returns {findings, query_count, budget_hit, unanswerable, coverage_ratio,
-    turns, exploration_reserved}."""
+    turns, exploration_reserved, limits_hit}."""
     month_meta = {}
     for mid in (from_month, to_month):
         meta = tools.run_graph_query("month_meta", {"month_id": mid})
@@ -339,13 +354,19 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
         "revenue_change_by_product",
         {"advisor": advisor_sid, "from_month": from_month, "to_month": to_month})
 
+    limits = _limits()
+    max_turns = limits.miner_max_turns
+    wrapup_turns = limits.miner_wrapup_turns
+    rows_shown_cap = limits.miner_rows_shown
+
     # The guard against the agent becoming a rule-reporter: rule evaluation ran
     # OUTSIDE the query budget, so the full budget minus the opening queries
     # remains for exploration — assert the reserve holds and record it.
     exploration_reserved = tools.remaining
-    if exploration_reserved < EXPLORATION_RESERVE:
+    if exploration_reserved < limits.miner_exploration_reserve:
         _log.warning("miner %s: only %d queries left for exploration (< %d reserve)",
-                     tools.run_id, exploration_reserved, EXPLORATION_RESERVE)
+                     tools.run_id, exploration_reserved,
+                     limits.miner_exploration_reserve)
 
     system_prompt = build_system_prompt()
     opening = build_opening_message(
@@ -385,33 +406,62 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
     parse_failures = 0
     budget_hit_tokens = False
     nudged_for_silence = False
-    # Round G task 2: the token ceiling must not truncate silently — the run
-    # gets WRAPUP_TURNS query-free turns to emit findings it has already
-    # formed, or to state explicitly why the residual is unexplained. (The
-    # Round E 0-agent-findings run was this exact silent truncation.)
+    # Round H task 2: every limit that binds is RECORDED — on the run record,
+    # in the API response, and in the UI. Never a log line only.
+    limits_hit: list[dict] = []
+    # Round G task 2 / Round H 2.3: ANY bound (token ceiling, query budget,
+    # turn cap) grants wrapup_turns query-free turns to emit already-formed
+    # findings or state explicitly why the residual is unexplained — degrade,
+    # never a mid-thought cut. (The Round E 0-agent-findings run was this
+    # exact silent truncation.)
     wrapup_left: int | None = None
+
+    def enter_wrapup(message: str) -> None:
+        nonlocal wrapup_left
+        if wrapup_left is None:
+            wrapup_left = wrapup_turns
+        transcript.append({"label": "system", "text": (
+            message + " Emit each finding you have already formed from the "
+            "results above (one per turn, with source_seq). If you cannot "
+            "explain the residual from what you have seen, record that "
+            "explicitly with {\"action\":\"unanswerable\",\"question\":\"<what "
+            "you checked and why the residual remains unexplained>\"} — "
+            "silence is not an acceptable outcome. Then {\"action\":\"done\"}.")})
+
     # Hard token ceiling — a run must never be able to spend without limit.
     # prompt_tokens_total exists only on the TurnLoggingLLM wrapper; scripted /
     # mock callables report nothing and are unmetered (they cost nothing).
-    from app.config.settings import get_settings
-    max_prompt_tokens = get_settings().max_run_input_tokens
+    max_prompt_tokens = limits.max_run_input_tokens
 
-    while not done and turns < MAX_TURNS:
+    while not done and turns < max_turns:
         if wrapup_left is None \
                 and getattr(llm, "prompt_tokens_total", 0) >= max_prompt_tokens:
             budget_hit_tokens = True
-            wrapup_left = WRAPUP_TURNS
+            limits_hit.append({
+                "limit_name": "MAX_RUN_INPUT_TOKENS",
+                "limit_value": max_prompt_tokens,
+                "limit_effect": (
+                    f"the token ceiling tripped after {turns} of {max_turns} "
+                    f"turns; {wrapup_turns} query-free wrap-up turns were "
+                    f"granted and findings formed so far were kept")})
             _log.warning("miner %s: MAX_RUN_INPUT_TOKENS (%d) exceeded after %d turns "
                          "— entering wrap-up (%d query-free turns to emit findings)",
-                         tools.run_id, max_prompt_tokens, turns, WRAPUP_TURNS)
-            transcript.append({"label": "system", "text": (
-                "TOKEN BUDGET REACHED — no further queries will run. Emit each "
-                "finding you have already formed from the results above (one per "
-                "turn, with source_seq). If you cannot explain the residual from "
-                "what you have seen, record that explicitly with "
-                "{\"action\":\"unanswerable\",\"question\":\"<what you checked and "
-                "why the residual remains unexplained>\"} — silence is not an "
-                "acceptable outcome. Then {\"action\":\"done\"}.")})
+                         tools.run_id, max_prompt_tokens, turns, wrapup_turns)
+            enter_wrapup("TOKEN BUDGET REACHED — no further queries will run.")
+        if wrapup_left is None and not done and turns >= max_turns - wrapup_turns:
+            # Round H 2.3: the turn cap wraps up like the token ceiling — the
+            # last wrapup_turns turns are query-free commit turns, never a cut.
+            limits_hit.append({
+                "limit_name": "MINER_MAX_TURNS",
+                "limit_value": max_turns,
+                "limit_effect": (
+                    f"the turn cap was reached at turn {turns} of {max_turns}; "
+                    f"the final {wrapup_turns} turns were query-free wrap-up "
+                    f"and findings formed so far were kept")})
+            _log.warning("miner %s: turn cap %d reached — entering wrap-up",
+                         tools.run_id, max_turns)
+            enter_wrapup(f"TURN LIMIT REACHED ({max_turns} turns) — no further "
+                         f"queries will run.")
         if wrapup_left is not None:
             if wrapup_left <= 0:
                 break
@@ -465,28 +515,52 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
             # wrap-up is query-free: the budget is spent; only findings and
             # honest statements remain.
             transcript.append({"label": "system", "text": (
-                "NO MORE QUERIES — the token budget is reached. Emit findings "
+                "NO MORE QUERIES — a budget is reached. Emit findings "
                 "from results you already have, an unanswerable statement, or "
                 "{\"action\":\"done\"}.")})
         elif kind == "query":
             query_name = str(action.get("query_name") or "")
             try:
                 result = tools.run_graph_query(query_name, action.get("params") or {})
-                shown = result["rows"][:ROWS_SHOWN_TO_MODEL]
-                # row_count ALWAYS follows the rows so the agent knows the true size
+                shown = result["rows"][:rows_shown_cap]
+                clipped = result["row_count"] > len(shown)
+                # Round H 2.3: a truncated result set must tell the model it is
+                # a SAMPLE — "showing N of M" — so it queries more narrowly
+                # instead of reasoning from a partial set as if complete.
+                head = (f"seq {result['seq_no']} — {query_name} showing "
+                        f"{len(shown)} of {result['row_count']} rows"
+                        + (" (a SAMPLE — the result is larger than the display "
+                           "cap; query more narrowly for the full set)"
+                           if clipped else "") + ":\n")
+                if clipped:
+                    limits_hit.append({
+                        "limit_name": "ROWS_SHOWN_TO_MODEL",
+                        "limit_value": rows_shown_cap,
+                        "limit_effect": (
+                            f"query {query_name} (seq {result['seq_no']}) "
+                            f"returned {result['row_count']} rows; "
+                            f"{len(shown)} were shown to the model, labelled "
+                            f"as a sample")})
                 transcript.append({
                     "label": "tool",
-                    "text": (f"seq {result['seq_no']} — {query_name} showing "
-                             f"{len(shown)} row(s):\n"
-                             + _cap(json.dumps(shown, default=str))
+                    "text": (head + _cap(json.dumps(shown, default=str))
                              + f"\nrow_count={result['row_count']}"),
                     "summary": summarize_result(result["seq_no"], query_name,
                                                 result["rows"], result["row_count"]),
                 })
             except BudgetExhausted:
-                transcript.append({"label": "system",
-                                   "text": "QUERY BUDGET EXHAUSTED. Emit your remaining "
-                                           "findings now, then {\"action\":\"done\"}."})
+                # Round H 2.3: the query budget wraps up like the token
+                # ceiling — commit turns, never a mid-thought cut.
+                limits_hit.append({
+                    "limit_name": "MINER_QUERY_BUDGET",
+                    "limit_value": tools.budget,
+                    "limit_effect": (
+                        f"the query budget was exhausted at turn {turns} of "
+                        f"{max_turns} after {tools.queries_run} queries; "
+                        f"{wrapup_turns} query-free wrap-up turns were granted "
+                        f"and findings formed so far were kept")})
+                enter_wrapup(f"QUERY BUDGET EXHAUSTED ({tools.budget} queries) "
+                             f"— no further queries will run.")
             except CatalogError as exc:
                 transcript.append({"label": "tool", "text": f"QUERY ERROR: {exc}"})
         elif kind == "get_schema":
@@ -535,7 +609,7 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
     return {"findings": findings, "query_count": tools.queries_run,
             "budget_hit": tools.budget_hit, "budget_hit_tokens": budget_hit_tokens,
             "unanswerable": unanswerable, "coverage_ratio": coverage, "turns": turns,
-            "exploration_reserved": exploration_reserved}
+            "exploration_reserved": exploration_reserved, "limits_hit": limits_hit}
 
 
 def estimate_tokens(text: str) -> int:

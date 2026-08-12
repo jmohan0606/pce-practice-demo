@@ -57,8 +57,14 @@ _TURN_LOG_ATTRS = ("turn_id", "run_id", "seq_no", "agent_name", "model",
                    "cache_write_tokens", "latency_ms", "action_kind", "query_name",
                    "est_cost_usd")
 
-EVIDENCE_STORED_CAP = 50   # C2: keep at most 50 evidence rows per finding
-EVIDENCE_DISPLAY_CAP = 20  # the API returns at most 20
+
+def _evidence_caps() -> tuple[int, int]:
+    """(stored_cap, display_cap) — Round H task 2: settings-resolved with env
+    aliases (EVIDENCE_STORED_CAP / EVIDENCE_DISPLAY_CAP), no module constants."""
+    from app.config.settings import get_settings
+
+    s = get_settings()
+    return s.evidence_stored_cap, s.evidence_display_cap
 
 
 def _now() -> str:
@@ -185,6 +191,7 @@ class InsightStore:
                 "query_count": 0, "budget_hit": False, "budget_hit_tokens": False,
                 "started_at": _now(), "completed_at": "",
                 "narrative": "", "bullets_json": "[]", "recommendations_json": "[]",
+                "limits_json": "[]",  # Round H 2.3 — limits that bound, loud
                 "total_input_tokens": 0, "total_output_tokens": 0,
                 "total_cache_read_tokens": 0, "est_cost_usd": 0.0, "wall_ms": 0,
                 "generation": generation, "superseded": superseded,
@@ -268,7 +275,15 @@ class InsightStore:
                      findings: list[dict], query_count: int, budget_hit: bool,
                      coverage_ratio: float | None,
                      budget_hit_tokens: bool = False,
-                     recommendations: list[dict] | None = None) -> dict:
+                     recommendations: list[dict] | None = None,
+                     limits_hit: list[dict] | None = None) -> dict:
+        stored_cap, _ = _evidence_caps()
+        # Round H 2.3: every limit that binds is recorded on the run —
+        # {limit_name, limit_value, limit_effect} — including the evidence cap
+        # applied right here. SQLite + in-process only (limits_json rides the
+        # persisted run dict; the graph mirror's attribute set is unchanged,
+        # same precedent as scope/scope_key).
+        limits = [dict(entry) for entry in (limits_hit or [])]
         with self._lock:
             run = self.runs[run_id]
             run.update(status="COMPLETE", completed_at=_now(), narrative=narrative,
@@ -288,8 +303,18 @@ class InsightStore:
                 finding["finding_id"] = finding_id
                 finding["run_id"] = run_id
                 finding["rank_order"] = rank
-                evidence = list(finding.get("evidence_rows") or [])[:EVIDENCE_STORED_CAP]
+                all_evidence = list(finding.get("evidence_rows") or [])
+                evidence = all_evidence[:stored_cap]
+                if len(all_evidence) > stored_cap:
+                    limits.append({
+                        "limit_name": "EVIDENCE_STORED_CAP",
+                        "limit_value": stored_cap,
+                        "limit_effect": (
+                            f"finding {finding.get('title')!r} produced "
+                            f"{len(all_evidence)} evidence rows; {stored_cap} "
+                            f"were stored")})
                 finding["evidence_rows"] = evidence
+                finding["evidence_source_total"] = len(all_evidence)
                 stored.append(finding)
                 self._mirror(FINDING_VERTEX, "finding_id", _FINDING_ATTRS, {
                     **finding,
@@ -303,6 +328,7 @@ class InsightStore:
                         "finding_id": finding_id, "row_index": index,
                         "row_json": json.dumps(row, default=str),
                     })
+            run["limits_json"] = json.dumps(limits)
             self.findings[run_id] = stored
             self._mirror(RUN_VERTEX, "run_id", _RUN_ATTRS, run)
             self._persist_run(run_id)  # 5.4 — durable at completion

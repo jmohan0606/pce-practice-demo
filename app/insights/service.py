@@ -182,6 +182,7 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
             findings=mined["findings"], query_count=mined["query_count"],
             budget_hit=mined["budget_hit"],
             budget_hit_tokens=mined.get("budget_hit_tokens", False),
+            limits_hit=mined.get("limits_hit") or [],
             coverage_ratio=mined["coverage_ratio"])
         completed["unanswerable"] = mined["unanswerable"]
         completed["fallback_used"] = reported.get("fallback_used", False)

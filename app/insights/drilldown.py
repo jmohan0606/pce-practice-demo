@@ -13,10 +13,10 @@ Scope model (contract §1):
         product_account  managed_accounts~V000002~3060
 
 Scoped runs reuse the SAME Miner (``mine``) and Reporter (``report``) with a
-narrower opening context and smaller budgets: product 8 queries / 12 turns,
-product_advisor and product_account 6 / 10. ``mine`` has no turns parameter
-(MAX_TURNS is a module constant in app/agents/insights_miner.py, which this
-task must not edit), so the turn cap is enforced by ``_TurnCappedLLM`` — a
+narrower opening context and smaller budgets (settings-resolved, Round H:
+DRILLDOWN_PRODUCT_QUERY_BUDGET/TURN_CAP and DRILLDOWN_SUB_QUERY_BUDGET/
+TURN_CAP; defaults product 8 queries / 12 turns, sub-scopes 6 / 10). ``mine``
+has no turns parameter, so the turn cap is enforced by ``_TurnCappedLLM`` — a
 wrapper that counts LLM calls and answers ``{"action":"done"}`` itself once the
 cap is reached. Rule evaluation runs at the mapped rule scope
 (product→"product", product_advisor→"product_advisor", product_account→
@@ -41,9 +41,17 @@ DRILLDOWN_SCOPES = ("product", "product_advisor", "product_account")
 RULE_SCOPE = {"product": "product", "product_advisor": "product_advisor",
               "product_account": "account"}
 
-# drill-down scope -> (query budget, LLM turn cap) — ROUND_G_SPEC 3.3
-BUDGETS = {"product": (8, 12), "product_advisor": (6, 10),
-           "product_account": (6, 10)}
+# drill-down scope -> (query budget, LLM turn cap) — ROUND_G_SPEC 3.3.
+# Round H task 2: resolved from settings (DRILLDOWN_PRODUCT_QUERY_BUDGET /
+# DRILLDOWN_PRODUCT_TURN_CAP / DRILLDOWN_SUB_QUERY_BUDGET /
+# DRILLDOWN_SUB_TURN_CAP), no module constants.
+def budgets_for(scope: str) -> tuple[int, int]:
+    from app.config.settings import get_settings
+
+    s = get_settings()
+    if scope == "product":
+        return s.drilldown_product_query_budget, s.drilldown_product_turn_cap
+    return s.drilldown_sub_query_budget, s.drilldown_sub_turn_cap
 
 # scope -> its parent scope in the drill-down chain (None at the top)
 PARENT_SCOPE = {"product": None, "product_advisor": "product",
@@ -122,10 +130,21 @@ class _TurnCappedLLM:
         self._inner = inner
         self._max = max_turns
         self.calls = 0
+        # Round H 2.3: a bound cap is recorded, never silent.
+        self.limits_hit: list[dict] = []
 
     def _capped(self) -> bool:
         self.calls += 1
-        return self.calls > self._max
+        if self.calls > self._max:
+            if not self.limits_hit:
+                self.limits_hit.append({
+                    "limit_name": "DRILLDOWN_TURN_CAP",
+                    "limit_value": self._max,
+                    "limit_effect": (
+                        f"the scoped run reached its {self._max}-turn cap; the "
+                        f"run was closed with the findings formed so far")})
+            return True
+        return False
 
     def __call__(self, prompt: str, ctx: dict) -> str:
         if self._capped():
@@ -386,7 +405,7 @@ def _run_scoped_insight(scope: str, scope_key: str, from_month: str,
     store = get_insight_store()
     rules = [r for r in get_rule_store().version_rules(version["version_id"])
              if r.get("status") in ("PUBLISHED", "SUPERSEDED")]
-    query_budget, turn_cap = BUDGETS[scope]
+    query_budget, turn_cap = budgets_for(scope)
 
     # The scoped metrics ARE the transition the Miner explains; the scope is
     # stated inside the TOTALS line of the opening (mine() serialises the whole
@@ -437,6 +456,7 @@ def _run_scoped_insight(scope: str, scope_key: str, from_month: str,
             findings=mined["findings"], query_count=mined["query_count"],
             budget_hit=mined["budget_hit"],
             budget_hit_tokens=mined.get("budget_hit_tokens", False),
+            limits_hit=(mined.get("limits_hit") or []) + capped_miner.limits_hit,
             coverage_ratio=mined["coverage_ratio"])
         return completed
     except Exception as exc:  # noqa: BLE001 — honest failure recorded on the run

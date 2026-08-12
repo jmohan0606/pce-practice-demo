@@ -305,7 +305,12 @@ def template_report(findings: list[dict], transition: dict) -> dict:
 
 # --------------------------------------------------------------------------- entrypoint
 
-MAX_SEARCHES = 4
+def _max_searches() -> int:
+    """Round H task 2: settings-resolved (REPORTER_MAX_SEARCHES), not a
+    module constant."""
+    from app.config.settings import get_settings
+
+    return get_settings().reporter_max_searches
 
 
 def _decode_reply(raw: str) -> dict:
@@ -352,7 +357,7 @@ def report(findings: list[dict], transition: dict,
                 break
             if search_documents is None:
                 raise ValueError("search_documents requested but unavailable")
-            if searches >= MAX_SEARCHES:
+            if searches >= _max_searches():
                 if prompt.endswith("final JSON now."):
                     raise ValueError("search budget exhausted twice")
                 prompt += ("\n\nSEARCH BUDGET EXHAUSTED — give the "

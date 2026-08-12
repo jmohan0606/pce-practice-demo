@@ -13,6 +13,27 @@
       injected 202605 transfer probe: IN claims it, LOST drops 10→9). Stale
       durable rule_store.db cleared so the corrected seed applies (DECISIONS.md).
       verify a/b/c/e re-run green 25/25, 19/19, 13/13, 8/8.
+- [x] Task 2 (main thread): all 18 limit fields live in settings with env
+      aliases (verify H-4 enumerates them; no module constants left) and 2.2
+      defaults resized (tokens 60k→250k, queries 12→25, turns 20→35, rows
+      25→40, evidence 50→200, payload 1.5k→4k; ingestion cap deliberately NOT
+      resized — was Task 5's measurement). Every bound limit recorded as
+      {limit_name, limit_value, limit_effect} on the run record (limits_json,
+      rides the persisted run dict; graph mirror unchanged), in the API
+      (limit_hit/limits_hit on insights + trace runs/detail) — query budget
+      and turn cap now degrade through the same query-free wrap-up as the
+      token ceiling (never a mid-thought cut); clipped results tell the model
+      "showing N of M rows (a SAMPLE …)". never_fired(version) +
+      GET /api/rules/never-fired (2.4). Log rotation: DatedSizeRotatingFileHandler
+      — midnight roll to app.log.YYYY-MM-DD, 30-day retention, size cap kept as
+      within-day safety net app.log.YYYY-MM-DD.N (2.5). verify_round_h
+      H-4..H-8 + H-13 (9/9 with task 1); verify a/b/c/e green (E-5 re-pinned
+      to the settings-resolved reserve).
+- [ ] Task 5 (scale test) — DEFERRED TO NEXT SESSION, untouched (operator call,
+      session budget). Nothing of 5.1–5.3 exists yet: no --scale flag on
+      scripts/generate_mock_data.py, no scale run, no measurements. Task 6
+      check 11 is deferred with it. The 2.2 resized defaults are sized for the
+      target volume but UNMEASURED until this runs.
 
 ## Round G (docs/spec/ROUND_G_SPEC.md)
 - [x] Task 1 (main thread, 2d22311): rules declare their own scope — scopes on

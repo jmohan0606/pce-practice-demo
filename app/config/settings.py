@@ -35,8 +35,13 @@ class Settings(BaseSettings):
     log_json: bool = Field(default=True, alias="LOG_JSON")
     log_dir: str = Field(default="logs", alias="LOG_DIR")
     log_file_name: str = Field(default="app.log", alias="LOG_FILE_NAME")
+    # Round H 2.5: rotation is TIMED (dated archives — "what happened last
+    # Tuesday" is app.log.2026-08-11, not a guess among numbered files), with
+    # the size cap kept as a within-day safety net (app.log.2026-08-11.1).
+    log_rotate_when: str = Field(default="midnight", alias="LOG_ROTATE_WHEN")
+    log_rotate_utc: bool = Field(default=False, alias="LOG_ROTATE_UTC")
     log_rotate_max_bytes: int = Field(default=10_485_760, alias="LOG_ROTATE_MAX_BYTES")
-    log_rotate_backup_count: int = Field(default=5, alias="LOG_ROTATE_BACKUP_COUNT")
+    log_rotate_backup_count: int = Field(default=30, alias="LOG_ROTATE_BACKUP_COUNT")
     log_cloudwatch_group: str = Field(default="/pce/practice-demo", alias="LOG_CLOUDWATCH_GROUP")
     log_cloudwatch_stream: str | None = Field(default=None, alias="LOG_CLOUDWATCH_STREAM")
     aws_region: str | None = Field(default=None, alias="AWS_REGION")
@@ -161,12 +166,49 @@ class Settings(BaseSettings):
     insights_reporter_api_version: str = Field(default="", alias="INSIGHTS_REPORTER_API_VERSION")
     insights_reporter_temperature: float = Field(default=1.0, alias="INSIGHTS_REPORTER_TEMPERATURE")
 
-    # --- Agent loop budgets (BUILD_PLAN §3.4; cost-fix session) ---
-    miner_query_budget: int = Field(default=12, alias="MINER_QUERY_BUDGET")
+    # --- Agent loop budgets & limits (Round H task 2: EVERY limit lives here
+    # with an env alias — no limit is a module constant, no limit binds
+    # silently. Defaults sized for real volume (~60k transactions, 20
+    # advisors), not the 1,694-transaction mock set the old values were tuned
+    # against. Every one is a default, not a ceiling: override per environment.
+    miner_query_budget: int = Field(default=25, alias="MINER_QUERY_BUDGET")
     # Hard ceiling on prompt tokens (input + cache read + cache write) one run
-    # may consume. When exceeded the loop stops, budget_hit_tokens=true, and
-    # whatever findings exist are emitted — a run can never spend without limit.
-    max_run_input_tokens: int = Field(default=60_000, alias="MAX_RUN_INPUT_TOKENS")
+    # may consume. When exceeded the run gets wrap-up turns to commit what it
+    # has (never a mid-thought cut), the limit is recorded on the run record,
+    # and whatever findings exist are emitted. 60k truncated every run on MOCK
+    # data (Round G diagnosis) — 250k is sized for the client cohort.
+    max_run_input_tokens: int = Field(default=250_000, alias="MAX_RUN_INPUT_TOKENS")
+    # Hard stop on miner LLM turns — must exceed the query budget plus findings
+    # plus wrap-up so it never binds before the query budget does.
+    miner_max_turns: int = Field(default=35, alias="MINER_MAX_TURNS")
+    # Rows echoed into the transcript per query result. A clipped result always
+    # tells the model "showing N of M rows" — never a silent sample.
+    miner_rows_shown: int = Field(default=40, alias="ROWS_SHOWN_TO_MODEL")
+    # Older tool results collapse to code-built one-line factual summaries.
+    miner_recent_results_kept: int = Field(default=3, alias="RECENT_RESULTS_KEPT")
+    # Per-payload character cap on tool results (40 rows won't fit in 1,500).
+    miner_tool_result_char_cap: int = Field(default=4_000, alias="TOOL_RESULT_CHAR_CAP")
+    # Query-free turns granted when a budget trips — degrade, never truncate.
+    miner_wrapup_turns: int = Field(default=3, alias="MINER_WRAPUP_TURNS")
+    # Queries that must remain for free exploration after the opening queries.
+    miner_exploration_reserve: int = Field(default=6, alias="MINER_EXPLORATION_RESERVE")
+    # Evidence rows stored per finding / returned per finding by the API. The
+    # API always reports evidence_total so a capped table says "showing N of M".
+    evidence_stored_cap: int = Field(default=200, alias="EVIDENCE_STORED_CAP")
+    evidence_display_cap: int = Field(default=20, alias="EVIDENCE_DISPLAY_CAP")
+    # Drill-down budgets (query budget, turn cap) per scope tier — ROUND_G 3.3.
+    drilldown_product_query_budget: int = Field(default=8, alias="DRILLDOWN_PRODUCT_QUERY_BUDGET")
+    drilldown_product_turn_cap: int = Field(default=12, alias="DRILLDOWN_PRODUCT_TURN_CAP")
+    drilldown_sub_query_budget: int = Field(default=6, alias="DRILLDOWN_SUB_QUERY_BUDGET")
+    drilldown_sub_turn_cap: int = Field(default=10, alias="DRILLDOWN_SUB_TURN_CAP")
+    # Reporter document searches per run; Rule Compiler lookups/repair rounds.
+    reporter_max_searches: int = Field(default=4, alias="REPORTER_MAX_SEARCHES")
+    rule_compiler_max_searches: int = Field(default=2, alias="RULE_COMPILER_MAX_SEARCHES")
+    rule_compiler_max_repairs: int = Field(default=2, alias="RULE_COMPILER_MAX_REPAIRS")
+    # Runaway-loop backstop on ingestion batch calls per entity. Not resized in
+    # 2.2 — the Task 5 scale run measures whether it binds; raise deliberately
+    # with that measurement, never silently.
+    ingestion_max_batch_calls: int = Field(default=500, alias="INGESTION_MAX_BATCH_CALLS_PER_ENTITY")
 
     # --- Storage paths ---
     chroma_path: str = Field(default="./chroma", alias="CHROMA_PATH")

@@ -17,8 +17,13 @@ from app.shared.logging import get_logger
 _log = get_logger("app.ingestion.run_all")
 
 # Safety valve: an entity is (rows / batch_size) + slack batch calls; a stuck
-# resume loop must never spin forever against a remote engine.
-_MAX_BATCH_CALLS_PER_ENTITY = 500
+# resume loop must never spin forever against a remote engine. Round H task 2:
+# settings-resolved (INGESTION_MAX_BATCH_CALLS_PER_ENTITY), and when it binds
+# the entity fails LOUDLY with limit_name/limit_value/limit_effect in the error.
+def _max_batch_calls() -> int:
+    from app.config.settings import get_settings
+
+    return get_settings().ingestion_max_batch_calls
 
 
 class RunAllManager:
@@ -94,11 +99,15 @@ class RunAllManager:
             self._update_entity(index, status=IngestionStatus.RUNNING)
             try:
                 calls = 0
+                max_calls = _max_batch_calls()
                 while True:
                     calls += 1
-                    if calls > _MAX_BATCH_CALLS_PER_ENTITY:
+                    if calls > max_calls:
                         raise RuntimeError(
-                            f"exceeded {_MAX_BATCH_CALLS_PER_ENTITY} batch calls — aborting entity"
+                            "limit_hit=true limit_name=INGESTION_MAX_BATCH_CALLS_PER_ENTITY "
+                            f"limit_value={max_calls} limit_effect=the entity was aborted "
+                            f"after {max_calls} batch calls; raise the setting if the "
+                            "volume is legitimate"
                         )
                     response = service.run_entity_ingestion(
                         IngestionRunRequest(

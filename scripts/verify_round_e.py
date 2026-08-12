@@ -139,7 +139,10 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
           f"real-run asserter present={runner}")
 
     # 5 — the Miner reserves >= 6 queries for exploration after rule evaluation
-    from app.agents.insights_miner import EXPLORATION_RESERVE
+    # (Round H task 2 moved EXPLORATION_RESERVE into settings as
+    # MINER_EXPLORATION_RESERVE — the contract is unchanged.)
+    from app.config.settings import get_settings
+    EXPLORATION_RESERVE = get_settings().miner_exploration_reserve
     from app.insights.service import run_insights_for_advisor
 
     def scripted_miner(prompt: str, ctx: dict) -> str:
@@ -157,7 +160,8 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
              "evaluation",
           EXPLORATION_RESERVE == 6 and reserved is not None and reserved >= 6,
           f"EXPLORATION_RESERVE={EXPLORATION_RESERVE}, run reserved={reserved} "
-          f"of budget 12 (rule evaluation spends no miner queries)")
+          f"of budget {get_settings().miner_query_budget} "
+          f"(rule evaluation spends no miner queries)")
 
     # 6 — every recommendation carries a source_query or a citation, asserted
     # in code: the gate keeps only traceable recs and drops the rest

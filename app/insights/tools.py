@@ -2,8 +2,9 @@
 
 Every tool call appends a ``phx_dm_pce_agent_query_log`` row (run_id, seq_no,
 agent_name, query_name, params_json, row_count, latency_ms) through the insight
-store. ``run_graph_query`` calls count against the 40-query budget;
-``get_schema`` and ``search_documents`` are logged but unmetered.
+store. ``run_graph_query`` calls count against the query budget (settings
+``MINER_QUERY_BUDGET``); ``get_schema`` and ``search_documents`` are logged but
+unmetered.
 
 Query results are RETAINED here (keyed by seq_no) so a finding can keep its
 evidence rows from the query that produced them — re-running an agentic loop
@@ -18,8 +19,6 @@ from app.insights.store import get_insight_store
 from app.shared.logging import get_logger
 
 _log = get_logger("app.insights.tools")
-
-QUERY_BUDGET = 12  # cost-fix session 2.4 (was 40); MINER_QUERY_BUDGET overrides
 
 
 class BudgetExhausted(RuntimeError):

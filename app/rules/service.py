@@ -147,3 +147,56 @@ def evaluate_rule_set(version_id: str, month: str | None = None,
                 str(entry["key"]) for entry in outcome.get("matched", []))
     return {"version_id": version["version_id"], "month": month,
             "advisor_sid": advisor_sid, "scope": scope, "results": results}
+
+
+def never_fired(version_id: str, months: list[str] | None = None) -> dict:
+    """Round H 2.4: a rule evaluated with ZERO matches across every month and
+    every scope is either wrong or inapplicable (PARTIAL_PERIOD was both, for a
+    round, unnoticed). Evaluates the version's rules at practice scope and at
+    advisor scope for every advisor, across ``months`` (default: every month in
+    the data), and returns the rules that never matched — with their scopes, so
+    a rule that CANNOT fire is obvious without a code read."""
+    from app.graph.foundation_store import get_foundation_store
+
+    store = get_rule_store()
+    version = store.version(version_id)
+    if version is None:
+        raise ValueError(f"unknown rule-set version {version_id!r}")
+    fstore = get_foundation_store()
+    if not fstore.available():
+        fstore.load()
+    if months is None:
+        months = sorted(fstore.all_vertices("phx_dm_pce_month"))
+    advisors = sorted(fstore.all_vertices("phx_dm_pce_advisor"))
+    total_matched: dict[str, int] = {}
+    evaluated_anywhere: dict[str, bool] = {}
+    for month in months:
+        passes = [{"advisor_sid": None, "scope": "practice"}] + [
+            {"advisor_sid": sid, "scope": "advisor"} for sid in advisors]
+        for p in passes:
+            outcome = evaluate_rule_set(version["version_id"], month=month, **p)
+            for r in outcome["results"]:
+                code = r["rule_code"]
+                total_matched.setdefault(code, 0)
+                if r.get("evaluated"):
+                    evaluated_anywhere[code] = True
+                    total_matched[code] += int(r.get("matched_count") or 0)
+    rules = store.version_rules(version["version_id"])
+    out = []
+    for rule in rules:
+        code = rule["rule_code"]
+        if total_matched.get(code, 0) == 0:
+            out.append({
+                "rule_code": code, "rule_key": rule.get("rule_key"),
+                "rule_name": rule.get("rule_name"),
+                "scopes": rule_scopes(rule),
+                "evaluated_anywhere": evaluated_anywhere.get(code, False),
+                "total_matched": 0,
+                "note": ("never evaluated at any scope in the period"
+                         if not evaluated_anywhere.get(code) else
+                         "evaluated at every applicable scope and month with "
+                         "zero matches — the rule is either wrong or "
+                         "inapplicable to this data"),
+            })
+    return {"version_id": version["version_id"], "months": months,
+            "advisors_checked": len(advisors), "never_fired": out}

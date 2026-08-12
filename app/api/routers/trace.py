@@ -37,8 +37,11 @@ def _totals(turns: list[dict]) -> dict:
 
 
 def _run_row(run_id: str, run: dict | None, turns: list[dict]) -> dict:
+    import json as _json
+
     totals = _totals(turns)
     if run is not None:
+        limits = _json.loads(run.get("limits_json") or "[]")
         scope = {
             "kind": "insight_run", "advisor_sid": run["advisor_sid"],
             "transition": f"{run['from_month_id']} → {run['to_month_id']}",
@@ -47,6 +50,11 @@ def _run_row(run_id: str, run: dict | None, turns: list[dict]) -> dict:
             "wall_ms": run.get("wall_ms", 0),
             "budget_hit": bool(run.get("budget_hit")),
             "budget_hit_tokens": bool(run.get("budget_hit_tokens")),
+            # Round H 2.3/4.2: the Limits column — every bound limit with its
+            # name, value and effect; a run that hit a limit is visually
+            # distinct from one that finished clean.
+            "limit_hit": bool(limits),
+            "limits_hit": limits,
             "started_at": run.get("started_at"),
         }
     else:
@@ -57,6 +65,7 @@ def _run_row(run_id: str, run: dict | None, turns: list[dict]) -> dict:
                  "version_id": None, "status": "LOGGED", "query_count": 0,
                  "wall_ms": sum(t["latency_ms"] for t in turns),
                  "budget_hit": False, "budget_hit_tokens": False,
+                 "limit_hit": False, "limits_hit": [],
                  "started_at": None}
     return {"run_id": run_id, **scope, **totals}
 

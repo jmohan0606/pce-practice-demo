@@ -8,6 +8,7 @@ Usage: python3 scripts/verify_round_h.py
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -25,6 +26,7 @@ RESULTS: list[bool] = []
 
 
 def check(num: int, label: str, ok: bool, observed: str) -> None:
+    ok = bool(ok)
     RESULTS.append(ok)
     print(f"{'PASS' if ok else 'FAIL'}  H-{num}. {label} — {observed}")
 
@@ -97,6 +99,189 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
           not has_implicit and "exclude_matched_of" in body,
           f"transferred_keys in code={has_implicit}, "
           f"exclude_matched_of present=True")
+
+    # ----- Task 2: limits configurable, sized, loud -----
+
+    # 4 — all limits resolve from settings; each has an env alias; none is a
+    # module constant.
+    from app.config.settings import Settings, get_settings
+    limit_fields = [
+        "miner_query_budget", "max_run_input_tokens", "miner_max_turns",
+        "miner_rows_shown", "miner_recent_results_kept",
+        "miner_tool_result_char_cap", "miner_wrapup_turns",
+        "miner_exploration_reserve", "evidence_stored_cap",
+        "evidence_display_cap", "drilldown_product_query_budget",
+        "drilldown_product_turn_cap", "drilldown_sub_query_budget",
+        "drilldown_sub_turn_cap", "reporter_max_searches",
+        "rule_compiler_max_searches", "rule_compiler_max_repairs",
+        "ingestion_max_batch_calls"]
+    missing_fields = [f for f in limit_fields if f not in Settings.model_fields]
+    no_alias = [f for f in limit_fields
+                if f not in missing_fields and not Settings.model_fields[f].alias]
+    os.environ["MINER_MAX_TURNS"] = "7"
+    get_settings.cache_clear()
+    alias_works = get_settings().miner_max_turns == 7
+    del os.environ["MINER_MAX_TURNS"]
+    get_settings.cache_clear()
+    stale = []
+    for path, names in {
+        "app/agents/insights_miner.py": ["MAX_TURNS =", "ROWS_SHOWN_TO_MODEL =",
+                                         "RECENT_RESULTS_KEPT =",
+                                         "TOOL_RESULT_CHAR_CAP =", "WRAPUP_TURNS =",
+                                         "EXPLORATION_RESERVE ="],
+        "app/insights/tools.py": ["QUERY_BUDGET ="],
+        "app/insights/store.py": ["EVIDENCE_STORED_CAP =", "EVIDENCE_DISPLAY_CAP ="],
+        "app/insights/drilldown.py": ["BUDGETS ="],
+        "app/agents/insights_reporter.py": ["MAX_SEARCHES ="],
+        "app/agents/rule_compiler.py": ["MAX_SEARCHES =", "MAX_REPAIRS ="],
+        "app/ingestion/run_all.py": ["_MAX_BATCH_CALLS_PER_ENTITY ="],
+    }.items():
+        src = (APP_ROOT / path).read_text()
+        stale += [f"{path}:{n}" for n in names if n in src]
+    resized_ok = (get_settings().miner_query_budget == 25
+                  and get_settings().max_run_input_tokens == 250_000
+                  and get_settings().miner_max_turns == 35
+                  and get_settings().miner_rows_shown == 40
+                  and get_settings().evidence_stored_cap == 200
+                  and get_settings().miner_tool_result_char_cap == 4_000)
+    check(4, "all limits resolve from settings with env aliases; no module "
+             "constants; 2.2 defaults resized",
+          not missing_fields and not no_alias and alias_works and not stale
+          and resized_ok,
+          f"{len(limit_fields)} limit fields present, aliases ok={not no_alias}, "
+          f"env override works={alias_works}, stale constants={stale or 'none'}, "
+          f"resized defaults ok={resized_ok}")
+
+    # 5+6+7 — one scripted run that exhausts the query budget: the run gets a
+    # wrap-up (a finding lands AFTER exhaustion — not a mid-thought cut), the
+    # limits are recorded with all four fields on the run and the API response,
+    # and a clipped result told the model "showing N of M".
+    os.environ["MINER_QUERY_BUDGET"] = "4"
+    os.environ["ROWS_SHOWN_TO_MODEL"] = "2"
+    get_settings.cache_clear()
+    try:
+        from app.insights.service import run_insights_for_advisor
+
+        prompts_seen: list[str] = []
+        script = iter([
+            '{"action":"query","query_name":"revenue_change_by_product",'
+            '"params":{"advisor":"all","from_month":"202604","to_month":"202605"},'
+            '"why":"wide result to clip"}',
+            '{"action":"query","query_name":"month_meta",'
+            '"params":{"month_id":"202605"},"why":"this exhausts the budget"}',
+            '{"action":"finding","finding":{"title":"Wrap-up finding",'
+            '"summary":"emitted after the query budget tripped — proves the '
+            'wrap-up commits formed work.","impact_amt":null,"driver_tag":"Other",'
+            '"provenance":"REAL","confidence":0.9,"source_seq":4}}',
+            '{"action":"done","note":"wrapped up"}',
+        ])
+
+        def scripted_miner(prompt: str, ctx: dict) -> str:
+            prompts_seen.append(prompt)
+            return next(script)
+
+        def scripted_reporter(prompt: str, ctx: dict) -> str:
+            return "not json — force the template fallback"
+
+        completed = run_insights_for_advisor(
+            "V000002", "202604", "202605",
+            miner_llm=scripted_miner, reporter_llm=scripted_reporter)
+    finally:
+        del os.environ["MINER_QUERY_BUDGET"]
+        del os.environ["ROWS_SHOWN_TO_MODEL"]
+        get_settings.cache_clear()
+
+    limits_recorded = json.loads(completed.get("limits_json") or "[]")
+    names = {e.get("limit_name") for e in limits_recorded}
+    four_fields = all(
+        e.get("limit_name") and e.get("limit_value") is not None
+        and e.get("limit_effect") for e in limits_recorded)
+    from fastapi.testclient import TestClient
+
+    from app.api.main import app as fastapi_app
+    client = TestClient(fastapi_app)
+    api = client.get("/api/insights/V000002/202604/202605").json()
+    check(5, "every limit that binds sets limit_hit / limit_name / limit_value "
+             "/ limit_effect on the run record and the API response",
+          completed["status"] == "COMPLETE" and limits_recorded and four_fields
+          and api.get("limit_hit") is True
+          and all(e.get("limit_name") and e.get("limit_value") is not None
+                  and e.get("limit_effect") for e in api.get("limits_hit", [])),
+          f"recorded={sorted(names)}, four fields on every entry={four_fields}, "
+          f"API limit_hit={api.get('limit_hit')} with "
+          f"{len(api.get('limits_hit', []))} entries")
+
+    wrapup_finding = [f for f in api.get("findings", [])
+                      if f.get("title") == "Wrap-up finding"]
+    check(6, "hitting the query budget produces a wrap-up turn, not a "
+             "mid-thought cut",
+          "MINER_QUERY_BUDGET" in names and bool(wrapup_finding),
+          f"budget limit recorded={'MINER_QUERY_BUDGET' in names}; the finding "
+          f"emitted AFTER exhaustion was kept={bool(wrapup_finding)}")
+
+    clip_lines = [line for p in prompts_seen for line in p.splitlines()
+                  if "showing 2 of " in line and "SAMPLE" in line]
+    check(7, "a clipped result tells the model \"showing N of M\"",
+          bool(clip_lines) and "ROWS_SHOWN_TO_MODEL" in names,
+          f"transcript line: {clip_lines[0][:100] if clip_lines else 'MISSING'}")
+
+    # 8 — never_fired lists any rule with zero matches across the period.
+    from app.rules.service import never_fired
+    base_report = never_fired(vid)
+    probe_version = rule_store.create_version(
+        99, "PUBLISHED", notes="H-8 probe", approved_by="VERIFY")
+    for rule in rule_store.version_rules(vid):
+        rule_store.add_rule({**{k: rule[k] for k in rule if k != "rule_key"}},
+                            version_id=probe_version["version_id"])
+    rule_store.add_rule({
+        "rule_code": "H8_NEVER_FIRES", "rule_name": "H8 Never Fires",
+        "statement": "verification probe: structurally cannot match",
+        "kind": "TRIGGER", "grain": "account", "driver_tag": "Other",
+        "evaluation_order": 99, "provenance": "OPERATOR_SPECIFIED",
+        "status": "PUBLISHED", "confidence": 1.0, "citations": [],
+        "plan": {"vertex": "phx_dm_pce_account_month",
+                 "filters": [{"field": "credited_amt", "op": "<", "value": -1e12}],
+                 "compute": {"agg": "sum", "expr": "credited_amt"},
+                 "trigger": {"op": ">", "value": 0}, "attribute": None,
+                 "params": [], "explanation": "cannot match", "unsupported": None},
+    }, version_id=probe_version["version_id"])
+    probe_report = never_fired(probe_version["version_id"])
+    probe_codes = [r["rule_code"] for r in probe_report["never_fired"]]
+    probe_row = next((r for r in probe_report["never_fired"]
+                      if r["rule_code"] == "H8_NEVER_FIRES"), {})
+    check(8, "never_fired lists any rule with zero matches across the period",
+          [r["rule_code"] for r in base_report["never_fired"]] == []
+          and probe_codes == ["H8_NEVER_FIRES"] and probe_row.get("scopes"),
+          f"seed version never_fired={[r['rule_code'] for r in base_report['never_fired']]} "
+          f"(all 5 rules fire); probe version flags {probe_codes} with scopes "
+          f"{probe_row.get('scopes')}")
+
+    # 13 — logs rotate at midnight with a dated archive name; size safety net;
+    # 30 days retained by default.
+    import logging as _logging
+    from app.shared.logging import DatedSizeRotatingFileHandler
+    tmp = Path(tempfile.mkdtemp(prefix="pce-verify-logs-"))
+    handler = DatedSizeRotatingFileHandler(tmp / "app.log", max_bytes=10_000_000)
+    probe_log = _logging.getLogger("h13-probe")
+    probe_log.addHandler(handler)
+    probe_log.setLevel(_logging.INFO)
+    probe_log.info("line before rollover")
+    handler.doRollover()
+    probe_log.info("line after rollover")
+    handler.close()
+    archives = [p.name for p in tmp.iterdir() if p.name != "app.log"]
+    import re as _re
+    dated = archives and all(
+        _re.fullmatch(r"app\.log\.\d{4}-\d{2}-\d{2}", a) for a in archives)
+    rolled_ok = (dated and "before" in (tmp / archives[0]).read_text()
+                 and "before" not in (tmp / "app.log").read_text())
+    retention_ok = get_settings().log_rotate_backup_count == 30 \
+        and get_settings().log_rotate_when == "midnight"
+    check(13, "logs rotate at midnight with a dated archive name; 30 days "
+              "retained",
+          bool(rolled_ok) and retention_ok,
+          f"archive={archives}, rolled line in archive and absent from live "
+          f"file={rolled_ok}, when=midnight backup_count=30={retention_ok}")
 
     passed = sum(RESULTS)
     print(f"\n{passed}/{len(RESULTS)} checks passed")

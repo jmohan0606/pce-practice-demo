@@ -166,6 +166,21 @@ def extraction_summary() -> dict:
     }
 
 
+@router.get("/never-fired")
+def never_fired_report(version: str = "latest") -> dict:
+    """Round H 2.4: rules with zero matches across every month and scope in
+    the data — surfaced on the Rule Versions screen, each with its scopes, so
+    a rule that cannot fire is obvious rather than needing a code read."""
+    from app.rules.service import never_fired
+
+    store = get_rule_store()
+    v = (store.latest_version(status="PUBLISHED") if version == "latest"
+         else store.version(version))
+    if v is None:
+        raise HTTPException(status_code=404, detail=f"unknown version {version!r}")
+    return never_fired(v["version_id"])
+
+
 class ApproveRequest(BaseModel):
     approved_by: str = ""
 

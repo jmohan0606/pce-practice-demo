@@ -185,3 +185,18 @@ Reversible: yes (backup retained for this session)
 Context: All 13 mock transfers sit in 202604, the baseline month where LOST_ACCOUNT cannot fire, so on stock mock data the transfer exclusion never binds and a naive check would pass vacuously.
 Decision: verify_round_h H-2 injects a synthetic 202605 transfer row for an account LOST_ACCOUNT actually matches, then asserts TRANSFERRED_IN claims it AND LOST_ACCOUNT's count drops by exactly one (10→9), removing the probe row afterwards.
 Reversible: yes
+
+## 2026-08-12 · Round H task 2 · limits_json rides the persisted run dict; no graph schema change
+Context: 2.3 requires limit_hit/limit_name/limit_value/limit_effect "on the run record, in the API response, and in the UI". Adding them to the graph mirror would be a 7-place schema change for observability fields.
+Decision: `limits_json` lives on the in-process run dict and the durable SQLite run_json (like scope/scope_key, the documented Round G precedent); the API serializes limit_hit (bool) + limits_hit (list) on insight responses and trace rows. The graph mirror's attribute set is unchanged. The ingestion batch cap, which has no run record, encodes the four fields in its loud abort error string.
+Reversible: yes
+
+## 2026-08-12 · Round H task 2 · Turn cap records a limit even when the model finishes inside the wrap-up window
+Context: The turn cap enters query-free wrap-up at (max_turns − wrapup_turns) so the run is never cut mid-thought. A model that would have finished naturally at turn 34/35 still passes through that window.
+Decision: Entering the wrap-up window records the MINER_MAX_TURNS limit — because the cap DID bind (queries were forbidden from that point), even if the model then finished. Over-reporting a bound is acceptable; under-reporting is the failure mode this round exists to kill.
+Reversible: yes
+
+## 2026-08-12 · Round H (operator, mid-session) · Task 5 scale test DEFERRED; subagent C not dispatched
+Context: Session budget ran low. Operator instruction: finish Task 2, dispatch only subagents A and B, skip Task 5 entirely, run Task 6 with the checks that apply and mark check 11 deferred.
+Decision: Task 5 (--scale generator, scale run, limit measurements) is untouched and moves to the next session; PROGRESS.md carries an explicit "nothing of 5.1–5.3 exists" note. The 2.2 resized defaults therefore remain sized-but-unmeasured. The ingestion batch-call cap keeps its 500 default until the scale run measures it.
+Reversible: yes (run the task next session)
