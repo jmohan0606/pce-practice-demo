@@ -200,3 +200,13 @@ Reversible: yes
 Context: Session budget ran low. Operator instruction: finish Task 2, dispatch only subagents A and B, skip Task 5 entirely, run Task 6 with the checks that apply and mark check 11 deferred.
 Decision: Task 5 (--scale generator, scale run, limit measurements) is untouched and moves to the next session; PROGRESS.md carries an explicit "nothing of 5.1–5.3 exists" note. The 2.2 resized defaults therefore remain sized-but-unmeasured. The ingestion batch-call cap keeps its 500 default until the scale run measures it.
 Reversible: yes (run the task next session)
+
+## 2026-08-12 · Round H task 5 · Scale data is transient; canonical data/ restored after measurement
+Context: 5.2 needs the pipeline run at client volume (--scale 28: 57,657 txns / 3,066 accounts / 490 households), but every verify pin (13 transfers, NEW_BILLING 17, transition deltas) is against the committed small data set.
+Decision: The scale CSVs were generated in place, measured, and then data/ + docs/data/ restored from git; the gitignored data/runtime run stores were cleared with them so no scale-sized stored run (e.g. an 84-match NEW_BILLING) survives into the small-data servers. The scale run's full measurements live in docs/ROUND_H_COMPLETE.md — the numbers outlive the data that produced them.
+Reversible: yes (rerun scripts/generate_mock_data.py --scale 28)
+
+## 2026-08-12 · Round H task 5 · FOUND: the mock generator was never cross-process deterministic
+Context: 5.1's S=1 byte-identity check exposed that build_transactions selects each advisor's product subset with builtin hash(), which is salted per process (PYTHONHASHSEED). Regenerating on ANY machine produces different transaction subsets than the committed CSVs — the "seed 42 deterministic" claim only ever covered the random module. Pre-existing since Round A; the committed data/ CSVs are canonical and verify pins depend on them.
+Decision: NOT fixed this round — replacing hash() with a stable hash would change every data-derived pin mid-round. Recorded here so nobody regenerates data/ expecting a no-op diff. Scale measurements were run under PYTHONHASHSEED=0 so they are reproducible. Fix candidate for a future round: zlib.crc32, then re-commit data/ and re-pin.
+Reversible: n/a (documentation)
