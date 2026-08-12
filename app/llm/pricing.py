@@ -27,3 +27,15 @@ def estimate_cost_usd(model: str, input_tokens: int, output_tokens: int,
                  + cache_read_tokens * p_read + cache_write_tokens * p_write) / 1_000_000,
                 6)
     return 0.0
+
+
+def estimate_cost_no_cache_usd(model: str, input_tokens: int, output_tokens: int,
+                               cache_read_tokens: int, cache_write_tokens: int) -> float:
+    """What the SAME turn would cost with NO prompt caching: every prompt token
+    (uncached + cache-read + cache-write) priced at the full input rate.
+    Round H task 3.3 — used for the Generate-button projection when
+    ASSUME_PROMPT_CACHING=false (the operator measured, via
+    scripts/check_cache_support.py, that the provider caches nothing)."""
+    return estimate_cost_usd(
+        model, input_tokens + cache_read_tokens + cache_write_tokens,
+        output_tokens, 0, 0)

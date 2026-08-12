@@ -108,8 +108,24 @@ def alltime() -> dict:
 
 @router.get("/summary")
 def summary() -> dict:
+    from app.config.settings import get_settings
+    from app.llm.pricing import estimate_cost_no_cache_usd
+
     store = get_insight_store()
     turn_logs = store.all_turn_logs()
+    # Round H task 3.3: when ASSUME_PROMPT_CACHING=false (the operator measured
+    # that the provider caches nothing — scripts/check_cache_support.py), the
+    # projection reprices every historical prompt token at the FULL input rate;
+    # logged actuals (est_cost_usd) are never rewritten.
+    assume_caching = get_settings().assume_prompt_caching
+
+    def _projected_run_cost(turns: list[dict]) -> float:
+        if assume_caching:
+            return sum(t["est_cost_usd"] for t in turns)
+        return sum(estimate_cost_no_cache_usd(
+            t["model"], t["input_tokens"], t["output_tokens"],
+            t["cache_read_tokens"], t["cache_write_tokens"]) for t in turns)
+
     per_advisor: dict[str, list[dict]] = {}
     extraction_turns: list[dict] = []
     audit_turns: list[dict] = []
@@ -120,7 +136,7 @@ def summary() -> dict:
         if run is not None:
             per_advisor.setdefault(run["advisor_sid"], []).extend(turns)
             if run["status"] == "COMPLETE" and turns:
-                completed_costs.append(sum(t["est_cost_usd"] for t in turns))
+                completed_costs.append(_projected_run_cost(turns))
                 completed_walls.append(int(run.get("wall_ms") or 0))
         elif run_id.startswith("doc_extract|"):
             extraction_turns.extend(turns)
@@ -149,6 +165,7 @@ def summary() -> dict:
                             if avg_wall_ms is not None and refresh_runs else None),
         },
         "projection": {
+            "assume_prompt_caching": assume_caching,
             "history_runs": history,
             "avg_run_cost_usd": round(avg_cost, 4) if avg_cost is not None else None,
             "avg_run_wall_ms": int(avg_wall_ms) if avg_wall_ms is not None else None,

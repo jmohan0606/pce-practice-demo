@@ -95,6 +95,11 @@ class Settings(BaseSettings):
     cdao_workspace_id: str | None = Field(default=None, alias="CDAO_WORKSPACE_ID")
     cdao_model: str = Field(default="gpt-5", alias="CDAO_MODEL")
     cdao_temperature: float = Field(default=1.0, alias="CDAO_TEMPERATURE")
+    # Round H task 3.3: does the configured provider give us prompt caching?
+    # Set false when scripts/check_cache_support.py shows the provider caches
+    # nothing — the Generate-button cost projection then prices EVERY input
+    # token at the full input rate instead of the historical cached mix.
+    assume_prompt_caching: bool = Field(default=True, alias="ASSUME_PROMPT_CACHING")
 
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     anthropic_model: str = Field(default="claude-haiku-4-5-20251001", alias="ANTHROPIC_MODEL")

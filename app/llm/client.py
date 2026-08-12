@@ -159,21 +159,41 @@ class ClaudeLLMClient:
 
     def generate_conversation(self, system_blocks: list[dict],
                               messages: list[dict]) -> dict:
-        """Proper messages-array path with per-block cache_control — the caller
-        (the Insights Miner) keeps its two static blocks byte-identical every
-        turn so they bill at cache-read rates from turn 2 onward. Other agents
-        keep the single-string generate() path."""
+        """Proper messages-array path. Round H task 3: the caller (the Insights
+        Miner) marks stable blocks with the provider-neutral ``stable: True``
+        flag; THIS adapter translates those to ``cache_control: ephemeral``
+        (app/llm/cache.py) — the wire format is byte-identical to when the
+        agent emitted cache_control itself. The caller keeps its two static
+        blocks byte-identical every turn so they bill at cache-read rates from
+        turn 2 onward. Other agents keep the single-string generate() path."""
+        from app.llm.cache import claude_wire
+
+        wire_system, wire_messages = claude_wire(system_blocks, messages)
         response = self._client.messages.create(
             model=self.model,
             max_tokens=self.max_tokens,
-            system=system_blocks,
-            messages=messages,
+            system=wire_system,
+            messages=wire_messages,
         )
         text = "".join(block.text for block in response.content if block.type == "text")
         return {"text": text, "usage": self._usage_dict(response), "model": self.model}
 
     def describe(self) -> dict:
         return {"mode": "claude", "model": self.model}
+
+
+def _openai_usage_dict(response) -> dict:
+    """The four token counts from an OpenAI-shaped response — NEVER estimated.
+    OpenAI reports cached prompt tokens (automatic prefix caching) in
+    usage.prompt_tokens_details.cached_tokens; there is no write-side count."""
+    usage = getattr(response, "usage", None)
+    details = getattr(usage, "prompt_tokens_details", None)
+    return {
+        "input_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
+        "output_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
+        "cache_read_tokens": int(getattr(details, "cached_tokens", 0) or 0),
+        "cache_write_tokens": 0,
+    }
 
 
 class RealLLMClient:
@@ -222,6 +242,26 @@ class RealLLMClient:
             ],
         )
         return response.choices[0].message.content or ""
+
+    supports_conversation = True
+
+    def generate_conversation(self, system_blocks: list[dict],
+                              messages: list[dict]) -> dict:
+        """Round H task 3: messages-array path on the OpenAI wire. No cache
+        parameter exists here — stable flags are STRIPPED and each message's
+        text blocks flatten deterministically (app/llm/cache.py), so the
+        caller's byte-identical stable prefix stays byte-identical on the wire
+        and Azure OpenAI's automatic prefix caching can engage."""
+        from app.llm.cache import openai_chat_messages
+
+        response = self._client.chat.completions.create(
+            model=self.deployment,
+            temperature=self.temperature,
+            messages=openai_chat_messages(system_blocks, messages),
+        )
+        text = response.choices[0].message.content or ""
+        return {"text": text, "usage": _openai_usage_dict(response),
+                "model": self.deployment}
 
     def describe(self) -> dict:
         return {"mode": "real", "model": f"azure:{self.deployment}"}
@@ -392,6 +432,27 @@ class CdaoOpenAILLMClient:
             ],
         )
         return response.choices[0].message.content or ""
+
+    supports_conversation = True
+
+    def generate_conversation(self, system_blocks: list[dict],
+                              messages: list[dict]) -> dict:
+        """Round H task 3: messages-array path on the cdao (OpenAI) wire. No
+        cache parameter exists here — stable flags are STRIPPED and each
+        message's text blocks flatten deterministically (app/llm/cache.py), so
+        the caller's byte-identical stable prefix stays byte-identical on the
+        wire and automatic prefix caching can engage. Whether it actually does
+        on cdao is measured by scripts/check_cache_support.py."""
+        from app.llm.cache import openai_chat_messages
+
+        response = self._client.chat.completions.create(
+            model=self.model,
+            temperature=self.temperature,
+            messages=openai_chat_messages(system_blocks, messages),
+        )
+        text = response.choices[0].message.content or ""
+        return {"text": text, "usage": _openai_usage_dict(response),
+                "model": self.model}
 
     def describe(self) -> dict:
         return {"mode": "cdao_openai", "model": f"cdao:{self.model}"}

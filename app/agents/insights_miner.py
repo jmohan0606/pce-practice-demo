@@ -43,7 +43,7 @@ _log = get_logger("app.agents.insights_miner")
 # TOOL_RESULT_CHAR_CAP, MINER_WRAPUP_TURNS, MINER_EXPLORATION_RESERVE) — no
 # limit is a module constant, and every limit that binds is recorded on the run
 # as {limit_name, limit_value, limit_effect}, never a log line only.
-# Haiku's minimum cacheable prefix: a cache_control breakpoint whose prefix is
+# Haiku's minimum cacheable prefix: a cache breakpoint whose prefix is
 # smaller than this silently never caches (0 reads AND 0 writes). The static
 # system+opening prefix must clear it — checked at run start and in verify.
 # (A provider property, not a tunable volume limit — deliberately a constant.)
@@ -384,8 +384,10 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
     # {"label", "text", "summary"?} entries after the opening. Query results
     # carry a code-built factual summary used when they age out of the window.
     transcript: list[dict] = []
-    # 2.1: proper messages array with cache_control when the transport supports
-    # it (Claude); scripted/mock callables keep the single-string path.
+    # 2.1: proper messages array when the transport supports it (Claude, and
+    # the OpenAI-shaped client adapters); scripted/mock callables keep the
+    # single-string path. Round H task 3: blocks are marked provider-neutrally
+    # (stable: True) — each adapter translates (app/llm/cache.py).
     use_conversation = bool(getattr(llm, "supports_conversation", False)) \
         and callable(getattr(llm, "converse", None))
     # Round G task 2: the residual and the already-recorded rule findings ride
@@ -667,20 +669,25 @@ def _render_prompt(opening: str, transcript: list[dict],
 
 
 def _system_blocks(system_prompt: str) -> list[dict]:
-    """Static anchor 1 of exactly 2: byte-identical every turn. On Haiku this
-    breakpoint alone sits under the 4096-token cache minimum; the anchor on the
-    opening block (whose prefix INCLUDES this system block) is the one that
-    qualifies — see STATIC_PREFIX_MIN_TOKENS."""
-    return [{"type": "text", "text": system_prompt,
-             "cache_control": {"type": "ephemeral"}}]
+    """Static anchor 1 of exactly 2: byte-identical every turn. Round H task 3:
+    marked with the provider-neutral ``stable: True`` flag — the ADAPTER
+    translates it (Claude → its ephemeral cache parameter; cdao/Azure →
+    stripped, prefix kept byte-identical; mock → ignored — see
+    app/llm/cache.py). On Haiku this breakpoint alone
+    sits under the 4096-token cache minimum; the anchor on the opening block
+    (whose prefix INCLUDES this system block) is the one that qualifies — see
+    STATIC_PREFIX_MIN_TOKENS."""
+    return [{"type": "text", "text": system_prompt, "stable": True}]
 
 
 def _build_messages(opening: str, transcript: list[dict],
                     tools: MinerTools, finding_count: int,
                     reminder_extra: str = "") -> list[dict]:
-    """The proper messages array (2.1). EXACTLY TWO cache anchors exist: the
-    system block (_system_blocks) and the opening block here — both
+    """The proper messages array (2.1). EXACTLY TWO stable cache anchors exist:
+    the system block (_system_blocks) and the opening block here — both
     byte-identical every turn, so the cached prefix survives the whole run.
+    Round H task 3: the anchor is the provider-neutral ``stable: True`` flag;
+    the adapter decides the wire form (app/llm/cache.py).
     Round E task 3 removed the two extra anchors that sat on the newest
     collapsed entry and the newest assistant turn: both MOVED every turn, which
     invalidated the prefix and made the run write ~1.5x more cache than it
@@ -691,8 +698,7 @@ def _build_messages(opening: str, transcript: list[dict],
     consecutive same-role entries merge into one message's content blocks."""
     messages: list[dict] = [{
         "role": "user",
-        "content": [{"type": "text", "text": opening,
-                     "cache_control": {"type": "ephemeral"}}],
+        "content": [{"type": "text", "text": opening, "stable": True}],
     }]
     for label, text, _collapsed in _effective_transcript(transcript):
         role = "assistant" if label == "assistant" else "user"

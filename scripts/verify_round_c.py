@@ -323,10 +323,16 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
         transcript.append({"label": "assistant", "text": '{"action":"get_schema"}'})
         transcript.append({"label": "tool", "text": f"result {turn}",
                            "summary": f"[seq {turn}] result"})
-        msgs = _build_messages(opening, transcript, _T(), 0)
-        anchored = [b for m in msgs for b in m["content"] if "cache_control" in b]
-        sys_anchored = [b for b in _system_blocks(system_prompt)
-                        if "cache_control" in b]
+        # Round H task 3: the agent marks anchors provider-neutrally
+        # (stable: True); the CLAUDE ADAPTER translates them to cache_control
+        # on the wire — assert on that wire format, exactly as sent.
+        from app.llm.cache import claude_wire
+        wire_sys, wire_msgs = claude_wire(
+            _system_blocks(system_prompt),
+            _build_messages(opening, transcript, _T(), 0))
+        anchored = [b for m in wire_msgs for b in m["content"]
+                    if "cache_control" in b]
+        sys_anchored = [b for b in wire_sys if "cache_control" in b]
         anchor_texts.append([b["text"] for b in sys_anchored + anchored])
     two_static = (all(len(t) == 2 for t in anchor_texts)
                   and anchor_texts[0] == anchor_texts[1] == anchor_texts[2]
