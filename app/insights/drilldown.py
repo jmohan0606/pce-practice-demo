@@ -368,7 +368,10 @@ def _scoped_rule_findings(scope: str, parts: dict, to_month: str,
         if not (result.get("evaluated") and matched):
             continue
         citations = rule.get("citations") or []
-        evidence_rows = matched[:50]
+        # Round H: no cap here — the store applies EVIDENCE_STORED_CAP and
+        # records the bind (same fix as app/insights/service.py; a hardcoded
+        # [:50] silently under-reported evidence_total past 50 matches).
+        evidence_rows = list(matched)
         findings.append({
             "title": f"{rule.get('rule_name') or result.get('rule_code')} — "
                      f"{len(matched)} match(es) in {to_month}",

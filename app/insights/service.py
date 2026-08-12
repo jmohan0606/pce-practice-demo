@@ -96,7 +96,12 @@ def evaluate_published_rules(advisor_sid: str, from_month: str, to_month: str,
             continue
         impact = _monetary_impact(rule, matched)
         citations = rule.get("citations") or []
-        evidence_rows = matched[:50]
+        # Round H: no cap here — the store applies EVIDENCE_STORED_CAP, records
+        # the bind on limits_hit, and keeps the honest pre-cap total. A
+        # hardcoded [:50] here (found at scale) silently under-reported
+        # evidence_total on rule findings bigger than 50 and starved the
+        # store's own limit accounting.
+        evidence_rows = list(matched)
         findings.append({
             "title": f"{rule.get('rule_name') or result.get('rule_code')} — "
                      f"{len(matched)} match(es) in {to_month}",
