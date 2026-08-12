@@ -19,12 +19,22 @@ Scenarios covered (BUILD_PLAN §4.5 / SCHEMA_SPEC §5 cohort selection):
   - one unmapped product (visible, never dropped)
 
 Deterministic: seeded RNG, no timestamps from the clock.
-Run: python3 scripts/generate_mock_data.py
+Run: python3 scripts/generate_mock_data.py [--scale S]
+
+Round H task 5.1: --scale S multiplies volume without changing scenario
+coverage. Transaction counts scale by S; account-level counts (baseline books,
+transfers, zeroed, new-in-scope, opportunities) scale by F = ceil(S/2); the
+household pool widens so accounts-per-household stays realistic. --scale 28
+produces the client-volume target: 20 advisors, ~60,000 transactions,
+~3,000 accounts, ~400 households. S=1 (default) is byte-identical to the
+unscaled generator — same RNG call order, same counts.
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import json
+import math
 import random
 import sys
 from collections import defaultdict
@@ -32,6 +42,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+# Round H 5.1: set from --scale in main(). SCALE multiplies transaction counts;
+# ACCT_F multiplies account-level counts. Module-level so the builders see them.
+SCALE = 1.0
+ACCT_F = 1
 
 from app.revenue.aggregation import build_monthly_revenue  # noqa: E402
 from app.revenue.products import (  # noqa: E402
@@ -143,7 +158,10 @@ def build_accounts(cohort: list[str]) -> tuple[list[dict], dict[str, list[dict]]
         seq += 7
         raw = str(seq).zfill(10)
         key = normalize_account_key(raw)
-        eci = f"ECI{3000 + (seq % 160)}"
+        # household pool: 160 unscaled; widens with scale so ~3,000 accounts
+        # land in ~400 households (max() keeps S=1 exactly 160)
+        hh_mod = max(160, int(14.3 * SCALE))
+        eci = f"ECI{3000 + (seq % hh_mod)}"
         hh_counts[eci] += 1
         opened_in_scope = bool(opened and "2026-04-01" <= opened[:10] < "2026-07-01")
         acct = {
@@ -189,29 +207,29 @@ def build_accounts(cohort: list[str]) -> tuple[list[dict], dict[str, list[dict]]
             rpg_counts[rpg] += 1
         return acct
 
-    # baseline book: 10 accounts per cohort advisor
+    # baseline book: 10 accounts per cohort advisor (× ACCT_F at scale)
     for i, sid in enumerate(cohort):
-        for k in range(10):
+        for k in range(10 * ACCT_F):
             opened = f"20{RNG.randint(15, 25)}-{RNG.randint(1, 12):02d}-{RNG.randint(1, 28):02d} 00:00:00"
             if RNG.random() < 0.05:
                 opened = None  # blank open date — parsed NULL, stays blank
             rpg = f"RPG{(i * 3 + k) % 28:03d}" if RNG.random() < 0.5 else None
             add_account(sid, opened, rpg, "baseline")
 
-    # new accounts opened in Q2 (8, spread over advisors 9-12)
-    for n in range(8):
+    # new accounts opened in Q2 (8 × ACCT_F, spread over advisors 9-12)
+    for n in range(8 * ACCT_F):
         sid = cohort[8 + n % 4]
-        add_account(sid, f"2026-0{4 + n % 2}-{5 + n:02d} 00:00:00", None, "new_in_scope")
+        add_account(sid, f"2026-0{4 + n % 2}-{5 + (n % 8):02d} 00:00:00", None, "new_in_scope")
 
-    # transferred-in books (April): 6 accounts to V000002, 5 to V000003, all from X900001
-    for n in range(6):
+    # transferred-in books (April): 6×F accounts to V000002, 5×F to V000003, all from X900001
+    for n in range(6 * ACCT_F):
         add_account("V000002", "2019-06-15 00:00:00", "RPG900", "transfer_in_feecut")
-    for n in range(5):
+    for n in range(5 * ACCT_F):
         add_account("V000003", "2020-02-10 00:00:00", "RPG901", "transfer_in_feecut")
 
-    # zeroed accounts: mark 10 existing baseline accounts (advisors 13-16) as zeroed in May
+    # zeroed accounts: mark 10×F existing baseline accounts (advisors 13-16) as zeroed in May
     zero_pool = [a for sid in cohort[12:16] for a in by_advisor[sid] if a["_scenario"] == "baseline"]
-    for a in zero_pool[:10]:
+    for a in zero_pool[:10 * ACCT_F]:
         a["_scenario"] = "zeroed_may"
 
     household_rows = [{"eci_id": e, "account_count": str(c)} for e, c in sorted(hh_counts.items())]
@@ -230,8 +248,12 @@ def build_transactions(products: list[dict], by_advisor: dict[str, list[dict]], 
     feecut = [a for sid in ("V000002", "V000003") for a in by_advisor[sid] if a["_scenario"] == "transfer_in_feecut"]
     scattered = [by_advisor["V000009"][0], by_advisor["V000011"][1]]
     reduction_accounts = feecut + scattered
-    # only 2 of the 13 carry a RECORDED grid_reduction (expected-vs-recorded divergence)
-    recorded = {feecut[1]["acct_key"], scattered[0]["acct_key"]}
+    # only ~2 in 13 carry a RECORDED grid_reduction (expected-vs-recorded
+    # divergence). S=1 keeps the exact original pair; at scale the same ratio.
+    if ACCT_F == 1:
+        recorded = {feecut[1]["acct_key"], scattered[0]["acct_key"]}
+    else:
+        recorded = {a["acct_key"] for i, a in enumerate(reduction_accounts) if i % 7 == 1}
 
     mapped_products = [p for p in products if p["group_id"] != "unmapped"]
 
@@ -271,7 +293,7 @@ def build_transactions(products: list[dict], by_advisor: dict[str, list[dict]], 
                 # each advisor trades a stable subset of products
                 if (hash(sid + p["product_id"]) % 10) < 4:
                     continue
-                n = max(1, int(round(2 * month_factor)))
+                n = max(1, int(round(2 * month_factor * SCALE)))
                 for _ in range(n):
                     acct = RNG.choice([a for a in accts if a["_scenario"] != "transfer_in_feecut"] or accts)
                     if acct["_scenario"] == "zeroed_may" and month_id != "202604":
@@ -422,7 +444,7 @@ def build_opportunities(by_advisor: dict[str, list[dict]]) -> list[dict]:
     n = 0
     for sid, accts in sorted(by_advisor.items()):
         eci_ids = sorted({a["primary_eci_id"] for a in accts if a.get("primary_eci_id")})
-        for eci in eci_ids[:2]:  # a couple of open opportunities per advisor
+        for eci in eci_ids[:2 * ACCT_F]:  # a couple of open opportunities per advisor (× F at scale)
             n += 1
             status = RNG.choice(["PENDING", "PENDING", "WON", "LOST"])
             open_dt = f"2026-{RNG.choice(['04','05','06'])}-{RNG.randint(1, 28):02d}"
@@ -538,6 +560,21 @@ def write_csv(path: Path, columns: list[str], rows: list[dict]) -> int:
 
 
 def main() -> None:
+    global SCALE, ACCT_F
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--scale", type=float, default=1.0,
+                    help="volume multiplier (Round H 5.1) — transactions scale "
+                         "by S, account-level counts by ceil(S/2); --scale 28 "
+                         "hits the client-volume target (~60k txns, ~3k "
+                         "accounts, ~400 households). Default 1 = unscaled.")
+    args = ap.parse_args()
+    if args.scale < 1:
+        ap.error("--scale must be >= 1")
+    SCALE = args.scale
+    ACCT_F = math.ceil(SCALE / 2)
+    if SCALE != 1:
+        print(f"scale: S={SCALE:g} (txn multiplier), F={ACCT_F} (account multiplier)")
+
     vertex_rows: dict[str, list[dict]] = {}
 
     vertex_rows["phx_dm_pce_month"] = [
@@ -622,7 +659,8 @@ def main() -> None:
 
     manifest = {
         "graph": "phx_dm_pce_practice_demo",
-        "generated_by": "scripts/generate_mock_data.py (seed 42)",
+        "generated_by": "scripts/generate_mock_data.py (seed 42)" if SCALE == 1
+                        else f"scripts/generate_mock_data.py (seed 42, scale {SCALE:g})",
         "batch_size": 500,
         "files": manifest_files,
     }
