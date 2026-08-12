@@ -1,0 +1,16 @@
+from_id,to_id
+OISC|,managed_accounts
+UMA|,managed_uma
+ATMF|,trails_mutual_funds
+MMKT|,cash_mgmt_mmkt
+STRT|,twhs_structured
+ELIS|EQ,twhs_equities
+ELIS|OP,twhs_options
+MUFD|,twhs_mutual_funds
+FCXX|,twhs_fi_corporate
+FIX|,life_annuities
+ALTI|,alternative_investments
+LEND|SBL,lending_sbl
+EDK|,referrals_everyday_401k
+MISC|,unmapped
+ZZZZ|,unmapped

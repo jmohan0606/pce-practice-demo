@@ -1,0 +1,26 @@
+group_id,group_name,display_prefix,class_id,sort_order,is_aggregated
+managed_accounts,Managed Accounts,,RECURRING,1,true
+managed_uma,Managed – Unified Managed Accounts,,RECURRING,2,true
+trails_mutual_funds,Trails – Mutual Funds,,RECURRING,3,true
+trails_life_annuities,Trails – Life & Annuities,,RECURRING,4,true
+cash_mgmt_mmkt,Cash Management – Money Market Funds,,RECURRING,5,true
+cash_mgmt_prdp,Cash Management – Premium Deposits,,RECURRING,6,true
+referrals_sit_partnership,Referrals & Revenue Share – Situational Partnership,,RECURRING,7,true
+plans_529,529 Plans,,RECURRING,8,true
+donor_advised_funds,Donor Advised Funds,,RECURRING,9,true
+twhs_structured,Structured Products,TWHS,NON_RECURRING,10,true
+twhs_equities,Equities,TWHS,NON_RECURRING,11,true
+twhs_options,Options,TWHS,NON_RECURRING,12,true
+twhs_mutual_funds,Mutual Funds,TWHS,NON_RECURRING,13,true
+twhs_fi_corporate,Fixed Income – Corporate Bonds,TWHS,NON_RECURRING,14,true
+twhs_fi_municipal,Fixed Income – Municipal Bonds,TWHS,NON_RECURRING,15,true
+twhs_fi_government,Fixed Income – Government Bonds,TWHS,NON_RECURRING,16,true
+twhs_fi_other,Fixed Income – Other,TWHS,NON_RECURRING,17,true
+twhs_cash_mgmt_cds,Cash Management – Brokered CDs,TWHS,NON_RECURRING,18,true
+life_annuities,Life & Annuities,,NON_RECURRING,19,true
+alternative_investments,Alternative Investments,,NON_RECURRING,20,true
+defined_contribution_advisory,Defined Contribution Advisory,,NON_RECURRING,21,true
+lending_sbl,Lending – Security Based Lending,,NON_RECURRING,22,true
+lending_margin,Lending – Margin,,NON_RECURRING,23,true
+referrals_everyday_401k,Referrals & Revenue Share – Everyday 401K,,NON_RECURRING,24,true
+unmapped,Unmapped Products,,NON_RECURRING,99,false

@@ -1,6 +1,6 @@
 # Schema Change Checklist
 
-**Anything added to the graph must be added in ALL FIVE places in the same
+**Anything added to the graph must be added in ALL SEVEN places in the same
 commit, or the client load will fail.** This list exists because a missed spot
 is invisible locally (the tiered client falls back) and fatal on the client's
 live TigerGraph.
@@ -26,6 +26,14 @@ For every new vertex, edge, or attribute:
    manifest.
 5. **`docs/spec/SCHEMA_SPEC.md`** — the vertex/edge section AND the vertex/edge
    count line at the end of §3.
+6. **`docs/spec/ROUND_D_EXTRACTION.md`** — the raw SQL and the column mapping
+   (and the SQL templates in `scripts/generate_extraction_sql.py`, which the
+   spec's §4 delegates to). This omission is why the extraction spec had to be
+   regenerated once already.
+7. **`scripts/build_real_data.py`** — the `RAW_CONTRACT` entry and the
+   transformation that produces the new column, plus its `VERTEX_COLUMNS` /
+   `ID_COLUMNS` / `EDGES` entries (kept structurally identical to
+   `generate_mock_data.py`'s).
 
 App-written (runtime) vertices skip 3 and 4 (no CSV load) but need their mirror
 entry in the owning store (`app/insights/store.py` / `app/rules/store.py` /

@@ -1,0 +1,27 @@
+advisor_sid,rep_code,advisor_name,total_credited_amt,has_fee_reduction_gt10,has_recorded_grid_reduction,has_transfer_in,has_transfer_out,has_new_account,has_zeroed_account,has_team_agreement,has_flows,has_non_credited
+T000001,R500001,Test Advisor 01,61000.00,true,true,false,false,false,false,false,true,true
+T000002,R500002,Test Advisor 02,58000.00,true,true,true,false,false,false,false,true,false
+T000003,R500003,Test Advisor 03,54000.00,true,true,false,false,false,false,true,false,false
+T000004,R500004,Test Advisor 04,52000.00,false,false,false,true,false,false,false,true,true
+T000005,R500005,Test Advisor 05,50000.00,false,false,false,false,true,true,false,true,false
+T000006,R500006,Test Advisor 06,48000.00,false,false,true,false,false,false,true,false,true
+T000007,R500007,Test Advisor 07,46000.00,true,false,false,false,false,false,false,true,false
+T000008,R500008,Test Advisor 08,45000.00,false,false,false,false,false,true,false,false,true
+T000009,R500009,Test Advisor 09,44000.00,false,false,false,false,true,false,false,true,false
+T000010,R500010,Test Advisor 10,43000.00,false,false,true,false,false,false,false,true,false
+T000011,R500011,Test Advisor 11,42000.00,false,false,false,true,false,false,false,false,true
+T000012,R500012,Test Advisor 12,41000.00,false,false,false,false,false,false,true,true,false
+T000013,R500013,Test Advisor 13,40000.00,false,false,false,false,false,false,false,true,true
+T000014,R500014,Test Advisor 14,39000.00,false,false,false,false,true,false,false,false,false
+T000015,R500015,,38000.00,false,false,false,false,false,false,false,true,false
+T000016,R500016,Test Advisor 16,37000.00,false,false,false,false,false,true,false,true,false
+T000017,R500017,Test Advisor 17,36000.00,false,false,false,false,false,false,false,true,true
+T000018,R500018,Test Advisor 18,35000.00,false,false,false,false,false,false,false,false,false
+T000019,R500019,Test Advisor 19,34000.00,false,false,false,false,false,false,false,false,false
+T000020,R500020,Test Advisor 20,33000.00,false,false,false,false,false,false,false,false,false
+T000021,R500021,Test Advisor 21,9000.00,false,false,false,false,false,false,false,true,false
+T000022,R500022,Test Advisor 22,8500.00,false,false,false,false,false,false,false,false,true
+T000023,R500023,Test Advisor 23,8000.00,false,false,false,false,true,false,false,false,false
+T000024,R500024,Test Advisor 24,7500.00,false,false,false,false,false,false,false,true,false
+T000025,R500025,Test Advisor 25,7000.00,false,false,false,false,false,true,false,false,false
+T000026,R500026,Test Advisor 26,6500.00,false,false,true,false,false,false,false,false,false

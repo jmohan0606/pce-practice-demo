@@ -12,8 +12,9 @@ query log, turn log, chunks, versions) and are never extracted.
 
 ## 0 · The rule that prevents this drifting again
 
-`docs/spec/SCHEMA_CHANGE_CHECKLIST.md` lists five places a schema change must land. **It is missing
-two**, and that omission is why this document had to be regenerated. Add them:
+`docs/spec/SCHEMA_CHANGE_CHECKLIST.md` lists the places a schema change must land. It was missing
+two, and that omission is why this document had to be regenerated. **Done in Round F task 4.5** —
+the checklist now carries all seven:
 
 ```
 6. docs/spec/ROUND_D_EXTRACTION.md  — the raw SQL and the column mapping
@@ -28,6 +29,10 @@ python3 -c "import json;m=json.load(open('data/manifest.json'));[print(f['target
 ```
 
 If the output differs from §3, **the manifest wins** — update this document, then build.
+
+> **Verified 2026-08-12 (Round F task 4.0):** the live manifest matches §3 exactly — 17 CSV
+> vertices, 29 edge files, every column list identical (including `new_exst_adv_clnt_in` with no
+> `_cyr` on the graph side). No drift since Round E; no spec change needed.
 
 ---
 
@@ -155,7 +160,20 @@ file** — a silent drop is how a whole product disappears from a dashboard with
 
 ---
 
-## 4 · The 10 raw extracts
+## 4 · The raw extracts (12 files)
+
+> **Count correction (Round F):** this section previously said "10", but the files it names total
+> **12** — the step-1 flags file plus eleven step-2 extracts. `RAW_CONTRACT` in
+> `scripts/build_real_data.py` is the authoritative list; all 12 are required, and a missing file
+> or column raises `ColumnMismatchError` naming both:
+>
+> ```
+> raw_advisor_flags.csv        (step 1 — cohort selection, read by select_cohort.py)
+> raw_advisor.csv              raw_account.csv           raw_product_hierarchy.csv
+> raw_revenue_transaction.csv  raw_rr_changes.csv        raw_monthly_balance.csv
+> raw_month_meta.csv           raw_acct_eci_rel.csv      raw_acct_eci_map.csv
+> raw_team_agreement.csv       raw_adv_flows.csv
+> ```
 
 `SET statement_timeout = '600s';` first. **Every query against
 `pcr.fpic_daily_trade_details_tb_prod` (48M rows) must filter to the cohort and date range before
@@ -167,8 +185,11 @@ token has expired — `aws sts get-caller-identity`, refresh SSO, retry.
 
 ### Step 1 · `raw_advisor_flags.csv` — cohort selection, run FIRST
 
-Scores every advisor with in-scope trades on nine scenario flags. Full SQL is in
-`docs/spec/EXTRACTION_SQL.md §1` — it is still correct, the flags do not depend on schema changes.
+Scores every advisor with in-scope trades on nine scenario flags. The SQL is
+`docs/data/extraction/raw_advisor_flags.sql`, emitted (without a cohort filter — it runs first) by
+`scripts/generate_extraction_sql.py`. *(This paragraph previously pointed at
+`docs/spec/EXTRACTION_SQL.md`, which does not exist in this repo — the flag definitions came from
+`prompts/COPILOT_EXTRACTION_COLD_START.md` §2 and now live as templates in the generator script.)*
 
 `select_cohort.py` reads it and picks 20: **every advisor with `has_recorded_grid_reduction` first
 (only ~99 accounts firmwide carry one — if the cohort misses them, the expected-vs-recorded finding
@@ -181,8 +202,9 @@ Writes `cohort.txt`. **Stop and review before step 2.**
 ### Step 2 · the nine remaining extracts
 
 `generate_extraction_sql.py` bakes the cohort SIDs into templates and writes
-`docs/data/extraction/*.sql`. SQL bodies are in `EXTRACTION_SQL.md §2`, **with these corrections
-applied:**
+`docs/data/extraction/*.sql`. The SQL bodies live as templates **in that script** (single source —
+derived from `prompts/COPILOT_EXTRACTION_COLD_START.md` §§1–4; the `EXTRACTION_SQL.md` file this
+section previously cited does not exist in this repo), **with these corrections applied:**
 
 | File | Correction |
 |---|---|
@@ -227,6 +249,25 @@ produces** — same keys, same column maps, so the ingestion pipeline consumes i
 10,899 advisors — about $33k per advisor per month. A 20-advisor cohort selected for high revenue
 should land in the high hundreds of thousands to low millions per month. An order of magnitude out
 means `proc_dt` was used instead of `trade_dt`, or the team-agreement join fanned out.
+
+### Fabricated test set (`data/real_test/`)
+
+The chain cannot be tested against the client's PostgreSQL from this Codespace, so
+`scripts/make_test_raw_extracts.py` fabricates a deterministic raw set matching `RAW_CONTRACT`
+(padded account numbers, `MM/DD/YYYY` open dates, the `*_cyr` column, reason-coded rows, every §5
+scenario, plus deliberate referential breaks so dropped-edge counts are visibly exercised). It
+lives under `data/real_test/` — **never** `data/real/`, which is gitignored and reserved for the
+client's actual extracts. Run end-to-end:
+
+```bash
+python3 scripts/make_test_raw_extracts.py
+python3 scripts/select_cohort.py --flags data/real_test/_raw/raw_advisor_flags.csv \
+        --out data/real_test/cohort.txt --yes
+python3 scripts/generate_extraction_sql.py --cohort data/real_test/cohort.txt
+python3 scripts/build_real_data.py --raw data/real_test/_raw --out data/real_test
+python3 scripts/load_real_data.py --data-dir data/real_test --fresh
+python3 scripts/verify_real_data.py --data-dir data/real_test
+```
 
 ---
 

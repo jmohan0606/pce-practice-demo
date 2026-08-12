@@ -1,0 +1,15 @@
+product_cd,product_sub_cd,product_name,sor,file_key,grid_type
+OISC,,Managed Accounts Fee,PCR,,PRODUCT_TYPE
+UMA,,Unified Managed Accounts,PCR,,PRODUCT_TYPE
+ATMF,,Trails Mutual Funds,PCR,,PRODUCT_TYPE
+MMKT,,Money Market Funds,PCR,,PRODUCT_TYPE
+STRT,,Structured Products,PCR,,PRODUCT_TYPE
+ELIS,EQ,Equities,PCR,,PRODUCT_TYPE
+ELIS,OP,Options,PCR,,PRODUCT_TYPE
+MUFD,,Mutual Funds,PCR,,PRODUCT_TYPE
+FCXX,,Corporate Bonds,PCR,,PRODUCT_TYPE
+FIX,,Fixed Annuities,PCR,,PRODUCT_TYPE
+ALTI,,Alternative Investments,PCR,,PRODUCT_TYPE
+LEND,SBL,Security Based Lending,PCR,,PRODUCT_TYPE
+EDK,,Everyday 401K,PCR,,PRODUCT_TYPE
+MISC,,Miscellaneous Level Two,PCR,,PRODUCT_TYPE

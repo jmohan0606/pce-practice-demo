@@ -1,0 +1,16 @@
+product_id,product_cd,product_sub_cd,product_name,sor,file_key,group_id,grid_type
+OISC|,OISC,,Managed Accounts Fee,PCR,product_hierarchy,managed_accounts,PRODUCT_TYPE
+UMA|,UMA,,Unified Managed Accounts,PCR,product_hierarchy,managed_uma,PRODUCT_TYPE
+ATMF|,ATMF,,Trails Mutual Funds,PCR,product_hierarchy,trails_mutual_funds,PRODUCT_TYPE
+MMKT|,MMKT,,Money Market Funds,PCR,product_hierarchy,cash_mgmt_mmkt,PRODUCT_TYPE
+STRT|,STRT,,Structured Products,PCR,product_hierarchy,twhs_structured,PRODUCT_TYPE
+ELIS|EQ,ELIS,EQ,Equities,PCR,product_hierarchy,twhs_equities,PRODUCT_TYPE
+ELIS|OP,ELIS,OP,Options,PCR,product_hierarchy,twhs_options,PRODUCT_TYPE
+MUFD|,MUFD,,Mutual Funds,PCR,product_hierarchy,twhs_mutual_funds,PRODUCT_TYPE
+FCXX|,FCXX,,Corporate Bonds,PCR,product_hierarchy,twhs_fi_corporate,PRODUCT_TYPE
+FIX|,FIX,,Fixed Annuities,PCR,product_hierarchy,life_annuities,PRODUCT_TYPE
+ALTI|,ALTI,,Alternative Investments,PCR,product_hierarchy,alternative_investments,PRODUCT_TYPE
+LEND|SBL,LEND,SBL,Security Based Lending,PCR,product_hierarchy,lending_sbl,PRODUCT_TYPE
+EDK|,EDK,,Everyday 401K,PCR,product_hierarchy,referrals_everyday_401k,PRODUCT_TYPE
+MISC|,MISC,,Miscellaneous Level Two,PCR,product_hierarchy,unmapped,PRODUCT_TYPE
+ZZZZ|,ZZZZ,,Unmapped product ZZZZ|,,txn_only,unmapped,PRODUCT_TYPE
