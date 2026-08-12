@@ -23,6 +23,11 @@ APP_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_ROOT))
 os.chdir(APP_ROOT)
 os.environ.setdefault("LLM_MODE", "mock")
+# Round G task 5: verification runs against a fresh throwaway runtime db, never
+# the durable data/runtime/ store (the checks assume seed-from-scratch state).
+import tempfile  # noqa: E402
+
+os.environ["PCE_RUNTIME_DB_DIR"] = tempfile.mkdtemp(prefix="pce-verify-runtime-")
 
 RESULTS: list[bool] = []
 

@@ -17,13 +17,18 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import re
 import sys
+import tempfile
 from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+# Round G task 5: verification runs against a fresh throwaway runtime db, never
+# the durable data/runtime/ store (the checks assume seed-from-scratch state).
+os.environ["PCE_RUNTIME_DB_DIR"] = tempfile.mkdtemp(prefix="pce-verify-runtime-")
 
 RESULTS: list[tuple[str, bool, str]] = []
 

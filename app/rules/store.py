@@ -17,6 +17,12 @@ Invariants:
   the previous PUBLISHED version becomes SUPERSEDED. Approved drafts are COPIED
   into the new version (new rule_key); carried-forward rules are copied too.
 - Both old and new versions stay queryable forever.
+
+Round G task 5.4: every write also lands in a durable SQLite layer
+(``app/shared/rule_persistence.py``, db under ``data/runtime/``) holding the
+FULL dicts (plan, scopes, plan_by_scope, citations, lifecycle fields), and the
+store rehydrates from it at construction — compiled plans survive a restart.
+The graph mirror above is unchanged (the live-TigerGraph path).
 """
 from __future__ import annotations
 
@@ -24,6 +30,7 @@ import threading
 from datetime import datetime, timezone
 
 from app.shared.logging import get_logger
+from app.shared.rule_persistence import RuleStorePersistence
 
 _log = get_logger("app.rules.store")
 
@@ -73,9 +80,17 @@ class RuleStore:
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
-        self.rules: dict[str, dict] = {}      # rule_key -> full rule dict
-        self.versions: dict[str, dict] = {}   # version_id -> version dict
-        self._draft_seq = 0
+        # Round G task 5.4 — durable SQLite layer (Round F: compiled plans died
+        # with the process because the graph mirror is process-local in mock
+        # mode). Full dicts rehydrate at construction; a rehydrated version
+        # counts as existing, so ensure_v0_seed stays a no-op after restart.
+        self._persist = RuleStorePersistence()
+        self.rules, self.versions, self._draft_seq = self._persist.load_all()
+        if self.versions:
+            _log.info(
+                "rule store rehydrated from SQLite (%s): %d rules, %d versions "
+                "— ensure_v0_seed will no-op, no reseed",
+                self._persist.db.db_path, len(self.rules), len(self.versions))
 
     # ----- graph mirroring -----
 
@@ -96,6 +111,10 @@ class RuleStore:
             self._graph().upsert(_entry(RULE_VERTEX, "rule_key", _RULE_GRAPH_ATTRS), [row])
         except Exception as exc:  # noqa: BLE001 — the store stays authoritative; log loudly
             _log.error("graph mirror of rule %s failed: %s", rule.get("rule_key"), exc)
+        # Round G 5.4 — _mirror_rule is called at every rule write point, so the
+        # durable SQLite copy (FULL dict, incl. plan/scopes/plan_by_scope) rides
+        # here. A persistence failure raises: durability is not best-effort.
+        self._persist.save_rule(rule)
 
     def _mirror_version(self, version: dict) -> None:
         row = {name: ("" if version.get(name) is None else version.get(name))
@@ -104,6 +123,7 @@ class RuleStore:
             self._graph().upsert(_entry(VERSION_VERTEX, "version_id", _VERSION_GRAPH_ATTRS), [row])
         except Exception as exc:  # noqa: BLE001
             _log.error("graph mirror of version %s failed: %s", version.get("version_id"), exc)
+        self._persist.save_version(version)  # Round G 5.4 — durable full dict
 
     # ----- versions -----
 
@@ -161,6 +181,7 @@ class RuleStore:
                     rule["rule_key"] = f"R_{rule['rule_code']}_{version_id}"
                 else:
                     self._draft_seq += 1
+                    self._persist.save_draft_seq(self._draft_seq)
                     rule["rule_key"] = f"DRAFT_{rule['rule_code']}_{self._draft_seq:04d}"
             if rule["rule_key"] in self.rules:
                 raise RuleStoreError(f"rule_key {rule['rule_key']} already exists — rules are immutable")

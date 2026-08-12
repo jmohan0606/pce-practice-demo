@@ -14,14 +14,24 @@ row, and the graph vertex is upserted under the same id.
 
 The coverage ratio (C2) is stored on the run and is INTERNAL ONLY — the API
 router strips it from every response (verified by C6 check 12).
+
+Round G task 5: scoped run keys (``scope|scope_key|from|to|version``, contract
+§1/§2), per-run_id ``generation_lock``, and a durable SQLite layer
+(``app/insights/run_persistence.py``, db under ``data/runtime/``) written at
+complete_run/fail_run and rehydrated on process-local miss — failing loudly
+when a persisted run cannot be fully rehydrated. The graph mirror is unchanged;
+scope/scope_key/parent_run_id live in SQLite + in-process only (no graph schema
+change).
 """
 from __future__ import annotations
 
 import json
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
+from app.insights.run_persistence import InsightRunPersistence
 from app.shared.logging import get_logger
 
 _log = get_logger("app.insights.store")
@@ -59,6 +69,23 @@ def make_run_id(advisor_sid: str, from_month: str, to_month: str, version_id: st
     return f"{advisor_sid}|{from_month}|{to_month}|{version_id}"
 
 
+def scoped_run_id(scope: str, scope_key: str, from_month: str, to_month: str,
+                  version_id: str) -> str:
+    """Round G 3.1 / contract §1: ``scope|scope_key|from|to|version``. Scope-key
+    PARTS are joined with ``~`` by the caller; run_id fields with ``|``. A new
+    rule version therefore always yields a new run_id (5.2)."""
+    return f"{scope}|{scope_key}|{from_month}|{to_month}|{version_id}"
+
+
+def _advisor_from_scope_key(scope: str, scope_key: str) -> str:
+    """Contract §2: advisor_sid = the advisor part of scope_key when present,
+    else "". product_advisor / product_account keys are group~advisor[~acct]."""
+    if scope == "advisor":
+        return scope_key
+    parts = scope_key.split("~")
+    return parts[1] if len(parts) >= 2 else ""
+
+
 def _entry(target: str, id_column: str, attrs: tuple[str, ...]) -> dict:
     return {"kind": "vertex", "target": target, "id_column": id_column,
             "file": f"runtime:{target}",
@@ -77,6 +104,11 @@ class InsightStore:
         # (doc_extract|<id>, conflict_audit|<scope>) — extraction cost is
         # measured even though no insight run exists for it.
         self.turn_log: dict[str, list[dict]] = {}
+        # Round G 5.4 — durable SQLite layer (graph mirror unchanged alongside).
+        # Written at complete_run/fail_run; rehydrated on process-local miss.
+        self._persist = InsightRunPersistence()
+        # Round G 5.3 — per-run_id generation locks (created under self._lock).
+        self._gen_locks: dict[str, threading.Lock] = {}
 
     def _graph(self):
         from app.graph.client import get_graph_client
@@ -94,10 +126,46 @@ class InsightStore:
 
     def begin_run(self, advisor_sid: str, from_month: str, to_month: str,
                   version_id: str) -> dict:
-        """Create (or supersede) the run for this key and mark it RUNNING."""
+        """Create (or supersede) the run for this key and mark it RUNNING.
+        Legacy advisor key ``advisor|from|to|version`` — unchanged (contract §1);
+        scope fields are recorded as advisor-scope."""
         run_id = make_run_id(advisor_sid, from_month, to_month, version_id)
+        return self._begin(run_id, advisor_sid, from_month, to_month, version_id,
+                           scope="advisor", scope_key=advisor_sid, parent_run_id=None)
+
+    def begin_scoped_run(self, scope: str, scope_key: str, from_month: str,
+                         to_month: str, version_id: str,
+                         parent_run_id: str | None = None) -> dict:
+        """Round G 5.1 / contract §2 — like begin_run, plus scope, scope_key and
+        parent_run_id. Same supersede semantics (explicit regenerate only)."""
+        run_id = scoped_run_id(scope, scope_key, from_month, to_month, version_id)
+        return self._begin(run_id, _advisor_from_scope_key(scope, scope_key),
+                           from_month, to_month, version_id,
+                           scope=scope, scope_key=scope_key, parent_run_id=parent_run_id)
+
+    @contextmanager
+    def generation_lock(self, run_id: str):
+        """Round G 5.3 / contract §2 — per-run_id generation lock. The first
+        caller enters with True (generate). A concurrent caller for the SAME
+        run_id BLOCKS until the holder exits, then enters with False (re-read
+        the store, do NOT generate). Distinct run_ids never block each other.
+        Thread-safe: the app generates from daemon batch threads."""
         with self._lock:
-            prior = self.runs.get(run_id)
+            lock = self._gen_locks.setdefault(run_id, threading.Lock())
+        first = lock.acquire(blocking=False)
+        if not first:
+            lock.acquire()  # blocks until the generating holder exits
+        try:
+            yield first
+        finally:
+            lock.release()
+
+    def _begin(self, run_id: str, advisor_sid: str, from_month: str, to_month: str,
+               version_id: str, *, scope: str, scope_key: str,
+               parent_run_id: str | None) -> dict:
+        with self._lock:
+            # a durably-persisted prior generation must supersede, not vanish
+            prior = self.runs.get(run_id) or self._rehydrate(run_id)
             generation = (prior["generation"] + 1) if prior else 1
             superseded = list(prior.get("superseded", [])) if prior else []
             if prior:
@@ -110,6 +178,10 @@ class InsightStore:
                 "run_id": run_id, "advisor_sid": advisor_sid,
                 "from_month_id": from_month, "to_month_id": to_month,
                 "version_id": version_id, "status": "RUNNING",
+                # Round G scope model — SQLite + in-process only; the graph
+                # mirror's attribute set is deliberately unchanged (no schema
+                # change; see SCHEMA_CHANGE_CHECKLIST rationale in the report).
+                "scope": scope, "scope_key": scope_key, "parent_run_id": parent_run_id,
                 "query_count": 0, "budget_hit": False, "budget_hit_tokens": False,
                 "started_at": _now(), "completed_at": "",
                 "narrative": "", "bullets_json": "[]", "recommendations_json": "[]",
@@ -233,6 +305,7 @@ class InsightStore:
                     })
             self.findings[run_id] = stored
             self._mirror(RUN_VERTEX, "run_id", _RUN_ATTRS, run)
+            self._persist_run(run_id)  # 5.4 — durable at completion
             return dict(run)
 
     def fail_run(self, run_id: str, error: str) -> dict:
@@ -241,31 +314,73 @@ class InsightStore:
             run.update(status="FAILED", completed_at=_now(), error=str(error))
             self._roll_up_tokens(run)  # spend up to the failure is still real spend
             self._mirror(RUN_VERTEX, "run_id", _RUN_ATTRS, run)
+            self._persist_run(run_id)  # 5.4 — a failed run is durable too
             return dict(run)
+
+    # ----- durability (Round G 5.4) -----
+
+    def _persist_run(self, run_id: str) -> None:
+        """Write the FULL run + findings + logs to SQLite (called under the
+        lock at complete_run/fail_run)."""
+        self._persist.save(self.runs[run_id], self.findings.get(run_id, []),
+                           self.query_log.get(run_id, []),
+                           self.turn_log.get(run_id, []))
+
+    def _rehydrate(self, run_id: str) -> dict | None:
+        """Load a persisted run into the process-local dicts (under the lock).
+        None if never persisted; RAISES PersistenceError if persisted but not
+        fully rehydratable — never silently an empty run."""
+        loaded = self._persist.load(run_id)
+        if loaded is None:
+            return None
+        run, findings, query_log, turn_log = loaded
+        self.runs[run_id] = run
+        self.findings[run_id] = findings
+        self.query_log[run_id] = query_log
+        self.turn_log[run_id] = turn_log
+        _log.info("rehydrated insight run %s (%d findings) from SQLite",
+                  run_id, len(findings))
+        return run
+
+    def _rehydrate_missing(self) -> None:
+        """Bring every persisted-but-not-in-memory run local, for the listing
+        reads (latest_run_for / runs_for_transition / all_turn_logs)."""
+        for rid in self._persist.run_ids():
+            if rid not in self.runs:
+                self._rehydrate(rid)
 
     # ----- reads -----
 
     def run(self, run_id: str) -> dict | None:
         with self._lock:
             run = self.runs.get(run_id)
+            if run is None:
+                run = self._rehydrate(run_id)  # raises if persisted-but-corrupt
             return dict(run) if run else None
 
     def run_findings(self, run_id: str) -> list[dict]:
         with self._lock:
+            if run_id not in self.runs:
+                self._rehydrate(run_id)
             return [dict(f) for f in self.findings.get(run_id, [])]
 
     def run_query_log(self, run_id: str) -> list[dict]:
         with self._lock:
+            if run_id not in self.runs:
+                self._rehydrate(run_id)
             return [dict(r) for r in self.query_log.get(run_id, [])]
 
     def run_turn_log(self, run_id: str) -> list[dict]:
         with self._lock:
+            if run_id not in self.runs:
+                self._rehydrate(run_id)
             return [dict(r) for r in self.turn_log.get(run_id, [])]
 
     def all_turn_logs(self) -> dict[str, list[dict]]:
         """Every turn-logged scope, insight runs AND synthetic ids (doc_extract|…,
         conflict_audit|…) — the Trace screen's raw material."""
         with self._lock:
+            self._rehydrate_missing()
             return {rid: [dict(r) for r in rows] for rid, rows in self.turn_log.items()}
 
     def latest_run_for(self, advisor_sid: str, from_month: str, to_month: str,
@@ -273,6 +388,7 @@ class InsightStore:
         """The run for a transition. version_id=None → the newest by version_no
         suffix (run ids embed RSV_v<n>)."""
         with self._lock:
+            self._rehydrate_missing()
             candidates = [r for r in self.runs.values()
                           if r["advisor_sid"] == advisor_sid
                           and r["from_month_id"] == from_month
@@ -284,6 +400,7 @@ class InsightStore:
 
     def runs_for_transition(self, from_month: str, to_month: str) -> list[dict]:
         with self._lock:
+            self._rehydrate_missing()
             return [dict(r) for r in self.runs.values()
                     if r["from_month_id"] == from_month and r["to_month_id"] == to_month]
 
