@@ -35,6 +35,9 @@ def _serialize(rule: dict) -> dict:
     out.setdefault("explanation", None)
     out.setdefault("missing", rule.get("unclear_notes") or None)
     out.setdefault("needs_data_reason", None)
+    # Round H task 1: exclusion is declared ON the rule — always serialized so
+    # the rule detail UI can show it (empty list = no exclusions).
+    out.setdefault("exclude_matched_of", [])
     # Round G: the effective scope set (explicit or derived) is always shown,
     # so the review UI can display and override it.
     out["scopes"] = rule_scopes(rule) if rule.get("plan") else (rule.get("scopes") or [])
