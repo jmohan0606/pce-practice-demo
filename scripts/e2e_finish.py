@@ -12,7 +12,7 @@ approve → publish, one extraction call) is a PREREQUISITE here, not a re-test.
  D. step 10: re-run one advisor -> supersedes, does not duplicate
  E. step 7-style numeric check on the aggregate run via the API
 
-Usage: python3 scripts/e2e_finish.py [--base http://localhost:8001]
+Usage: python3 scripts/e2e_finish.py [--base http://localhost:8002]
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ APP_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_ROOT))
 sys.path.insert(0, str(APP_ROOT / "scripts"))
 
-BASE = "http://localhost:8001"
+BASE = "http://localhost:8002"
 if "--base" in sys.argv:
     BASE = sys.argv[sys.argv.index("--base") + 1]
 

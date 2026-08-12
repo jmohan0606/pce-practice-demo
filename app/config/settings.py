@@ -175,9 +175,9 @@ class Settings(BaseSettings):
 
     # --- API / frontend ---
     api_host: str = Field(default="0.0.0.0", alias="API_HOST")
-    api_port: int = Field(default=8001, alias="API_PORT")
-    api_base_url: str = Field(default="http://127.0.0.1:8001", alias="API_BASE_URL")
-    frontend_port: int = Field(default=3001, alias="FRONTEND_PORT")
+    api_port: int = Field(default=8002, alias="API_PORT")
+    api_base_url: str = Field(default="http://127.0.0.1:8002", alias="API_BASE_URL")
+    frontend_port: int = Field(default=3002, alias="FRONTEND_PORT")
 
     # --- Resolved absolute paths (single source of truth) ---
     @property
