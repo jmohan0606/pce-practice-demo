@@ -29,7 +29,8 @@ class MinerTools:
     """The ONLY capabilities the Miner has. The Reporter never sees this object."""
 
     def __init__(self, run_id: str, agent_name: str = "insights_miner",
-                 budget: int | None = None) -> None:
+                 budget: int | None = None,
+                 budget_limit_name: str = "MINER_QUERY_BUDGET") -> None:
         if budget is None:
             from app.config.settings import get_settings
 
@@ -37,6 +38,10 @@ class MinerTools:
         self.run_id = run_id
         self.agent_name = agent_name
         self.budget = budget
+        # Round H 5.3: the limits_hit entry names the limit that actually
+        # bound — a drill-down passes its own budget's settings alias so the
+        # record doesn't claim MINER_QUERY_BUDGET for a drill-down bound.
+        self.budget_limit_name = budget_limit_name
         self.queries_run = 0
         self.budget_hit = False
         self.results_by_seq: dict[int, dict] = {}  # seq_no -> {query_name, params, rows}

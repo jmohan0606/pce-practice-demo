@@ -435,7 +435,10 @@ def _run_scoped_insight(scope: str, scope_key: str, from_month: str,
                                    version["version_id"])
     run = _begin_scoped_run(store, scope, scope_key, from_month, to_month,
                             version["version_id"], parent_run_id)
-    tools = MinerTools(run["run_id"], budget=query_budget)
+    tools = MinerTools(run["run_id"], budget=query_budget,
+                       budget_limit_name=(
+                           "DRILLDOWN_PRODUCT_QUERY_BUDGET" if scope == "product"
+                           else "DRILLDOWN_SUB_QUERY_BUDGET"))
     try:
         from app.llm.usage import wrap_llm
 

@@ -563,7 +563,8 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
                 # Round H 2.3: the query budget wraps up like the token
                 # ceiling — commit turns, never a mid-thought cut.
                 limits_hit.append({
-                    "limit_name": "MINER_QUERY_BUDGET",
+                    "limit_name": getattr(tools, "budget_limit_name",
+                                          "MINER_QUERY_BUDGET"),
                     "limit_value": tools.budget,
                     "limit_effect": (
                         f"the query budget was exhausted at turn {turns} of "

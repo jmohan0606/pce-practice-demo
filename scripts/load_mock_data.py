@@ -21,7 +21,12 @@ from app.ingestion.ingestion_service import IngestionService  # noqa: E402
 from app.ingestion.manifest_check import verify_counts_against_manifest  # noqa: E402
 from app.ingestion.models import IngestionRunRequest, IngestionStatus  # noqa: E402
 
-MAX_BATCH_CALLS = 500
+# Round H 5.3: settings-resolved (INGESTION_MAX_BATCH_CALLS_PER_ENTITY), no
+# script-local constant — the scale-28 run measured 116 calls max per entity
+# (57,657 rows / batch 500), well inside the deliberately-kept 500 cap.
+from app.config.settings import get_settings  # noqa: E402
+
+MAX_BATCH_CALLS = get_settings().ingestion_max_batch_calls
 
 
 def main() -> None:
