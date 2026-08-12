@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Finding, InsightRun } from "@/lib/api";
+import type { Finding, InsightRun, LimitHit } from "@/lib/api";
 import Chip from "@/components/Chip";
 import SourceLink from "@/components/SourceLink";
 import { driverDefinition } from "@/lib/driverDefinitions";
@@ -14,6 +14,35 @@ export function Bold({ text }: { text: string }) {
     <>
       {parts.map((part, i) => (i % 2 === 1 ? <b key={i}>{part}</b> : <span key={i}>{part}</span>))}
     </>
+  );
+}
+
+/** "the run stopped after 22 of 35 turns" -> "The run stopped after 22 of 35 turns." */
+function sentence(effect: string): string {
+  const trimmed = effect.trim();
+  if (!trimmed) return "";
+  const capped = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+  return /[.!?]$/.test(capped) ? capped : `${capped}.`;
+}
+
+/** Round H 4.1 — no limit fails silently. A run that hit a limit shows a
+ * SENTENCE someone reads (the server's limit_effect text, verbatim prose),
+ * not a badge, on every view that renders the run. */
+export function LimitNotice({ limits }: { limits?: LimitHit[] | null }) {
+  if (!limits?.length) return null;
+  return (
+    <div className="limit-note" role="status">
+      <b>{limits.length === 1 ? "This run hit a limit." : `This run hit ${limits.length} limits.`}</b>{" "}
+      {limits.map((l) => sentence(l.limit_effect)).join(" ")}
+      <span className="which">
+        {limits
+          .map(
+            (l) =>
+              `${l.limit_name}${l.limit_value != null ? ` = ${l.limit_value.toLocaleString("en-US")}` : ""}`,
+          )
+          .join(" · ")}
+      </span>
+    </div>
   );
 }
 
@@ -229,6 +258,12 @@ export function TransitionCard({
           {run.budget_hit ? " · query budget hit" : ""}
         </div>
       </div>
+      {/* Round H 4.1: a bound limit is a sentence on the card, never silent */}
+      {run.limit_hit ? (
+        <div style={{ padding: "0 15px" }}>
+          <LimitNotice limits={run.limits_hit} />
+        </div>
+      ) : null}
       {groupBy
         ? Array.from(groups.entries()).map(([label, findings]) => (
             <div key={label}>

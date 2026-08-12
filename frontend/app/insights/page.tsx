@@ -26,7 +26,7 @@ import {
 import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
 import SourceLink from "@/components/SourceLink";
-import { FindingRow, NarrativeBlock, RecommendationsBlock, StoredFooter } from "@/components/InsightPanel";
+import { FindingRow, LimitNotice, NarrativeBlock, RecommendationsBlock, StoredFooter } from "@/components/InsightPanel";
 import { arrow, money, percent } from "@/lib/format";
 
 /** AI Insights — one page, two views (Round E 6.1/6.2):
@@ -358,6 +358,8 @@ function PracticeView({
           {/* 6.2b — narrative: one bolded sentence + bullets, book-level */}
           {complete ? (
             <>
+              {/* Round H 4.1: a run that hit a limit says so in a sentence */}
+              <LimitNotice limits={complete.limits_hit} />
               <NarrativeBlock run={complete} />
               <RecommendationsBlock run={complete} />
               <StoredFooter run={complete} />
@@ -699,6 +701,8 @@ function AdvisorView({
 
         {run && run.status === "COMPLETE" ? (
           <>
+            {/* Round H 4.1: a run that hit a limit says so in a sentence */}
+            <LimitNotice limits={run.limits_hit} />
             <NarrativeBlock run={run} />
             <RecommendationsBlock run={run} />
             <StoredFooter run={run} />

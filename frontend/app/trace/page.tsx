@@ -29,6 +29,17 @@ const duration = (ms: number) => {
   return `${s}s`;
 };
 
+/** Round H 4.2 — the limit names a run hit. limits_hit is authoritative; the
+ * legacy budget flags cover runs recorded before limits_json existed, so an
+ * old truncated run is still distinct from a clean one. */
+function limitNames(r: TraceRun): string[] {
+  if (r.limits_hit?.length) return r.limits_hit.map((l) => l.limit_name);
+  const legacy: string[] = [];
+  if (r.budget_hit_tokens) legacy.push("token budget");
+  if (r.budget_hit) legacy.push("query budget");
+  return legacy;
+}
+
 /** Cost & Trace: what every run cost, per turn — a runaway turn must be
  * visible at a glance. All figures come from logged response.usage counts. */
 export default function TracePage() {
@@ -194,12 +205,19 @@ export default function TracePage() {
                     <th>Run</th><th>Advisor</th><th>Transition</th><th>Rule set</th>
                     <th>Turns</th><th>Queries</th><th>Input</th><th>Output</th>
                     <th>Cache read</th><th>Cache write</th><th>Cache hit %</th><th>Est cost</th>
-                    <th>Wall</th><th>Status</th>
+                    <th>Wall</th><th>Status</th><th>Limits</th>
                   </tr>
                 </thead>
                 <tbody>
                   {runs.map((r) => (
-                    <tr key={r.run_id} onClick={() => open(r.run_id)} style={{ cursor: "pointer" }}>
+                    <tr
+                      key={r.run_id}
+                      onClick={() => open(r.run_id)}
+                      // Round H 4.2: a run that hit a limit is visually distinct
+                      // (the legacy budget flags count — same class of event)
+                      className={limitNames(r).length ? "limit-hit" : undefined}
+                      style={{ cursor: "pointer" }}
+                    >
                       <td style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.run_id}>
                         {r.run_id}
                       </td>
@@ -215,10 +233,14 @@ export default function TracePage() {
                       <td>{r.cache_hit_pct}%</td>
                       <td>{cost(r.est_cost_usd)}</td>
                       <td>{wall(r.wall_ms)}</td>
-                      <td>
-                        {r.status}
-                        {r.budget_hit_tokens ? " · token budget hit" : ""}
-                        {r.budget_hit ? " · query budget hit" : ""}
+                      <td>{r.status}</td>
+                      {/* Round H 4.2: the Limits column — names here, the full
+                          name/value/effect list in the run detail */}
+                      <td
+                        className={limitNames(r).length ? "limit-cell" : undefined}
+                        title={(r.limits_hit ?? []).map((l) => l.limit_effect).join(" ")}
+                      >
+                        {limitNames(r).length ? limitNames(r).join(", ") : "—"}
                       </td>
                     </tr>
                   ))}
@@ -235,6 +257,7 @@ export default function TracePage() {
                     <td>{cost(runs.reduce((n, r) => n + r.est_cost_usd, 0))}</td>
                     <td>{duration(runs.reduce((n, r) => n + r.wall_ms, 0))}</td>
                     <td>—</td>
+                    <td>{runs.filter((r) => limitNames(r).length).length || "—"}</td>
                   </tr>
                 </tbody>
               </table>
@@ -263,6 +286,32 @@ export default function TracePage() {
             </div>
           </div>
           <div className="card-b" style={{ overflowX: "auto" }}>
+            {/* Round H 4.2: the full limit list — name, value, effect — on the
+                run detail; nothing that bound stays a table footnote */}
+            {limitNames(detail).length ? (
+              <div className="limit-note" role="status">
+                <b>
+                  {limitNames(detail).length === 1
+                    ? "This run hit a limit."
+                    : `This run hit ${limitNames(detail).length} limits.`}
+                </b>
+                <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                  {detail.limits_hit?.length
+                    ? detail.limits_hit.map((l) => (
+                        <li key={l.limit_name}>
+                          <b>{l.limit_name}</b>
+                          {l.limit_value != null ? ` = ${tokens(l.limit_value)}` : ""} — {l.limit_effect}
+                        </li>
+                      ))
+                    : limitNames(detail).map((name) => (
+                        <li key={name}>
+                          <b>{name}</b> — recorded before per-limit effects were stored; the run
+                          was cut short by this budget.
+                        </li>
+                      ))}
+                </ul>
+              </div>
+            ) : null}
             <table>
               <thead>
                 <tr>

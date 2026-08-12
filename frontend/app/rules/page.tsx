@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
+  type NeverFiredResponse,
   type RuleDetail,
   type RuleVersion,
   approveRule,
   compileRule,
   editRule,
+  getNeverFired,
   getRuleVersions,
   getRulesDetailed,
   publishRules,
@@ -27,6 +29,24 @@ export default function RuleVersionsPage() {
   const [editing, setEditing] = useState<RuleDetail | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Round H 2.4/4.3: rules with zero matches across the whole period
+  const [neverFired, setNeverFired] = useState<NeverFiredResponse | null>(null);
+  const [neverFiredError, setNeverFiredError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getNeverFired("latest")
+      .then((r) => {
+        setNeverFired(r);
+        setNeverFiredError(null);
+      })
+      .catch((e) =>
+        setNeverFiredError(
+          e instanceof ApiError && e.status === 404
+            ? "No published rule set to check yet."
+            : String((e as Error)?.message || e),
+        ),
+      );
+  }, []);
 
   const reload = useCallback(() => {
     getRuleVersions()
@@ -195,6 +215,73 @@ export default function RuleVersionsPage() {
           )}
         </div>
       </div>
+
+      {/* Round H 2.4/4.3 — a rule that never fires is either wrong or
+          inapplicable; it must be obvious here, not need a code read. */}
+      <div className="card">
+        <div className="card-h">
+          <div>
+            <h2>Rules That Never Fired</h2>
+            <p>
+              Every rule in the latest published version, evaluated at practice scope and per
+              advisor across every month in the data. Zero matches everywhere means the rule is
+              either wrong or inapplicable to this data.
+            </p>
+          </div>
+          {neverFired ? (
+            <span className={`chip ${neverFired.never_fired.length ? "neg" : "pos"}`}>
+              {neverFired.never_fired.length
+                ? `${neverFired.never_fired.length} Never Fired`
+                : "All Rules Fired"}
+            </span>
+          ) : null}
+        </div>
+        <div className="card-b">
+          {neverFired ? (
+            neverFired.never_fired.length ? (
+              <>
+                {neverFired.never_fired.map((r) => (
+                  <div key={r.rule_code} className="rule conflict">
+                    <div className="rule-h">
+                      <div>
+                        <div className="rule-t">
+                          {r.rule_name || r.rule_code} <span className="pfx">({r.rule_code})</span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        {r.scopes.map((s) => (
+                          <Chip key={s} variant="tag">
+                            {s}
+                          </Chip>
+                        ))}
+                        <Chip variant="neg">0 matches</Chip>
+                      </div>
+                    </div>
+                    <div className="rule-d">{r.note}</div>
+                  </div>
+                ))}
+                <div className="note" style={{ border: "1px solid var(--rule)", borderRadius: 5 }}>
+                  Checked {neverFired.months.length} month
+                  {neverFired.months.length === 1 ? "" : "s"} ({neverFired.months[0]} –{" "}
+                  {neverFired.months[neverFired.months.length - 1]}) across{" "}
+                  {neverFired.advisors_checked} advisors plus the practice scope.
+                </div>
+              </>
+            ) : (
+              <EmptyState
+                title="Every rule fired at least once in the period"
+                message={`All rules in ${neverFired.version_id} matched at least one entity across ${neverFired.months.length} months and ${neverFired.advisors_checked} advisors (practice scope included).`}
+              />
+            )
+          ) : neverFiredError ? (
+            <EmptyState title="Never-fired check unavailable" message={neverFiredError} />
+          ) : (
+            <div className="meta" style={{ color: "var(--slate)", fontSize: "12.5px" }}>
+              Evaluating every rule across every month and scope…
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
@@ -245,6 +332,13 @@ function RuleRow({
       </div>
       {/* 6.3: the rule's plain-English statement */}
       <div className="rule-d">{rule.statement || rule.plain_description}</div>
+      {/* Round H task 1/4.3: exclusion is declared ON the rule and shown here —
+          never an implicit mechanism a reader has to find in code */}
+      {rule.exclude_matched_of?.length ? (
+        <div className="eg">
+          <b>Excludes accounts matched by:</b> {rule.exclude_matched_of.join(", ")}
+        </div>
+      ) : null}
       {rule.worked_example ? (
         <div className="eg">
           Example — <b>{rule.worked_example}</b>

@@ -307,6 +307,10 @@ def get_drilldown(scope: str, scope_key: str, from_month: str, to_month: str,
         payload["narrative"] = run.get("narrative") or ""
         payload["bullets"] = _json.loads(run.get("bullets_json") or "[]")
         payload["findings"] = store.run_findings(run_id)
+        # Round H 2.3/4.1: limits that bound on the scoped run, loud.
+        limits = _json.loads(run.get("limits_json") or "[]")
+        payload["limit_hit"] = bool(limits)
+        payload["limits_hit"] = limits
         payload["stored"] = {
             "generated_at": run.get("completed_at") or run.get("started_at"),
             "version_id": version["version_id"],

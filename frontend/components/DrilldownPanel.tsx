@@ -26,7 +26,7 @@ import {
   getDrilldownTxns,
 } from "@/lib/api";
 import Chip from "@/components/Chip";
-import { Bold, FindingRow } from "@/components/InsightPanel";
+import { Bold, FindingRow, LimitNotice } from "@/components/InsightPanel";
 import { arrow, money, moneyAxis, percent } from "@/lib/format";
 
 // ---------------------------------------------------------------- target/hook
@@ -699,6 +699,10 @@ function InsightView({
   return (
     <>
       <MetricStrip metrics={ins.metrics ?? {}} labels={monthLabels} drills={drills} />
+
+      {/* Round H 4.1: a scoped run that hit a limit says so in a sentence —
+          rendered whenever the payload carries limits_hit */}
+      {ins.generated ? <LimitNotice limits={ins.limits_hit} /> : null}
 
       {ins.generated && ins.narrative ? (
         <AiNarrative narrative={ins.narrative} bullets={ins.bullets ?? []} />

@@ -196,6 +196,11 @@ export interface Rule {
   explanation?: string | null;
   missing?: string | null;
   needs_data_reason?: string | null;
+  // Round G: the effective scope set (explicit or derived) — always serialized.
+  scopes?: string[];
+  // Round H task 1: exclusion is declared ON the rule (e.g. LOST_ACCOUNT
+  // excludes accounts matched by the transfer rules) — shown in rule detail.
+  exclude_matched_of?: string[];
 }
 export interface RulesResponse {
   rules: Rule[];
@@ -248,6 +253,16 @@ export function approveRule(ruleKey: string, approvedBy: string = "operator"): P
 }
 export function publishRules(approvedBy: string = "operator", notes: string = ""): Promise<{ version: RuleVersion }> {
   return post("/api/rules/publish", { approved_by: approvedBy, notes });
+}
+
+// ---------- Round H 2.3/4.1 — limits that bound, loud ----------
+
+/** One limit that bound during a run. `limit_effect` is a full sentence
+ * written for humans — the UI renders it as prose, never a badge. */
+export interface LimitHit {
+  limit_name: string;
+  limit_value: number | null;
+  limit_effect: string;
 }
 
 // ---------- C4 insights (shapes per ROUND_C_SPEC) ----------
@@ -306,6 +321,10 @@ export interface InsightRun {
   generated_at: string;
   query_count: number;
   budget_hit: boolean;
+  // Round H 2.3/4.1: every limit that bound on this run — rendered as a
+  // sentence on any view that shows the run, never silently dropped.
+  limit_hit: boolean;
+  limits_hit: LimitHit[];
   generation: number;
   error?: string | null;
 }
@@ -426,6 +445,31 @@ export function getExtractionSummary(): Promise<ExtractionSummary> {
   return get("/api/rules/extraction-summary");
 }
 
+// ---------- Round H 2.4/4.3 — rules that never fired ----------
+
+/** A rule with zero matches across every month and scope in the period —
+ * either wrong or inapplicable; PARTIAL_PERIOD was both, for a round,
+ * unnoticed. `note` is the server's explanation, rendered verbatim. */
+export interface NeverFiredRule {
+  rule_code: string;
+  rule_key?: string | null;
+  rule_name?: string | null;
+  scopes: string[];
+  evaluated_anywhere: boolean;
+  total_matched: number;
+  note: string;
+}
+export interface NeverFiredResponse {
+  version_id: string;
+  months: string[];
+  advisors_checked: number;
+  /** Empty list = every rule fired at least once in the period (the good case). */
+  never_fired: NeverFiredRule[];
+}
+export function getNeverFired(version: string = "latest"): Promise<NeverFiredResponse> {
+  return get(`/api/rules/never-fired?version=${encodeURIComponent(version)}`);
+}
+
 export interface PeerRank {
   advisor_sid: string;
   month_id: string;
@@ -509,6 +553,11 @@ export interface DrilldownLevel {
   findings?: Finding[];
   stored?: DrilldownStored | null;
   estimate?: DrilldownEstimate | null;
+  /** Round H 4.1: limits that bound on the scoped run. Optional — the
+   * drill-down GET does not serialize these yet (gap noted for the backend);
+   * the panel renders them whenever the payload carries them. */
+  limit_hit?: boolean;
+  limits_hit?: LimitHit[];
 }
 export interface DrilldownTxn {
   trade_dt: string;
@@ -585,6 +634,10 @@ export interface TraceRun extends TraceTotals {
   wall_ms: number;
   budget_hit: boolean;
   budget_hit_tokens: boolean;
+  // Round H 4.2: the Limits column — every bound limit with name, value and
+  // effect; a run that hit a limit is visually distinct from a clean one.
+  limit_hit: boolean;
+  limits_hit: LimitHit[];
   started_at: string | null;
 }
 export interface TraceTurn {

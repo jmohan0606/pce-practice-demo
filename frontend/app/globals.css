@@ -247,3 +247,15 @@ tr.tot .up,tr.tot .dn{font-weight:700}
 .panel .finding{border:1px solid var(--rule);border-radius:6px;margin-bottom:8px;overflow:hidden}
 .panel .finding-b{padding:0 14px 14px;border-top:1px solid var(--rule-2)}
 .panel .narr{padding:14px 16px}
+
+/* Round H 4.1/4.2 — no limit fails silently. The limit notice is a SENTENCE
+   someone reads (amber, matching the Derived token family), not a badge; a
+   trace row that hit a limit is tinted so it stands apart from a clean run. */
+.limit-note{font-size:12.5px;color:var(--der-tx);background:var(--der-bg);
+  border:1px solid var(--der-tx);border-left-width:3px;border-radius:5px;
+  padding:10px 14px;margin:12px 0;line-height:1.55}
+.limit-note b{font-weight:600}
+.limit-note .which{display:block;margin-top:4px;font-size:11.5px;opacity:.85}
+tr.limit-hit td{background:var(--der-bg)}
+tbody tr.limit-hit:not(.sect):not(.tot):hover td{background:var(--der-bg)}
+.limit-cell{color:var(--der-tx);font-weight:600;white-space:nowrap}

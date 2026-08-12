@@ -29,6 +29,34 @@
       within-day safety net app.log.YYYY-MM-DD.N (2.5). verify_round_h
       H-4..H-8 + H-13 (9/9 with task 1); verify a/b/c/e green (E-5 re-pinned
       to the settings-resolved reserve).
+- [x] Task 3 (Subagent A, verified in main thread): caching moved behind the
+      LLM adapter — the Miner marks its two anchors ``stable: true``
+      (app/llm/cache.py translates: Claude → cache_control ephemeral, cdao/
+      OpenAI → flags stripped with the stable prefix kept byte-identical for
+      automatic prefix caching, mock → ignored); grep proves no cache_control
+      in app/agents/; old-vs-new Claude wire structures proven byte-identical
+      across 4 growing turns. cdao/Real clients gain generate_conversation
+      (usage incl. prompt_tokens_details.cached_tokens); SmartSDK Azure path
+      keeps the single-string fallback (no clean usage surface — known gap).
+      scripts/check_cache_support.py (3.2) reports whatever the configured
+      provider returns — REAL Claude run: call 1 cache_write 8,631, call 2
+      cache_read 8,631 (99.8%) — caching ENGAGES on this path (~$0.01).
+      ASSUME_PROMPT_CACHING (3.3, default true): false reprices the
+      /api/trace/summary projection at full input rate ($0.0115→$0.0475 avg
+      run on the synthetic probe). C6-13 re-pinned on the wire format the
+      Claude adapter sends (flagged deviation, accepted). verify a/b/c/e/h
+      all green.
+- [x] Task 4 (Subagent B, verified in main thread): LimitNotice renders the
+      server's limit_effect strings as prose sentences on practice/advisor
+      insights, transition cards and the drill-down panel (4.1); Trace gains a
+      Limits column with amber row tint + full name=value—effect list in run
+      detail, legacy budget flags folded in (4.2); Rule Versions gains a
+      "Rules That Never Fired" card from /api/rules/never-fired with scopes
+      chips and the honest all-fired empty state, and rule detail shows
+      exclude_matched_of (4.3); evidence "showing N of M" via evidence_total
+      confirmed across all renderers (4.4). Main thread closed the gap B
+      found: the drill-down GET now serializes limit_hit/limits_hit from the
+      stored run. npm run build passes; typed API clients updated.
 - [ ] Task 5 (scale test) — DEFERRED TO NEXT SESSION, untouched (operator call,
       session budget). Nothing of 5.1–5.3 exists yet: no --scale flag on
       scripts/generate_mock_data.py, no scale run, no measurements. Task 6
