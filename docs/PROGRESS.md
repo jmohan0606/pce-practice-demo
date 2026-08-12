@@ -85,20 +85,22 @@
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: C — COMPLETE except the all-advisors batch, STOPPED EARLY on operator
-      instruction after API credits ran out a second time (aggregate run COMPLETE,
-      20 per-advisor runs FAILED on "credit balance too low"; no new runs started).
-Task: to finish the per-advisor sweep later: add credits, then
-      `python3 scripts/e2e_finish.py` (it skips the already-published v1 and re-runs
-      the batch; supersede semantics replace the FAILED rows in place).
-      Port visibility for 8001/3001 still needs the Ports panel (gh token lacks the
-      codespace scope).
-State on the LIVE server (process-local): rule set v1 PUBLISHED (from the sample PDF);
-      insight runs for 202604->202605: `all` COMPLETE with 10 findings (real Claude,
-      36 logged queries, numeric assertion passed — docs/ROUND_C_E2E_FINISH_OUTPUT.txt),
-      V000001..V000020 FAILED with the credit error recorded. AI Insights page renders
-      the real aggregate run; Advisor page honestly shows the failed state.
-Last updated: 2026-08-11 (Round C session, after credit-limited batch)
+Round: E (docs/spec/ROUND_E_SPEC.md) — Tasks 1 and 2 COMPLETE and committed
+      (7fa20a8); Tasks 3–7 dispatched to concurrent subagents per the spec's
+      parallel-execution plan (A: Task 3 cache fix; B: Tasks 4–5 position metrics +
+      recommendations; C: Tasks 6–7 UI + trace totals). Main thread verifies each
+      subagent's claim, commits per task, then runs Task 8 last.
+SPEC CHANGE (operator, 2026-08-12): advisor_nnm_position DROPPED and every NNM
+      reference removed from the practice view, exceptions table and
+      recommendations — three months of net flows cannot stand in for an
+      annually-measured NNM figure; even labelled, it presents a proxy as a fact.
+      AUM and net flows ship; NNM waits for real data. Task 8's verify item 7
+      becomes "no NNM metric or reference anywhere".
+Cost: running LLM total $1.63 of the $15 ceiling.
+Carry-over from Round C: per-advisor sweep still finishable via
+      `python3 scripts/e2e_finish.py` once credits allow; port visibility for
+      8001/3001 still needs the Ports panel (gh token lacks the codespace scope).
+Last updated: 2026-08-12 (Round E session, after Task 2 / subagent dispatch)
 
 ## Task checklist (Round C)
 - [x] 0.1 Param validation before population fetch (evaluator + compiler attribute params;
