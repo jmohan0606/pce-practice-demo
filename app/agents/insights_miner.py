@@ -346,13 +346,22 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
     {limit_name, limit_value, limit_effect}.
     Returns {findings, query_count, budget_hit, unanswerable, coverage_ratio,
     turns, exploration_reserved, limits_hit}."""
-    month_meta = {}
-    for mid in (from_month, to_month):
-        meta = tools.run_graph_query("month_meta", {"month_id": mid})
-        month_meta[mid] = meta["rows"][0] if meta["rows"] else {}
-    initial = tools.run_graph_query(
-        "revenue_change_by_product",
-        {"advisor": advisor_sid, "from_month": from_month, "to_month": to_month})
+    # The 3 opening queries run before the loop's wrap-up handling exists, so a
+    # budget below 3 cannot degrade gracefully — name the misconfiguration.
+    try:
+        month_meta = {}
+        for mid in (from_month, to_month):
+            meta = tools.run_graph_query("month_meta", {"month_id": mid})
+            month_meta[mid] = meta["rows"][0] if meta["rows"] else {}
+        initial = tools.run_graph_query(
+            "revenue_change_by_product",
+            {"advisor": advisor_sid, "from_month": from_month, "to_month": to_month})
+    except BudgetExhausted as exc:
+        raise BudgetExhausted(
+            f"MINER_QUERY_BUDGET={tools.budget} is below the 3 opening queries "
+            "(month_meta x2 + revenue_change_by_product) — the run cannot start. "
+            "Raise MINER_QUERY_BUDGET; there is no degraded mode below 3."
+        ) from exc
 
     limits = _limits()
     max_turns = limits.miner_max_turns
