@@ -399,10 +399,44 @@ def report(findings: list[dict], transition: dict,
                      len(dropped), dropped)
 
     bad = verify_numbers(narrative, bullets, findings, transition)
+    repaired = False
+    if bad:
+        # Round G task 2: ONE repair round before the template — the diagnosis
+        # showed rejected narratives whose other sentences were fully verified;
+        # naming the rejected figures usually salvages a real narrative. The
+        # gate itself is unchanged and re-runs on the rewrite.
+        _log.warning("reporter figures not present in the findings (%s) — "
+                     "one repair round", bad)
+        try:
+            repair_prompt = (
+                prompt + "\n\nYOUR PREVIOUS ANSWER:\n"
+                + json.dumps({"narrative": narrative, "bullets": bullets})
+                + f"\n\nREJECTED — these figures appear nowhere in the findings or "
+                  f"transition totals (you computed or misremembered them): {bad}. "
+                  f"Rewrite the narrative and bullets using ONLY figures copied "
+                  f"verbatim from the findings and transition totals. Do not sum, "
+                  f"difference or extrapolate. Keep your recommendations. JSON only.")
+            redecoded = _decode_reply(llm(repair_prompt, {
+                "system_prompt": build_system_prompt(search_documents is not None)}))
+            new_narrative = str(redecoded.get("narrative") or "").strip()
+            new_bullets = [str(b).strip() for b in redecoded.get("bullets") or []
+                           if str(b).strip()]
+            if new_narrative and new_bullets:
+                bad2 = verify_numbers(new_narrative, new_bullets, findings, transition)
+                if not bad2:
+                    narrative, bullets, bad, repaired = new_narrative, new_bullets, [], True
+                    if redecoded.get("recommendations") is not None:
+                        recommendations, dropped = verify_recommendations(
+                            redecoded.get("recommendations"), findings, transition,
+                            excerpts)
+                else:
+                    bad = bad2
+        except Exception as exc:  # noqa: BLE001 — a failed repair falls through
+            _log.warning("reporter repair round failed (%s)", exc)
     if bad:
         _log.warning("reporter published %d figure(s) not present in the findings "
-                     "(%s) — falling back to the template. NEVER publish an "
-                     "unverified figure.", len(bad), bad)
+                     "(%s) after repair — falling back to the template. NEVER "
+                     "publish an unverified figure.", len(bad), bad)
         result = template_report(findings, transition)
         # verified independently against their own sources — they survive
         result.update(unverified_numbers=bad, recommendations=recommendations,
@@ -410,5 +444,6 @@ def report(findings: list[dict], transition: dict,
         return result
     return {"narrative": narrative, "bullets": bullets,
             "recommendations": recommendations, "fallback_used": False,
+            "repaired": repaired,
             "unverified_numbers": [], "recommendations_dropped": dropped,
             "search_count": searches}

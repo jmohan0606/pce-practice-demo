@@ -142,8 +142,22 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
         f"{r.get('statement') or r.get('plain_description')} Example: {r.get('worked_example')}"
         for r in rules
     ]
-    # Round E task 2: rule outcomes were computed in CODE before this loop; the
-    # agent's job is the residual — what the rules do NOT explain.
+    # Round E task 2 / Round G task 2: rule outcomes were computed in CODE
+    # before this loop; the agent's job is the residual — what the rules do
+    # NOT explain. Round G diagnosis: the residual now LEADS the opening (the
+    # rules are already-handled context), because stating it last produced
+    # runs that chased the headline change the rules already explained.
+    task_head = "Explain this transition.\n\n"
+    if rule_outcomes is not None:
+        task_head = (
+            f"YOUR TASK — EXPLAIN THE RESIDUAL: {residual_amt}.\n"
+            f"The published rules were already evaluated in code; their findings "
+            f"are recorded on this run (listed below) and explain the rest of the "
+            f"change. The residual is what they do NOT explain — investigate "
+            f"that. Do NOT re-derive or re-emit a rule finding. Discovered "
+            f"surprises beyond the rule set are expected and desirable. If the "
+            f"data cannot explain the residual, say so explicitly "
+            f"(unanswerable) — silence is not an acceptable outcome.\n\n")
     rule_block = ""
     if rule_outcomes is not None:
         outcome_lines = []
@@ -163,18 +177,17 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
             + (f" — impact {f['impact_amt']}" if f.get("impact_amt") is not None else "")
             for f in fired]
         rule_block = (
-            "\n\nRULE OUTCOMES (already evaluated in code — no queries spent, "
-            "already recorded as findings; do NOT re-derive them):\n"
+            "\n\nRULE OUTCOMES (already-handled context: evaluated in code, no "
+            "queries spent, already recorded as findings; do NOT re-derive or "
+            "re-emit them):\n"
             + "\n".join(outcome_lines)
             + ("\n\nPre-matched rule findings on this run:\n" + "\n".join(fired_lines)
                if fired_lines else "")
-            + f"\n\nRESIDUAL: change_amt minus the rule findings' impacts = "
-              f"{residual_amt}. THE RESIDUAL IS THE INTERESTING PART — investigate "
-              f"what the rules do NOT explain. Discovered surprises beyond the "
-              f"rule set are expected and desirable.")
+            + f"\n\nRESIDUAL (your task, restated): change_amt minus the rule "
+              f"findings' impacts = {residual_amt}.")
     return (
-        f"Explain this transition.\n\n"
-        f"ADVISOR: {advisor_sid}  ('all' = the whole cohort book)\n"
+        task_head
+        + f"ADVISOR: {advisor_sid}  ('all' = the whole cohort book)\n"
         f"TRANSITION: {from_month} -> {to_month}\n"
         f"TOTALS: {json.dumps(transition)}\n"
         f"MONTH METADATA: {json.dumps(month_meta)}\n\n"
@@ -304,6 +317,7 @@ def _validate_finding(payload: dict, tools: MinerTools) -> tuple[dict | None, st
 
 
 EXPLORATION_RESERVE = 6  # Round E task 2: queries reserved for free exploration
+WRAPUP_TURNS = 3  # Round G task 2: query-free turns granted when the token ceiling trips
 
 
 def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
@@ -353,12 +367,29 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
     # it (Claude); scripted/mock callables keep the single-string path.
     use_conversation = bool(getattr(llm, "supports_conversation", False)) \
         and callable(getattr(llm, "converse", None))
+    # Round G task 2: the residual and the already-recorded rule findings ride
+    # the per-turn reminder (dynamic text after the cache anchors).
+    reminder_extra = ""
+    if residual_amt is not None:
+        recorded = "; ".join(
+            f"{f['title'].split(' — ')[0]}"
+            + (f" ({f['impact_amt']})" if f.get("impact_amt") is not None else "")
+            for f in (rule_findings or []))
+        reminder_extra = f" · residual to explain: {residual_amt}"
+        if recorded:
+            reminder_extra += f" · rule findings already recorded, do NOT re-emit: {recorded}"
     findings: list[dict] = list(rule_findings or [])  # pre-matched, code-evaluated
     unanswerable: list[str] = []
     done = False
     turns = 0
     parse_failures = 0
     budget_hit_tokens = False
+    nudged_for_silence = False
+    # Round G task 2: the token ceiling must not truncate silently — the run
+    # gets WRAPUP_TURNS query-free turns to emit findings it has already
+    # formed, or to state explicitly why the residual is unexplained. (The
+    # Round E 0-agent-findings run was this exact silent truncation.)
+    wrapup_left: int | None = None
     # Hard token ceiling — a run must never be able to spend without limit.
     # prompt_tokens_total exists only on the TurnLoggingLLM wrapper; scripted /
     # mock callables report nothing and are unmetered (they cost nothing).
@@ -366,19 +397,34 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
     max_prompt_tokens = get_settings().max_run_input_tokens
 
     while not done and turns < MAX_TURNS:
-        if getattr(llm, "prompt_tokens_total", 0) >= max_prompt_tokens:
+        if wrapup_left is None \
+                and getattr(llm, "prompt_tokens_total", 0) >= max_prompt_tokens:
             budget_hit_tokens = True
+            wrapup_left = WRAPUP_TURNS
             _log.warning("miner %s: MAX_RUN_INPUT_TOKENS (%d) exceeded after %d turns "
-                         "— stopping and emitting the %d finding(s) that exist",
-                         tools.run_id, max_prompt_tokens, turns, len(findings))
-            break
+                         "— entering wrap-up (%d query-free turns to emit findings)",
+                         tools.run_id, max_prompt_tokens, turns, WRAPUP_TURNS)
+            transcript.append({"label": "system", "text": (
+                "TOKEN BUDGET REACHED — no further queries will run. Emit each "
+                "finding you have already formed from the results above (one per "
+                "turn, with source_seq). If you cannot explain the residual from "
+                "what you have seen, record that explicitly with "
+                "{\"action\":\"unanswerable\",\"question\":\"<what you checked and "
+                "why the residual remains unexplained>\"} — silence is not an "
+                "acceptable outcome. Then {\"action\":\"done\"}.")})
+        if wrapup_left is not None:
+            if wrapup_left <= 0:
+                break
+            wrapup_left -= 1
         turns += 1
         if use_conversation:
             raw = llm.converse(
                 _system_blocks(system_prompt),
-                _build_messages(opening, transcript, tools, len(findings)))
+                _build_messages(opening, transcript, tools, len(findings),
+                                reminder_extra))
         else:
-            prompt = _render_prompt(opening, transcript, tools, len(findings))
+            prompt = _render_prompt(opening, transcript, tools, len(findings),
+                                    reminder_extra)
             raw = llm(prompt, {"system_prompt": system_prompt})
         action = _parse_action(raw)
         if isinstance(action, str):
@@ -400,7 +446,28 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
              str(action.get("query_name") or "") if kind == "query" else "")
 
         if kind == "done":
+            # Round G task 2: a run may not end silent — with zero discovered
+            # findings and no unanswerable record, the model gets ONE nudge to
+            # either emit what it saw or state why the residual is unexplained.
+            agent_count = sum(1 for f in findings if f.get("origin") != "rule")
+            if agent_count == 0 and not unanswerable and not nudged_for_silence:
+                nudged_for_silence = True
+                transcript.append({"label": "system", "text": (
+                    "NOT DONE YET — you are ending with zero discovered findings "
+                    "and no explanation. Either emit a finding from a result "
+                    "above (with source_seq), or state explicitly with "
+                    "{\"action\":\"unanswerable\",...} what you checked and why "
+                    "the residual remains unexplained. \"I could not explain "
+                    "it\" is an acceptable and useful answer; silence is not.")})
+                continue
             done = True
+        elif kind in ("query", "get_schema", "search") and wrapup_left is not None:
+            # wrap-up is query-free: the budget is spent; only findings and
+            # honest statements remain.
+            transcript.append({"label": "system", "text": (
+                "NO MORE QUERIES — the token budget is reached. Emit findings "
+                "from results you already have, an unanswerable statement, or "
+                "{\"action\":\"done\"}.")})
         elif kind == "query":
             query_name = str(action.get("query_name") or "")
             try:
@@ -505,18 +572,23 @@ def tools_catalog() -> list[dict]:
     return catalog_signatures()
 
 
-def _reminder(tools: MinerTools, finding_count: int) -> str:
+def _reminder(tools: MinerTools, finding_count: int, extra: str = "") -> str:
+    """The per-turn footer — DYNAMIC (it sits after the cache anchors, so it is
+    free to change every turn). Round G task 2 puts the residual and the
+    already-recorded rule findings here: the one piece of text the model is
+    guaranteed to read on every turn."""
     return (f"[system] queries remaining: {tools.remaining} · findings recorded: "
-            f"{finding_count}. Next JSON action:")
+            f"{finding_count}{extra}. Next JSON action:")
 
 
 def _render_prompt(opening: str, transcript: list[dict],
-                   tools: MinerTools, finding_count: int) -> str:
+                   tools: MinerTools, finding_count: int,
+                   reminder_extra: str = "") -> str:
     """Single-string fallback path (mock / scripted / non-Claude transports).
     Same pruning as the messages path — prompt caching just cannot help here."""
     parts = [opening]
     parts += [f"[{label}] {text}" for label, text, _ in _effective_transcript(transcript)]
-    parts.append(_reminder(tools, finding_count))
+    parts.append(_reminder(tools, finding_count, reminder_extra))
     return "\n\n".join(parts)
 
 
@@ -530,7 +602,8 @@ def _system_blocks(system_prompt: str) -> list[dict]:
 
 
 def _build_messages(opening: str, transcript: list[dict],
-                    tools: MinerTools, finding_count: int) -> list[dict]:
+                    tools: MinerTools, finding_count: int,
+                    reminder_extra: str = "") -> list[dict]:
     """The proper messages array (2.1). EXACTLY TWO cache anchors exist: the
     system block (_system_blocks) and the opening block here — both
     byte-identical every turn, so the cached prefix survives the whole run.
@@ -555,7 +628,7 @@ def _build_messages(opening: str, transcript: list[dict],
             messages[-1]["content"].append(block)
         else:
             messages.append({"role": role, "content": [block]})
-    reminder = {"type": "text", "text": _reminder(tools, finding_count)}
+    reminder = {"type": "text", "text": _reminder(tools, finding_count, reminder_extra)}
     if messages[-1]["role"] == "user":
         messages[-1]["content"].append(reminder)
     else:
