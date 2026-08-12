@@ -1,5 +1,52 @@
 # Build Progress
 
+## Round G (docs/spec/ROUND_G_SPEC.md)
+- [x] Task 1 (main thread, 2d22311): rules declare their own scope — scopes on
+      the rule model (derived at compile from :advisor_sid, human-overridable,
+      serialized on every rule), evaluate_rule_set takes an explicit scope
+      (derived when absent), non-applicable rules SKIPPED with skip_reason
+      (normal state, distinct from failed), plan_by_scope per-scope plan
+      variants (transfer rules gain practice plans — 13 transferred accounts
+      firm-wide on 202604, keys still feed LOST_ACCOUNT exclusion), seed
+      validates every scope plan, Rule Compiler emits/validates plan_by_scope.
+      Practice 5/0 errors/0 skipped; advisor 5/0; missing-param contract
+      re-pinned at explicit advisor scope (B3-18) + non-scope :threshold probe.
+- [x] Task 2 (main thread, 7c094bb): finding generation diagnosed then fixed
+      (docs/ROUND_G_DIAGNOSIS.md). Root causes measured: 60k token ceiling
+      silently truncated runs at ~7/20 turns (no wrap-up); residual stated
+      last; numeric gate was RIGHT (rejected fabricated account figures).
+      Fixes: WRAPUP_TURNS=3 query-free ceiling wrap-up; no-silent-end nudge;
+      residual leads the opening + rides the per-turn reminder; reporter gets
+      one repair round naming rejected figures. V000002 202604→202605:
+      agent findings 0 → 1 (genuine non-rule discovery), residual explained
+      0% → 73.5%, real verified narrative (no fallback), explicit residual
+      statement recorded. Round E task 2 PROVISIONAL lifted (DECISIONS.md).
+- [x] Task 3 (Subagent A, verified in main thread, abb4d1e): five drill-down
+      catalog queries (catalog 28→33, C6-1 widened), app/insights/drilldown.py
+      scoped runs on the contract run_id format with parent_run_id chains,
+      budgets 8q/12t product / 6q/10t below via a turn-cap wrapper, rules
+      evaluated at the mapped scope with Task 1 skip semantics, transaction
+      level provably LLM-free, six endpoints (one additive GET for the
+      product_account insight level), honest labelled cost estimates.
+- [x] Task 4 (Subagent B, verified in main thread, a7b6c08): DrilldownPanel —
+      one general component keyed by a scope descriptor (useDrilldownPanel),
+      760px slide-in with scrim/Escape/focus-restore, breadcrumb, three-part
+      levels, drillable counts, Stored footer + Regenerate, ungenerated
+      estimate-before-spend, ProductTable change cells as real buttons, typed
+      API clients; npm build passes; nothing hardcoded.
+- [x] Task 5 (Subagent C, verified in main thread, 4df5523): scoped_run_id /
+      begin_scoped_run / generation_lock (one generation, concurrent same-key
+      callers wait and read); durable SQLite layer (data/runtime/, overridable)
+      persisting full runs+findings+logs and full rule dicts incl.
+      plan/scopes/plan_by_scope; rehydrate-on-miss RAISES on partial data;
+      ensure_v0_seed no-ops after restart (Round F compiled-plans-died problem
+      closed); graph mirror unchanged; verify scripts isolated to tempdir dbs.
+- [x] Task 6 (main thread): all 12 checks pass with actual output in
+      docs/ROUND_G_COMPLETE.md (check 11 code-level — no browser here); one
+      REAL scoped generation stored and served identically on re-GET and
+      across a process restart via the API; verify a/b/c/e re-run green
+      (25/25, 19/19, 13/13, 8/8); servers restarted on this round's code.
+
 ## Round F (docs/spec/ROUND_F_SPEC.md)
 - [x] Task 1: PROGRESS.md current-position refreshed for Round F (the Round C
       staleness the spec flagged was already fixed in 54a07d0 during Round E;
@@ -189,30 +236,33 @@
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: F (docs/spec/ROUND_F_SPEC.md) — COMPLETE. All 6 tasks done, verified in
-      the main thread and committed; docs/ROUND_F_COMPLETE.md has the actual
-      output of all 10 checks. verify a/b/c/e green (25/25, 19/19, 13/13,
-      8/8). Extraction scripts are proven against fabricated raw CSVs only —
-      the real client extract still has to be run (select_cohort →
-      generate_extraction_sql → operator runs SQL → build_real_data →
-      load/verify, per ROUND_D_EXTRACTION.md).
-Named next (ROUND_F_SPEC "Not in this round"): the product drill-down panel
-      (docs/ui/MOCKUP_DRILLDOWN.html) and the Round E Task 2 finding-generation
-      fix (0 agent findings on a $9.5k residual — needs real LLM iteration).
-Carried observations: (1) Round E Task 2 remains PROVISIONAL; (2) the <$0.03
-      cost target conflicts with the Sonnet-reporter policy ($0.0504 actual) —
-      still needs an operator ruling; (3) the compiled grid-sharing rule
-      matches 0 rows on mock data (reads eff_disc_pct as whole percent) —
-      worth a look next session.
+Round: G (docs/spec/ROUND_G_SPEC.md) — COMPLETE. All 6 tasks done, verified in
+      the main thread and committed; docs/ROUND_G_COMPLETE.md has the actual
+      output of all 12 checks (check 11 is code-level — a human browser
+      keyboard pass remains). verify a/b/c/e green (25/25, 19/19, 13/13, 8/8).
+      Round E Task 2's PROVISIONAL flag lifted on evidence
+      (docs/ROUND_G_DIAGNOSIS.md + DECISIONS.md).
+Carried observations: (1) the <$0.03 cost target vs Sonnet-reporter policy
+      still needs an operator ruling (advisor run now $0.091, scoped product
+      run $0.102); (2) the compiled grid-sharing rule matches 0 rows on mock
+      data (reads eff_disc_pct as whole percent) — still worth a look;
+      (3) the Task 6 scoped product narrative fell back to the template (the
+      Sonnet rewrite tripped the numeric gate even after its repair round) —
+      prose quality at product scope is a candidate for a future round;
+      (4) editing only a rule's scopes still drops the compiled plan (edit()
+      invalidates plans on ANY edit) — cheap to special-case if it annoys.
+Also still open: the real client extract (Round D scripts proven on fabricated
+      raw CSVs only); per-advisor sweep via scripts/e2e_finish.py; port
+      visibility for 8001/3001 needs the Ports panel (gh token lacks the
+      codespace scope).
 SPEC CHANGE (operator, 2026-08-12): advisor_nnm_position DROPPED and every NNM
       reference removed from the practice view, exceptions table and
       recommendations — three months of net flows cannot stand in for an
       annually-measured NNM figure; even labelled, it presents a proxy as a fact.
-      AUM and net flows ship; NNM waits for real data. Task 8's verify item 7
-      becomes "no NNM metric or reference anywhere".
-Cost: running LLM total ≈ $3.44 of the $15 ceiling ($1.72 this round, all on
-      Round F Task 3 extraction — Sonnet per the .env role pins).
-Last updated: 2026-08-12 (Round F session, after Task 6)
+      AUM and net flows ship; NNM waits for real data.
+Cost: running LLM total ≈ $3.74 of the $15 ceiling ($0.30 this round:
+      diagnosis $0.106 + comparison run $0.091 + scoped generation $0.102).
+Last updated: 2026-08-12 (Round G session, after Task 6)
 Carry-over from Round C: per-advisor sweep still finishable via
       `python3 scripts/e2e_finish.py` once credits allow; port visibility for
       8001/3001 still needs the Ports panel (gh token lacks the codespace scope).
