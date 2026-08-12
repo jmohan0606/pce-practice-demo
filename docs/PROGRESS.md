@@ -25,6 +25,20 @@
       queries (exploration_reserved recorded, warn < 6); runs report rule_findings /
       agent_findings / residual_amt / residual_explained_pct. verify_round_c C6-2
       widened for rule-origin findings; 12/12.
+- [x] Task 3 (Subagent A, verified in main thread): both MOVING cache anchors removed;
+      exactly two anchors remain (system + opening blocks, byte-identical every turn);
+      opening pushed past Haiku's 4096-token cache minimum with the full query catalog
+      (typed params + return columns) and a schema digest — measured 3,384 -> 7,656
+      tokens via count_tokens; STATIC_PREFIX_MIN_TOKENS guard + cache_health()
+      reads>writes-after-turn-3 assertion; scripts/check_cache_health.py does a real
+      run and asserts from response.usage. Real Haiku run (V000002, 202604->202605):
+      7 miner turns + reporter, 10 queries, 21.0s; 65,417 prompt tokens = 10,383
+      uncached + 47,172 cache-read + 7,862 cache-write; ONE write on turn 1 then pure
+      reads, zero misses (was 5/13 turns missed); cache read 72.1% (target >=70 MET,
+      was 28.7%); est cost $0.0364 (target <$0.03 near miss, was $0.0689 — remainder
+      is unanchorable transcript replay + output). verify a/b 25/25, 19/19; new C6-13
+      passes (committed with Tasks 4-5 — the file also carries B's C6-1 widening).
+      Running LLM cost ~$1.67 of $15.
 
 ## Cost & UI fix session (docs/spec/SESSION_PROMPT_COST_AND_UI_FIXES.md)
 - [x] Hard rule 2: ANTHROPIC_MODEL=claude-haiku-4-5-20251001 in .env; settings default

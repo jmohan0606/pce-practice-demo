@@ -42,6 +42,10 @@ MAX_TURNS = 20            # hard stop on LLM turns (the query budget is separate
 ROWS_SHOWN_TO_MODEL = 25  # rows echoed into the transcript per result (row_count always shown)
 RECENT_RESULTS_KEPT = 3   # older tool results collapse to code-built one-line summaries
 TOOL_RESULT_CHAR_CAP = 1500  # per-payload character cap on tool results
+# Haiku's minimum cacheable prefix: a cache_control breakpoint whose prefix is
+# smaller than this silently never caches (0 reads AND 0 writes). The static
+# system+opening prefix must clear it — checked at run start and in verify.
+STATIC_PREFIX_MIN_TOKENS = 4096
 
 VALID_TAGS = ("Fee Rate", "Market", "One-Time", "Inherited", "New Accounts",
               "Lost Accounts", "Transfers", "Referrals", "Period Length",
@@ -87,6 +91,43 @@ def build_system_prompt() -> str:
         "- Mind partial months: compare per-trading-day when a month is flagged partial.\n"
         "- Watch the query budget shown each turn; leave room to emit findings before it runs out."
     )
+
+
+def _schema_reference() -> str:
+    """Static digest of the graph schema (docs/tigergraph/schema_catalog.json —
+    a file on disk, so byte-identical every turn AND every run). Included in the
+    opening block for two reasons: the agent can resolve fields without spending
+    a get_schema call, and it pushes the cached prefix past Haiku's 4096-token
+    minimum (Round E task 3) with content that is useful rather than padding."""
+    from app.rules.compiler import load_schema_catalog
+
+    catalog = load_schema_catalog()
+    lines = []
+    for name in sorted(catalog.get("vertices", {})):
+        spec = catalog["vertices"][name]
+        attrs = ", ".join(f"{a}:{t}" for a, t in spec.get("attributes", {}).items())
+        lines.append(f"- {name} (pk {spec.get('primary_id')}): {attrs}")
+    edges = catalog.get("edges", {})
+    edge_lines = [f"{name}: {spec.get('from')} -> {spec.get('to')}"
+                  for name, spec in sorted(edges.items())]
+    return ("GRAPH SCHEMA REFERENCE (every vertex with its fields — resolve "
+            "field names here before reaching for get_schema):\n"
+            + "\n".join(lines)
+            + ("\nEDGES: " + "; ".join(edge_lines) if edge_lines else ""))
+
+
+def _catalog_lines(catalog: list[dict]) -> str:
+    """Full query catalog with typed params, return columns and description —
+    static per run, part of the cached opening block."""
+    lines = []
+    for q in catalog:
+        params = ", ".join(
+            f"{p['name']}:{p.get('type', '?')}" + ("" if p["required"] else "?")
+            + (f"={p['default']}" if p.get("default") not in (None, "") else "")
+            for p in q["params"])
+        lines.append(f"- {q['query_name']}({params}) -> {', '.join(q['returns'])} "
+                     f"— {q['description']}")
+    return "\n".join(lines)
 
 
 def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
@@ -137,12 +178,9 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
         f"PUBLISHED RULE SET (what matters in this business):\n"
         + "\n".join(rule_lines)
         + rule_block
-        + "\n\nQUERY CATALOG (name, params, returns):\n"
-        + "\n".join(
-            f"- {q['query_name']}({', '.join(p['name'] + ('' if p['required'] else '?')
-                                             for p in q['params'])}) -> "
-            f"{', '.join(q['returns'])} — {q['description']}"
-            for q in catalog)
+        + "\n\nQUERY CATALOG (name, typed params — '?' optional, returns):\n"
+        + _catalog_lines(catalog)
+        + "\n\n" + _schema_reference()
         + "\n\nInitial observation (seq 1, revenue_change_by_product, "
         f"{initial['row_count']} rows):\n"
         + json.dumps(initial["rows"][:ROWS_SHOWN_TO_MODEL], default=str)
@@ -180,9 +218,9 @@ def summarize_result(seq_no: int, query_name: str, rows: list[dict],
 def _effective_transcript(transcript: list[dict]) -> list[tuple[str, str, bool]]:
     """The transcript as the model sees it: the last RECENT_RESULTS_KEPT tool
     results stay verbatim; older ones compress to their code-built summary.
-    The third element flags collapsed entries — once collapsed, an entry never
-    changes again, so the prefix up to the newest collapsed entry is stable
-    across turns (a cache anchor)."""
+    The third element flags collapsed entries (kept for observability; cache
+    anchors deliberately do NOT sit here — collapsing rewrites the middle of
+    the transcript, so nothing after the opening block is anchor-stable)."""
     tool_indexes = [i for i, e in enumerate(transcript) if e["label"] == "tool"]
     collapse = (set(tool_indexes[:-RECENT_RESULTS_KEPT])
                 if len(tool_indexes) > RECENT_RESULTS_KEPT else set())
@@ -298,6 +336,12 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
         tools_catalog(), initial,
         rule_outcomes=rule_outcomes, rule_findings=rule_findings,
         residual_amt=residual_amt)
+    prefix_estimate = estimate_tokens(system_prompt + opening)
+    if prefix_estimate < STATIC_PREFIX_MIN_TOKENS:
+        _log.warning("miner %s: static prefix ~%d tokens < %d — the cache "
+                     "anchor on the opening block will silently never cache on "
+                     "Haiku", tools.run_id, prefix_estimate,
+                     STATIC_PREFIX_MIN_TOKENS)
 
     # {"label", "text", "summary"?} entries after the opening. Query results
     # carry a code-built factual summary used when they age out of the window.
@@ -424,6 +468,27 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
             "exploration_reserved": exploration_reserved}
 
 
+def estimate_tokens(text: str) -> int:
+    """Coarse char-based token estimate (~3.2 chars/token measured against
+    count_tokens on this exact prompt mix). Used ONLY for the static-prefix
+    size check — billed counts always come from response.usage."""
+    return int(len(text) / 3.2)
+
+
+def cache_health(turn_rows: list[dict], after_turn: int = 3,
+                 agent_name: str = "insights_miner") -> tuple[bool, int, int]:
+    """Round E task 3 assertion: summed cache READS must exceed summed cache
+    WRITES across the agent's turns after `after_turn`. With two static
+    anchors the prefix is written once (turn 1) and read every turn after; if
+    writes keep pace with reads past turn 3, an anchor is moving again.
+    Returns (ok, reads, writes) over rows with seq_no > after_turn."""
+    rows = [r for r in turn_rows
+            if r.get("agent_name") == agent_name and r.get("seq_no", 0) > after_turn]
+    reads = sum(int(r.get("cache_read_tokens", 0)) for r in rows)
+    writes = sum(int(r.get("cache_write_tokens", 0)) for r in rows)
+    return reads > writes, reads, writes
+
+
 def _tag(llm, action_kind: str, query_name: str = "") -> None:
     """Annotate the wrapper's just-logged turn; plain callables have no log."""
     tag = getattr(llm, "tag_last", None)
@@ -453,25 +518,33 @@ def _render_prompt(opening: str, transcript: list[dict],
 
 
 def _system_blocks(system_prompt: str) -> list[dict]:
-    """Static block 1: byte-identical every turn → cache read from turn 2 on."""
+    """Static anchor 1 of exactly 2: byte-identical every turn. On Haiku this
+    breakpoint alone sits under the 4096-token cache minimum; the anchor on the
+    opening block (whose prefix INCLUDES this system block) is the one that
+    qualifies — see STATIC_PREFIX_MIN_TOKENS."""
     return [{"type": "text", "text": system_prompt,
              "cache_control": {"type": "ephemeral"}}]
 
 
 def _build_messages(opening: str, transcript: list[dict],
                     tools: MinerTools, finding_count: int) -> list[dict]:
-    """The proper messages array (2.1). The opening block (rules + catalog +
-    initial observation) carries cache_control and is byte-identical every turn;
-    conversation turns are APPENDED after it, never rebuilt into one string.
-    Consecutive same-role entries merge into one message's content blocks."""
+    """The proper messages array (2.1). EXACTLY TWO cache anchors exist: the
+    system block (_system_blocks) and the opening block here — both
+    byte-identical every turn, so the cached prefix survives the whole run.
+    Round E task 3 removed the two extra anchors that sat on the newest
+    collapsed entry and the newest assistant turn: both MOVED every turn, which
+    invalidated the prefix and made the run write ~1.5x more cache than it
+    read. A cache anchor must sit on content that never moves; the 4096-token
+    Haiku minimum is met instead by making the opening block itself larger
+    (full typed query catalog + schema reference — see _schema_reference).
+    Conversation turns are APPENDED after the opening, never rebuilt, and
+    consecutive same-role entries merge into one message's content blocks."""
     messages: list[dict] = [{
         "role": "user",
         "content": [{"type": "text", "text": opening,
                      "cache_control": {"type": "ephemeral"}}],
     }]
-    last_collapsed_block: dict | None = None
-    last_assistant_block: dict | None = None
-    for label, text, collapsed in _effective_transcript(transcript):
+    for label, text, _collapsed in _effective_transcript(transcript):
         role = "assistant" if label == "assistant" else "user"
         block = {"type": "text",
                  "text": text if role == "assistant" else f"[{label}] {text}"}
@@ -479,19 +552,6 @@ def _build_messages(opening: str, transcript: list[dict],
             messages[-1]["content"].append(block)
         else:
             messages.append({"role": role, "content": [block]})
-        if collapsed:
-            last_collapsed_block = block
-        if role == "assistant":
-            last_assistant_block = block
-    # Two more anchors (4 breakpoints max, with system + opening): the newest
-    # COLLAPSED entry (stable forever — readable next turn even after the
-    # window slides) and the newest assistant turn (full-prefix read on turns
-    # with no new collapse). Needed because on Haiku the system+opening prefix
-    # alone sits under the 4096-token cache minimum and silently never caches.
-    if last_collapsed_block is not None:
-        last_collapsed_block["cache_control"] = {"type": "ephemeral"}
-    if last_assistant_block is not None:
-        last_assistant_block["cache_control"] = {"type": "ephemeral"}
     reminder = {"type": "text", "text": _reminder(tools, finding_count)}
     if messages[-1]["role"] == "user":
         messages[-1]["content"].append(reminder)
