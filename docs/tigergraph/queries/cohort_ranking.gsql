@@ -1,0 +1,29 @@
+// cohort_ranking — Round E task 4 position query (docs/spec/ROUND_E_SPEC.md).
+// Cohort ranking on a metric for one month with the cohort median.
+// metric IN (credited_amt | txn_count | net_flows | aum); advisor narrows the
+// output to that advisor's row ("all" returns the whole cohort).
+// Local-tier equivalent: app/graph/queries/catalog.py::cohort_ranking
+CREATE QUERY cohort_ranking(STRING month_id, STRING metric, STRING advisor) FOR GRAPH phx_dm_pce_practice_demo {
+  MapAccum<STRING, SumAccum<DOUBLE>> @@value;
+
+  IF metric == "aum" THEN
+    s = SELECT x FROM phx_dm_pce_account_month:x -(phx_dm_pce_am_by_advisor)- phx_dm_pce_advisor:a
+        WHERE x.month_id == month_id AND a.in_cohort
+        ACCUM @@value += (x.advisor_sid -> x.end_balance);
+  ELSE IF metric == "net_flows" THEN
+    s = SELECT x FROM phx_dm_pce_advisor_flow_month:x -(phx_dm_pce_flow_by_advisor)- phx_dm_pce_advisor:a
+        WHERE x.month_id == month_id AND a.in_cohort
+        ACCUM @@value += (x.advisor_sid -> x.total_net_flows);
+  ELSE
+    // credited_amt | txn_count from the monthly revenue rollup
+    s = SELECT x FROM phx_dm_pce_monthly_revenue:x -(phx_dm_pce_mr_by_advisor)- phx_dm_pce_advisor:a
+        WHERE x.month_id == month_id AND a.in_cohort
+        ACCUM CASE WHEN metric == "txn_count"
+                   THEN @@value += (x.advisor_sid -> x.txn_count)
+                   ELSE @@value += (x.advisor_sid -> x.credited_amt) END;
+  END;
+
+  // rank + cohort median are computed over @@value in the caller / REST layer;
+  // advisor != "all" narrows the printed map to that advisor's entry.
+  PRINT @@value AS value_by_advisor, metric AS metric;
+}

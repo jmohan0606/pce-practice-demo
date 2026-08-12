@@ -158,7 +158,13 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
                      residual_amt=residual_amt)
         # C3: the Reporter receives FINDINGS ONLY (plus the transition totals,
         # themselves a stored query result on this run) and a text LLM callable.
-        reported = report(mined["findings"], transition, reporter)
+        # Round E task 5: plus ONE injected capability — document search for
+        # thresholds (PLAN) and recommended practice (GUIDANCE) with citations,
+        # so recommendations are fetched-and-cited, never recalled.
+        from app.insights.reporter_sources import build_reporter_search
+
+        reported = report(mined["findings"], transition, reporter,
+                          search_documents=build_reporter_search(run["run_id"]))
         agent_findings = [f for f in mined["findings"] if f.get("origin") != "rule"]
         agent_impacts = sum(abs(f["impact_amt"]) for f in agent_findings
                             if f["impact_amt"] is not None)
@@ -166,6 +172,7 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
                                   if residual_amt else None)
         completed = store.complete_run(
             run["run_id"], narrative=reported["narrative"], bullets=reported["bullets"],
+            recommendations=reported.get("recommendations") or [],
             findings=mined["findings"], query_count=mined["query_count"],
             budget_hit=mined["budget_hit"],
             budget_hit_tokens=mined.get("budget_hit_tokens", False),

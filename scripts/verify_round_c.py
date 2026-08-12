@@ -53,6 +53,11 @@ SAMPLE_PARAMS = {
     "peer_comparison": {"month_id": "202605", "metric": "credited_amt", "advisor": "all"},
     "month_meta": {"month_id": "202605"},
     "account_master": {"acct_key": "1597"},
+    # Round E task 4 position queries (advisor_nnm_position dropped — DECISIONS.md)
+    "advisor_aum": {"advisor": "all", "month_id": "202605"},
+    "advisor_flows_summary": {"advisor": "all", "month_id": "202605"},
+    "cohort_ranking": {"month_id": "202605", "metric": "aum", "advisor": "all"},
+    "advisor_opportunities": {"advisor": "all"},
 }
 
 
@@ -125,8 +130,9 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
         if not wanted <= cols:
             missing_cols.append(f"{name}: missing {sorted(wanted - cols)}")
     check(1, "every catalog query executes and returns the documented columns",
-          not errors and not missing_cols and len(CATALOG) == 24,
-          f"24 queries; errors={errors or 'none'}; column gaps={missing_cols or 'none'}; "
+          not errors and not missing_cols and len(CATALOG) == 28,
+          f"{len(CATALOG)} queries (24 Round C + 4 Round E position); "
+          f"errors={errors or 'none'}; column gaps={missing_cols or 'none'}; "
           f"legitimately empty on mock data: {empty or 'none'}")
 
     # 2 — a full run completes and persists run + findings + evidence
@@ -275,6 +281,56 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     check(12, "coverage ratio computed and stored, and absent from every API response",
           stored.get("coverage_ratio") is not None and not leaked,
           f"stored={stored.get('coverage_ratio')}, leaked into API={leaked}")
+
+    # 13 — Round E task 3: prompt caching. EXACTLY two cache anchors (system +
+    # opening), both byte-identical across turns; the static prefix clears
+    # Haiku's 4096-token cache minimum; and the cache_health assertion (reads
+    # must exceed writes after turn 3 — applied to every real run by
+    # scripts/check_cache_health.py) discriminates correctly.
+    from app.agents.insights_miner import (
+        STATIC_PREFIX_MIN_TOKENS, _build_messages, _system_blocks,
+        build_opening_message, build_system_prompt, cache_health,
+        estimate_tokens, tools_catalog)
+    month_meta = {m: run_catalog_query("month_meta", {"month_id": m})["rows"][0]
+                  for m in ("202604", "202605")}
+    initial = run_catalog_query("revenue_change_by_product", {
+        "advisor": "all", "from_month": "202604", "to_month": "202605"})
+    system_prompt = build_system_prompt()
+    opening = build_opening_message("all", "202604", "202605", rules, transition,
+                                    month_meta, tools_catalog(), initial)
+
+    class _T:
+        remaining = 9
+    transcript: list[dict] = []
+    anchor_texts = []
+    for turn in range(3):
+        transcript.append({"label": "assistant", "text": '{"action":"get_schema"}'})
+        transcript.append({"label": "tool", "text": f"result {turn}",
+                           "summary": f"[seq {turn}] result"})
+        msgs = _build_messages(opening, transcript, _T(), 0)
+        anchored = [b for m in msgs for b in m["content"] if "cache_control" in b]
+        sys_anchored = [b for b in _system_blocks(system_prompt)
+                        if "cache_control" in b]
+        anchor_texts.append([b["text"] for b in sys_anchored + anchored])
+    two_static = (all(len(t) == 2 for t in anchor_texts)
+                  and anchor_texts[0] == anchor_texts[1] == anchor_texts[2]
+                  and anchor_texts[0] == [system_prompt, opening])
+    prefix_est = estimate_tokens(system_prompt + opening)
+    healthy = cache_health(
+        [{"agent_name": "insights_miner", "seq_no": s,
+          "cache_read_tokens": 5000 if s > 1 else 0,
+          "cache_write_tokens": 6000 if s == 1 else 40} for s in range(1, 8)])
+    unhealthy = cache_health(
+        [{"agent_name": "insights_miner", "seq_no": s,
+          "cache_read_tokens": 2000, "cache_write_tokens": 4000}
+         for s in range(1, 8)])
+    check(13, "exactly two STATIC cache anchors; prefix clears the 4096 Haiku "
+              "minimum; cache_health(reads>writes after turn 3) discriminates",
+          two_static and prefix_est >= STATIC_PREFIX_MIN_TOKENS
+          and healthy[0] is True and unhealthy[0] is False,
+          f"anchors static across 3 turns={two_static}, prefix~{prefix_est} tokens "
+          f"(min {STATIC_PREFIX_MIN_TOKENS}), healthy probe={healthy}, "
+          f"moving-anchor probe={unhealthy}")
 
     passed = sum(1 for ok, _ in RESULTS if ok)
     print(f"\n{passed}/{len(RESULTS)} checks passed")

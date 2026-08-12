@@ -1,0 +1,27 @@
+// advisor_aum — Round E task 4 position query (docs/spec/ROUND_E_SPEC.md).
+// AUM position: total end balance per advisor for one month, with the prior
+// month's balance and the change. prior_month_id = the month vertex preceding
+// month_id; when none exists (baseline month) prior/change are returned null.
+// Local-tier equivalent: app/graph/queries/catalog.py::advisor_aum
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY advisor_aum(STRING advisor, STRING month_id) FOR GRAPH phx_dm_pce_practice_demo {
+  MapAccum<STRING, SumAccum<DOUBLE>> @@cur, @@prior;
+  MaxAccum<STRING> @@prior_month;
+
+  m = SELECT x FROM phx_dm_pce_month:x WHERE x.month_id < month_id
+      ACCUM @@prior_month += x.month_id;
+
+  cur = SELECT x FROM phx_dm_pce_account_month:x -(phx_dm_pce_am_by_advisor)- phx_dm_pce_advisor:a
+        WHERE x.month_id == month_id
+          AND ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+        ACCUM @@cur += (x.advisor_sid -> x.end_balance);
+
+  pri = SELECT x FROM phx_dm_pce_account_month:x -(phx_dm_pce_am_by_advisor)- phx_dm_pce_advisor:a
+        WHERE x.month_id == @@prior_month
+          AND ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+        ACCUM @@prior += (x.advisor_sid -> x.end_balance);
+
+  // one row per advisor: total_balance, prior_balance, change_amt
+  PRINT @@cur AS total_balance_by_advisor, @@prior AS prior_balance_by_advisor,
+        @@prior_month AS prior_month_id;
+}

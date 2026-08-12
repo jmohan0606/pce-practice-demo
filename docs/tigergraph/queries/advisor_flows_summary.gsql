@@ -1,0 +1,19 @@
+// advisor_flows_summary — Round E task 4 position query (docs/spec/ROUND_E_SPEC.md).
+// Flow position per advisor for one month: inflows, outflows, net flows and
+// credited flows, summed across flow products.
+// Local-tier equivalent: app/graph/queries/catalog.py::advisor_flows_summary
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+CREATE QUERY advisor_flows_summary(STRING advisor, STRING month_id) FOR GRAPH phx_dm_pce_practice_demo {
+  MapAccum<STRING, SumAccum<DOUBLE>> @@inflows, @@outflows, @@net_flows, @@credited;
+
+  f = SELECT x FROM phx_dm_pce_advisor_flow_month:x -(phx_dm_pce_flow_by_advisor)- phx_dm_pce_advisor:a
+      WHERE x.month_id == month_id
+        AND ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+      ACCUM @@inflows  += (x.advisor_sid -> x.total_inflows),
+            @@outflows += (x.advisor_sid -> x.total_outflows),
+            @@net_flows += (x.advisor_sid -> x.total_net_flows),
+            @@credited += (x.advisor_sid -> x.credited_flows);
+
+  PRINT @@inflows AS inflows, @@outflows AS outflows,
+        @@net_flows AS net_flows, @@credited AS credited_flows;
+}

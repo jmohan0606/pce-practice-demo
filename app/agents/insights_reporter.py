@@ -1,22 +1,35 @@
-"""C3 — the Insights Reporter agent.
+"""C3 — the Insights Reporter agent (+ Round E task 5 recommendations).
 
 RECEIVES FINDINGS ONLY. This module deliberately imports NOTHING from
 ``app.graph``, ``app.insights.tools`` or ``app.knowledge`` — the Reporter has
-no graph client, no tools, no retrieval. That is the enforcement mechanism
-(by construction, not prompt): ``report()`` takes plain dicts and a text-only
-LLM callable, so it physically cannot query. verify_round_c asserts this by
-scanning this module's imports.
+no graph client, no tools object, no retrieval imports. verify_round_c asserts
+this by scanning this module's imports.
+
+Round E task 5 relaxes that ONE notch, by injection rather than import: the
+service may pass a ``search_documents(query, source, top_k)`` callable (built
+in ``app/insights/reporter_sources.py``) so the Reporter can FETCH a plan
+threshold or a guidance passage with its citation instead of recalling it.
+PLAN documents -> thresholds/rules/qualifications; GUIDANCE documents ->
+recommended practice, quoted with citation. The module's import surface is
+unchanged — the capability exists only when the caller hands it in.
 
 Output: {"narrative": "<two short paragraphs, key clauses in **bold**>",
-         "bullets": ["<four bullets, each opening with a bolded claim>"]}
+         "bullets": ["<four bullets, each opening with a bolded claim>"],
+         "recommendations": [{"text", "source_query", "citations"}]}
 
-HARD ASSERTION, in code not prompt: every numeric token in the narrative and
-bullets must appear in the findings (impact_amt, an evidence cell, or a count
-from a finding — plus the transition totals, which are themselves stored query
-results on the run). Numbers are extracted with a regex and checked for
-membership; on failure the output falls back to a TEMPLATE built directly from
-the top findings, and the failure is logged. An unverified figure is never
-published.
+HARD ASSERTIONS, in code not prompt:
+1. every numeric token in the narrative and bullets must appear in the findings
+   (impact_amt, an evidence cell, a count — plus the transition totals, which
+   are themselves stored query results on the run). On failure the output falls
+   back to a TEMPLATE built directly from the top findings, and the failure is
+   logged. An unverified figure is never published.
+2. every RECOMMENDATION is facts and their implications, nothing invented: it
+   must carry a ``source_query`` (a query that produced a finding) or at least
+   one resolved document ``citation``, its numbers must all appear in the
+   findings/transition/cited excerpts, and NNM-based recommendations are
+   dropped outright (DECISIONS.md, Round E — three months of flows must not
+   proxy an annual measure). A recommendation failing any of these is NOT
+   emitted; an ``assert`` guards the returned list.
 """
 from __future__ import annotations
 
@@ -33,8 +46,8 @@ MONTH_WORDS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep",
 _NUMBER_RE = re.compile(r"\d[\d,]*(?:\.\d+)?")
 
 
-def build_system_prompt() -> str:
-    return (
+def build_system_prompt(search_available: bool = False) -> str:
+    prompt = (
         "You are the Insights Reporter for a wealth-management practice dashboard. "
         "You receive FINDINGS (already investigated, with figures) and write the "
         "client-facing summary. You have no data access — every figure you use "
@@ -51,9 +64,41 @@ def build_system_prompt() -> str:
         "Percentages like 3.6%.\n"
         "- Use ONLY numbers that appear in the findings or transition totals. "
         "Do not compute new figures, do not round differently, do not estimate.\n\n"
-        "Respond with ONE JSON object only (no markdown fences):\n"
-        '{"narrative":"<paragraph one>\\n\\n<paragraph two>","bullets":["...","...","...","..."]}'
+        "RECOMMENDATIONS (optional, at most 3): facts and their implications, "
+        "NOTHING invented. Every clause must trace to a query result or a "
+        "document citation. Allowed shape: a figure from a finding set against "
+        "a cited plan threshold, plus a traceable fact ('...three pending "
+        "opportunities total $1.4M'). NOT allowed: advice or opinion "
+        "('Prioritise this advisor for support'), extrapolation, annualisation, "
+        "or ANY net-new-money (NNM) figure — only three months of flows exist. "
+        "Each recommendation object needs:\n"
+        '- "text": the recommendation sentence(s)\n'
+        '- "source_query": the query_name of the finding it restates (or null)\n'
+        '- "citations": list of excerpt ids like ["D1"] you were given (or [])\n'
+        "A recommendation with neither a source_query nor a citation is "
+        "discarded in code, as is one containing any number not present in the "
+        "findings or the cited excerpts.\n"
     )
+    if search_available:
+        prompt += (
+            "\nDOCUMENT SEARCH: before your final answer you may look up plan "
+            "thresholds and recommended practice — never recall them from memory. "
+            "Respond with ONLY this JSON to search (max 4 searches):\n"
+            '{"action":"search_documents","source":"PLAN","query":"<what to find>"}\n'
+            "source is PLAN (thresholds, rules, qualifications) or GUIDANCE "
+            "(recommended practice — quote it with its citation). Results come "
+            "back as excerpts with ids [D1], [D2], ... which you cite in "
+            "recommendations via \"citations\".\n"
+        )
+    prompt += (
+        "\nWhen (and only when) you are done, respond with ONE JSON object only "
+        "(no markdown fences):\n"
+        '{"narrative":"<paragraph one>\\n\\n<paragraph two>",'
+        '"bullets":["...","...","...","..."],'
+        '"recommendations":[{"text":"...","source_query":"<query_name or null>",'
+        '"citations":["D1"]}]}'
+    )
+    return prompt
 
 
 def _findings_payload(findings: list[dict], transition: dict) -> str:
@@ -63,12 +108,15 @@ def _findings_payload(findings: list[dict], transition: dict) -> str:
             "title": f.get("title"), "summary": f.get("summary"),
             "impact_amt": f.get("impact_amt"), "driver_tag": f.get("driver_tag"),
             "provenance": f.get("provenance"), "rule_key": f.get("rule_key"),
+            # traceability handle for recommendations (task 5)
+            "source_query": (f.get("source_query") or {}).get("query_name"),
             "evidence_row_count": len(f.get("evidence_rows") or []),
             "evidence_rows": (f.get("evidence_rows") or [])[:6],
         })
     return (f"TRANSITION TOTALS: {json.dumps(transition, default=str)}\n\n"
             f"FINDINGS (ranked by |impact|):\n{json.dumps(slim, default=str)}\n\n"
-            "Write the narrative and four bullets. JSON only.")
+            "Write the narrative, four bullets and any traceable recommendations. "
+            "JSON only.")
 
 
 # --------------------------------------------------------------------------- numeric verification
@@ -147,6 +195,77 @@ def verify_numbers(narrative: str, bullets: list[str],
             if n not in allowed and abs(n) not in allowed]
 
 
+# --------------------------------------------------------------------------- recommendations (task 5)
+
+# NNM is measured annually and we hold three months of flows — an NNM figure
+# would be a proxy shipped as a fact (DECISIONS.md, Round E). Dropped outright.
+_NNM_RE = re.compile(r"\bNNM\b|net[\s-]?new[\s-]?money", re.IGNORECASE)
+
+
+def _citation_view(excerpt: dict) -> dict:
+    """The citation a recommendation carries — provenance fields only."""
+    return {"document_id": excerpt.get("document_id"),
+            "document_name": excerpt.get("document_name"),
+            "document_type": excerpt.get("document_type"),
+            "chunk_id": excerpt.get("chunk_id"),
+            "page_no": excerpt.get("page_no"),
+            "section_path": excerpt.get("section_path"),
+            "excerpt": excerpt.get("excerpt")}
+
+
+def verify_recommendations(recs, findings: list[dict], transition: dict,
+                           excerpts: dict[str, dict]) -> tuple[list[dict], list[str]]:
+    """The task-5 gate, in code not prompt. Keeps only recommendations that
+    (a) carry a source_query naming a query that produced a finding, OR at
+    least one citation resolving to a fetched excerpt; (b) contain no number
+    absent from the findings/transition/cited excerpts; (c) are not NNM-based.
+    Returns (kept, drop_reasons) — a dropped recommendation is never emitted."""
+    finding_queries = {}
+    for f in findings:
+        name = (f.get("source_query") or {}).get("query_name")
+        if name:
+            finding_queries[name] = f.get("source_query")
+    base_allowed = allowed_numbers(findings, transition)
+    kept: list[dict] = []
+    dropped: list[str] = []
+    for rec in recs if isinstance(recs, list) else []:
+        if not isinstance(rec, dict):
+            dropped.append(f"not an object: {rec!r}")
+            continue
+        text = str(rec.get("text") or "").strip()
+        if not text:
+            dropped.append("empty text")
+            continue
+        if _NNM_RE.search(text):
+            dropped.append(f"NNM-based (dropped per Round E decision): {text[:80]!r}")
+            continue
+        cited = [excerpts[c] for c in (rec.get("citations") or [])
+                 if isinstance(c, str) and c in excerpts]
+        sq_name = rec.get("source_query")
+        source_query = finding_queries.get(str(sq_name)) if sq_name else None
+        if source_query is None and not cited:
+            dropped.append(f"no source_query or citation: {text[:80]!r}")
+            continue
+        allowed = set(base_allowed)
+        for excerpt in cited:
+            _collect_numbers(excerpt.get("excerpt"), allowed)
+            # "[Plan p.6]"-style pointers are part of a citation, not a figure
+            _collect_numbers(excerpt.get("page_no"), allowed)
+            _collect_numbers(excerpt.get("section_path"), allowed)
+        bad = [n for n in extract_numbers(text)
+               if n not in allowed and abs(n) not in allowed]
+        if bad:
+            dropped.append(f"unverified number(s) {bad}: {text[:80]!r}")
+            continue
+        kept.append({"text": text,
+                     "source_query": source_query,
+                     "citations": [_citation_view(e) for e in cited]})
+    # the task-5 assertion: nothing untraceable leaves this function
+    assert all(r.get("source_query") or r.get("citations") for r in kept), \
+        "recommendation without a source_query or citation survived verification"
+    return kept, dropped
+
+
 # --------------------------------------------------------------------------- template fallback
 
 def _fmt_money(value: float) -> str:
@@ -184,28 +303,80 @@ def template_report(findings: list[dict], transition: dict) -> dict:
 
 # --------------------------------------------------------------------------- entrypoint
 
-def report(findings: list[dict], transition: dict,
-           llm: Callable[[str, dict], str]) -> dict:
-    """Findings in, verified narrative out. `llm` is a TEXT callable — this
-    function has no tool, graph or retrieval access by construction.
+MAX_SEARCHES = 4
 
-    Returns {"narrative", "bullets", "fallback_used", "unverified_numbers"}."""
+
+def _decode_reply(raw: str) -> dict:
+    text = (raw or "").strip()
+    fenced = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.DOTALL)
+    if fenced:
+        text = fenced.group(1).strip()
+    brace = text.find("{")
+    if brace > 0:
+        text = text[brace:]
+    decoded, _ = json.JSONDecoder().raw_decode(text)
+    if not isinstance(decoded, dict):
+        raise ValueError("reporter reply is not a JSON object")
+    return decoded
+
+
+def report(findings: list[dict], transition: dict,
+           llm: Callable[[str, dict], str],
+           search_documents: Callable[..., list[dict]] | None = None) -> dict:
+    """Findings in, verified narrative + traceable recommendations out. `llm`
+    is a TEXT callable; `search_documents` (optional, INJECTED — this module
+    imports no retrieval) lets the model fetch plan thresholds / guidance with
+    citations before answering. Without it, no searches happen and only
+    query-sourced recommendations can survive verification.
+
+    Returns {"narrative", "bullets", "recommendations", "fallback_used",
+    "unverified_numbers", "recommendations_dropped", "search_count"}."""
     if not findings:
         return {"narrative": "**No findings were produced** for this transition — "
                              "there is nothing to explain beyond the totals.",
-                "bullets": [], "fallback_used": False, "unverified_numbers": []}
+                "bullets": [], "recommendations": [], "fallback_used": False,
+                "unverified_numbers": [], "recommendations_dropped": [],
+                "search_count": 0}
+    excerpts: dict[str, dict] = {}  # "D1" -> fetched excerpt
+    prompt = _findings_payload(findings, transition)
+    searches = 0
     raw = ""
     try:
-        raw = llm(_findings_payload(findings, transition),
-                  {"system_prompt": build_system_prompt()})
-        text = raw.strip()
-        fenced = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.DOTALL)
-        if fenced:
-            text = fenced.group(1).strip()
-        brace = text.find("{")
-        if brace > 0:
-            text = text[brace:]
-        decoded, _ = json.JSONDecoder().raw_decode(text)
+        while True:
+            raw = llm(prompt, {"system_prompt":
+                               build_system_prompt(search_documents is not None)})
+            decoded = _decode_reply(raw)
+            if decoded.get("action") != "search_documents":
+                break
+            if search_documents is None:
+                raise ValueError("search_documents requested but unavailable")
+            if searches >= MAX_SEARCHES:
+                if prompt.endswith("final JSON now."):
+                    raise ValueError("search budget exhausted twice")
+                prompt += ("\n\nSEARCH BUDGET EXHAUSTED — give the "
+                           "final JSON now.")
+                continue
+            searches += 1
+            try:
+                rows = search_documents(str(decoded.get("query") or ""),
+                                        str(decoded.get("source") or "PLAN"),
+                                        int(decoded.get("top_k") or 5))
+            except Exception as exc:  # noqa: BLE001 — a failed search is a result
+                rows = []
+                _log.warning("reporter search failed: %s", exc)
+            labeled = []
+            for row in rows:
+                sid = f"D{len(excerpts) + 1}"
+                excerpts[sid] = dict(row)
+                labeled.append({"id": sid, **{k: row.get(k) for k in
+                                              ("document_name", "document_type",
+                                               "page_no", "section_path", "excerpt")}})
+            prompt += (f"\n\nSEARCH {searches} (source="
+                       f"{str(decoded.get('source') or 'PLAN').upper()}, query="
+                       f"{json.dumps(str(decoded.get('query') or ''))}) RESULTS:\n"
+                       f"{json.dumps(labeled, default=str)}\n"
+                       f"Cite these by id in recommendations. Search again or "
+                       f"give the final JSON.")
         narrative = str(decoded.get("narrative") or "").strip()
         bullets = [str(b).strip() for b in decoded.get("bullets") or [] if str(b).strip()]
         if not narrative or not bullets:
@@ -214,8 +385,16 @@ def report(findings: list[dict], transition: dict,
         _log.warning("reporter output unusable (%s) — template fallback; raw starts %r",
                      exc, (raw or "")[:120])
         result = template_report(findings, transition)
-        result["unverified_numbers"] = []
+        result.update(unverified_numbers=[], recommendations=[],
+                      recommendations_dropped=[], search_count=searches)
         return result
+
+    # task-5 gate: only traceable, number-verified, non-NNM recommendations
+    recommendations, dropped = verify_recommendations(
+        decoded.get("recommendations"), findings, transition, excerpts)
+    if dropped:
+        _log.warning("reporter dropped %d untraceable recommendation(s): %s",
+                     len(dropped), dropped)
 
     bad = verify_numbers(narrative, bullets, findings, transition)
     if bad:
@@ -223,7 +402,11 @@ def report(findings: list[dict], transition: dict,
                      "(%s) — falling back to the template. NEVER publish an "
                      "unverified figure.", len(bad), bad)
         result = template_report(findings, transition)
-        result["unverified_numbers"] = bad
+        # verified independently against their own sources — they survive
+        result.update(unverified_numbers=bad, recommendations=recommendations,
+                      recommendations_dropped=dropped, search_count=searches)
         return result
     return {"narrative": narrative, "bullets": bullets,
-            "fallback_used": False, "unverified_numbers": []}
+            "recommendations": recommendations, "fallback_used": False,
+            "unverified_numbers": [], "recommendations_dropped": dropped,
+            "search_count": searches}

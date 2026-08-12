@@ -74,6 +74,9 @@ def _serialize_run(run: dict, findings: list[dict]) -> dict:
         "version_id": run["version_id"], "status": run["status"],
         "narrative": run["narrative"],
         "bullets": _json.loads(run.get("bullets_json") or "[]"),
+        # Round E task 5: each carries a source_query or citation(s), asserted
+        # in app/agents/insights_reporter.py before persistence
+        "recommendations": _json.loads(run.get("recommendations_json") or "[]"),
         "findings": serialized,
         "generated_at": run.get("completed_at") or run.get("started_at"),
         "query_count": run.get("query_count", 0),
@@ -127,6 +130,100 @@ def peer_rank(advisor: str, month_id: str, metric: str = "credited_amt") -> dict
             "rank": row["rank"] if row else None,
             "cohort_size": len(cohort),
             "cohort_median": row["cohort_median"] if row else None}
+
+
+@router.get("/practice-summary")
+def practice_summary(from_month: str, to_month: str) -> dict:
+    """KPI row for the practice view (Round E 6.2): credited revenue, AUM,
+    net flows — every figure computed from graph data, nothing invented.
+    (Open exceptions come from /exceptions; the UI counts those rows.)"""
+    from app.graph.foundation_store import get_foundation_store
+    from app.graph.queries.catalog import CatalogError, run_catalog_query
+
+    store = get_foundation_store()
+    months = store.all_vertices("phx_dm_pce_month")
+    for label, mid in (("from_month", from_month), ("to_month", to_month)):
+        if str(mid) not in months:
+            raise HTTPException(404, f"unknown {label} '{mid}'")
+    try:
+        totals = run_catalog_query("advisor_totals", {
+            "advisor": "all", "from_month": from_month, "to_month": to_month})["rows"][0]
+    except CatalogError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    cohort = {sid for sid, a in store.all_vertices("phx_dm_pce_advisor").items()
+              if a.get("in_cohort") is True}
+
+    def _f(value) -> float:
+        try:
+            return float(value or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _aum(month_id: str) -> float:
+        return round(sum(_f(r.get("end_balance"))
+                         for r in store.all_vertices("phx_dm_pce_account_month").values()
+                         if str(r.get("advisor_sid")) in cohort
+                         and str(r.get("month_id")) == str(month_id)), 2)
+
+    def _flows(month_id: str) -> dict:
+        rows = [r for r in store.all_vertices("phx_dm_pce_advisor_flow_month").values()
+                if str(r.get("advisor_sid")) in cohort
+                and str(r.get("month_id")) == str(month_id)]
+        return {"inflows": round(sum(_f(r.get("total_inflows")) for r in rows), 2),
+                "outflows": round(sum(_f(r.get("total_outflows")) for r in rows), 2),
+                "net_flows": round(sum(_f(r.get("total_net_flows")) for r in rows), 2)}
+
+    aum_from, aum_to = _aum(from_month), _aum(to_month)
+    aum_change = round(aum_to - aum_from, 2)
+    return {
+        "from_month_id": from_month, "to_month_id": to_month,
+        "advisor_count": len(cohort),
+        "credited": totals,  # {from_amt, to_amt, change_amt, change_pct}
+        "aum": {"from_amt": aum_from, "to_amt": aum_to, "change_amt": aum_change,
+                "change_pct": round(aum_change / aum_from * 100, 2) if aum_from else None},
+        "flows": {"from": _flows(from_month), "to": _flows(to_month)},
+    }
+
+
+@router.get("/exceptions")
+def exceptions(from_month: str, to_month: str, version: str = "latest") -> dict:
+    """The practice team's worklist (Round E 6.2c): rule-cited findings from
+    each advisor's latest run on this transition — where the plan expects
+    something the data does not show. Every row cites its rule."""
+    from app.graph.foundation_store import get_foundation_store
+
+    store = get_insight_store()
+    version_id = None if version in ("", "latest") else version
+    advisors = store.runs_for_transition(from_month, to_month)
+    advisor_names = {sid: (a.get("advisor_name") or "")
+                     for sid, a in get_foundation_store()
+                     .all_vertices("phx_dm_pce_advisor").items()}
+    rows: list[dict] = []
+    for sid in sorted({r["advisor_sid"] for r in advisors if r["advisor_sid"] != "all"}):
+        run = store.latest_run_for(sid, from_month, to_month, version_id)
+        if run is None or run["status"] != "COMPLETE":
+            continue
+        for finding in store.run_findings(run["run_id"]):
+            rule_key = finding.get("rule_key")
+            if not rule_key:
+                continue  # exceptions are plan-vs-data mismatches — rule-cited only
+            rows.append({
+                "advisor_sid": sid,
+                "advisor_name": advisor_names.get(sid, ""),
+                "issue": finding.get("title"),
+                "detail": finding.get("summary"),
+                "impact_amt": finding.get("impact_amt"),
+                "rule_key": rule_key,
+                "citation": _rule_citation(rule_key),
+                "run_id": run["run_id"],
+            })
+    rows.sort(key=lambda r: (r["impact_amt"] is None,
+                             -(abs(r["impact_amt"]) if r["impact_amt"] is not None else 0)))
+    return {"from_month_id": from_month, "to_month_id": to_month,
+            "open_count": len(rows),
+            "advisor_count": len({r["advisor_sid"] for r in rows}),
+            "exceptions": rows}
 
 
 @router.get("/runs")

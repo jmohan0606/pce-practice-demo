@@ -142,3 +142,26 @@ Reversible: yes (and expected to be revisited)
 Context: B2's spec example shows a leaf ("3.2 Discount Sharing"); nested sections need ancestry for provenance.
 Decision: section_path renders the dotted heading trail joined with " > " (e.g. "3 Adjustments > 3.2 Discount Sharing").
 Reversible: yes
+
+## 2026-08-12 · Round E task 4 · advisor_nnm_position DROPPED (operator override of the spec)
+Context: ROUND_E_SPEC task 4 lists `advisor_nnm_position` (cumulative net flows in scope, months covered, never annualised). The operator overrode the spec before the task started.
+Decision: The query is not built, and every NNM reference is removed from the recommendations/reporter path (including the "Net-new-money" wording on flows_for_advisor's description; NNM-based recommendations are dropped in code by the reporter's verification gate). The spec's Task 5 "allowed" example that quotes an NNM figure is treated as illustrative of the traceability rule only, not as an NNM requirement.
+Reason: We hold only three months of net flows and the plan measures NNM annually; reporting NNM, even labelled with its limitation, presents a proxy as a fact. AUM and net flows ship; NNM waits for real data.
+Reversible: yes (build it when a full measurement year of flows exists)
+
+## 2026-08-12 · Round E task 5 · The Reporter's document search is INJECTED, not imported; recommendations gated in code
+Context: Task 5 needs the Reporter to fetch thresholds/guidance with citations, but the Reporter is findings-only BY CONSTRUCTION (module imports json/logging/re/typing only; verify_round_c C6-9 scans its imports).
+Decision: The import surface stays untouched. `app/insights/reporter_sources.py::build_reporter_search(run_id)` builds a `search_documents(query, source, top_k)` callable (PLAN -> thresholds/rules/qualifications, GUIDANCE -> recommended practice; filtered on the document vertex's document_type; every call logged to agent_query_log as insights_reporter) and the service injects it into `report()`. The reporter may search up to 4 times (excerpts labelled D1..Dn), then emits optional recommendations. `verify_recommendations()` is the in-code gate: a recommendation is DROPPED (never emitted, drop logged) unless it carries a source_query naming a query that produced a finding OR >=1 citation resolving to a fetched excerpt; its numbers must all appear in the findings/transition/cited excerpts; NNM-based text is dropped outright per the task-4 decision. An `assert` over the kept list backs the gate. Recommendations persist as recommendations_json on the run and serialize on the run API.
+Reason: Injection keeps the by-construction guarantee auditable (the module still cannot reach a graph client) while giving the model retrieval-with-citations instead of recall.
+Reversible: yes
+
+## 2026-08-12 · Round E task 4 · verify_round_c C6-1 catalog count 24 -> 28
+Context: C6-1 pinned `len(CATALOG) == 24`; task 4 adds four position queries (advisor_aum, advisor_flows_summary, cohort_ranking, advisor_opportunities — NOT advisor_nnm_position, dropped above).
+Decision: C6-1 now pins 28 with sample params for the four new queries (precedent: 8b and 2a/2b/2e widenings). advisor_aum returns prior_balance/change_amt as null for the baseline month rather than 0 or an estimate.
+Reversible: yes
+
+## 2026-08-12 · Round E task 3 · Cache anchors are static-only — SUPERSEDES the 2026-08-11 "two extra cache anchors" decision
+Context: The 2026-08-11 decision added two cache_control anchors on the newest collapsed entry and the newest assistant turn to clear Haiku's 4096-token minimum cacheable prefix. Measured result: both anchors move every turn, so the prefix changed and invalidated — 5 of 13 turns missed the cache entirely, writes 29,114 vs reads 19,348, net saving 13%.
+Decision: Both moving anchors removed. Exactly two anchors remain — the system block and the opening block, byte-identical every turn. The opening now clears the 4096 minimum on its own by carrying the full query catalog (typed params + return columns) and a schema digest (measured 3,384 → 7,656 tokens). STATIC_PREFIX_MIN_TOKENS=4096 guard warns at run start; cache_health() asserts reads > writes after turn 3 (verify_round_c C6-13; scripts/check_cache_health.py asserts from real response.usage).
+Reason: A cache anchor must sit on content that never moves. Measured after the fix: one write on turn 1 then pure reads, zero misses; hit rate 28.7% → 72.1%; cost per advisor $0.0689 → $0.0364.
+Reversible: yes

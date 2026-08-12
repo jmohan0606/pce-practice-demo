@@ -394,6 +394,119 @@ def flows_for_advisor(store: FoundationGraphStore, params: dict) -> list[dict]:
     ]
 
 
+# --------------------------------------------------------------------------- position (Round E task 4)
+# "Where do we stand", not only "what changed". NOTE: advisor_nnm_position was
+# DROPPED by operator decision (DECISIONS.md, Round E) — we hold three months of
+# net flows against an annual NNM measure, and a proxy must not ship as a fact.
+# AUM and net flows ship; NNM waits for real data.
+
+def _prior_month(store: FoundationGraphStore, month_id: str) -> str | None:
+    months = sorted(store.all_vertices(V_MONTH))
+    idx = months.index(str(month_id))
+    return months[idx - 1] if idx > 0 else None
+
+
+def _aum_totals(store: FoundationGraphStore, scope: set[str], month_id: str) -> dict[str, float]:
+    totals = {sid: 0.0 for sid in scope}
+    for r in _am_rows(store, scope, month_id):
+        totals[str(r.get("advisor_sid"))] += _num(r.get("end_balance"))
+    return totals
+
+
+@mock_query("advisor_aum")
+def advisor_aum(store: FoundationGraphStore, params: dict) -> list[dict]:
+    scope = _advisor_scope(store, params["advisor"])
+    month = str(params["month_id"])
+    _require_month(store, month)
+    prior = _prior_month(store, month)
+    totals = _aum_totals(store, scope, month)
+    prior_totals = _aum_totals(store, scope, prior) if prior else {}
+    rows = []
+    for sid in scope:
+        total = round(totals[sid], 2)
+        prior_bal = round(prior_totals[sid], 2) if prior else None
+        rows.append({
+            "advisor_sid": sid, "month_id": month, "total_balance": total,
+            # honest baseline: no prior month held -> null, never 0 or a guess
+            "prior_balance": prior_bal,
+            "change_amt": round(total - prior_bal, 2) if prior_bal is not None else None,
+        })
+    return sorted(rows, key=lambda r: -r["total_balance"])
+
+
+@mock_query("advisor_flows_summary")
+def advisor_flows_summary(store: FoundationGraphStore, params: dict) -> list[dict]:
+    scope = _advisor_scope(store, params["advisor"])
+    _require_month(store, params["month_id"])
+    out: dict[str, dict] = {}
+    for r in store.all_vertices(V_FLOW).values():
+        sid = str(r.get("advisor_sid"))
+        if sid not in scope or str(r.get("month_id")) != str(params["month_id"]):
+            continue
+        row = out.setdefault(sid, {"advisor_sid": sid, "inflows": 0.0, "outflows": 0.0,
+                                   "net_flows": 0.0, "credited_flows": 0.0})
+        row["inflows"] = round(row["inflows"] + _num(r.get("total_inflows")), 2)
+        row["outflows"] = round(row["outflows"] + _num(r.get("total_outflows")), 2)
+        row["net_flows"] = round(row["net_flows"] + _num(r.get("total_net_flows")), 2)
+        row["credited_flows"] = round(row["credited_flows"] + _num(r.get("credited_flows")), 2)
+    return sorted(out.values(), key=lambda r: -r["net_flows"])
+
+
+RANKING_METRICS = ("credited_amt", "txn_count", "net_flows", "aum")
+
+
+@mock_query("cohort_ranking")
+def cohort_ranking(store: FoundationGraphStore, params: dict) -> list[dict]:
+    _require_month(store, params["month_id"])
+    metric = str(params["metric"])
+    if metric not in RANKING_METRICS:
+        raise CatalogError(
+            f"unknown metric '{metric}' (expected {'|'.join(RANKING_METRICS)})")
+    advisor = str(params["advisor"])
+    cohort = _advisor_scope(store, "all")
+    if advisor != "all":
+        _advisor_scope(store, advisor)  # existence check
+    totals = {sid: 0.0 for sid in cohort}
+    if metric == "aum":
+        totals = _aum_totals(store, cohort, str(params["month_id"]))
+    elif metric == "net_flows":
+        for r in store.all_vertices(V_FLOW).values():
+            if str(r.get("advisor_sid")) in cohort \
+                    and str(r.get("month_id")) == str(params["month_id"]):
+                totals[str(r.get("advisor_sid"))] += _num(r.get("total_net_flows"))
+    else:
+        for r in _mr_rows(store, cohort, params["month_id"]):
+            totals[str(r.get("advisor_sid"))] += _num(r.get(metric))
+    ranked = sorted(totals.items(), key=lambda kv: -kv[1])
+    med = round(median(totals.values()), 2) if totals else 0.0
+    rows = [{"advisor_sid": sid, "metric": metric, "value": round(v, 2),
+             "rank": i + 1, "cohort_median": med}
+            for i, (sid, v) in enumerate(ranked)]
+    if advisor != "all":
+        rows = [r for r in rows if r["advisor_sid"] == advisor] or rows
+    return rows
+
+
+@mock_query("advisor_opportunities")
+def advisor_opportunities(store: FoundationGraphStore, params: dict) -> list[dict]:
+    scope = _advisor_scope(store, params["advisor"])
+    out: dict[tuple, dict] = {}
+    for r in store.all_vertices("phx_dm_pce_opportunity").values():
+        sid = str(r.get("advisor_sid"))
+        if sid not in scope:
+            continue
+        key = (sid, str(r.get("stage") or ""), str(r.get("status") or ""))
+        row = out.setdefault(key, {
+            "advisor_sid": sid, "stage": key[1], "status": key[2],
+            "total_amount": 0.0, "opportunity_count": 0,
+            # every opportunity row is synthetic — the chip logic keys on this
+            "data_source": str(r.get("data_source") or "DUMMY"),
+        })
+        row["total_amount"] = round(row["total_amount"] + _num(r.get("amount")), 2)
+        row["opportunity_count"] += 1
+    return sorted(out.values(), key=lambda r: (r["advisor_sid"], -r["total_amount"]))
+
+
 # --------------------------------------------------------------------------- households / rpg / teams
 
 @mock_query("household_accounts")
@@ -605,9 +718,34 @@ CATALOG: dict[str, dict] = {
         "returns": ["reason_cd", "non_credited_amt", "txn_count"],
     },
     "flows_for_advisor": {
-        "description": "Net-new-money flows by flow product for one month.",
+        "description": "Inflows, outflows and net flows by flow product for one month.",
         "params": [ADVISOR, MONTH],
         "returns": ["flow_product_cd", "inflows", "outflows", "net_flows", "credited_flows"],
+    },
+    "advisor_aum": {
+        "description": "AUM position: total end balance per advisor for one month, with the "
+                       "prior month's balance and the change (null when no prior month is held).",
+        "params": [ADVISOR, MONTH],
+        "returns": ["advisor_sid", "month_id", "total_balance", "prior_balance", "change_amt"],
+    },
+    "advisor_flows_summary": {
+        "description": "Flow position per advisor for one month: inflows, outflows, net flows, "
+                       "credited flows (summed across flow products).",
+        "params": [ADVISOR, MONTH],
+        "returns": ["advisor_sid", "inflows", "outflows", "net_flows", "credited_flows"],
+    },
+    "cohort_ranking": {
+        "description": "Cohort ranking on a metric (credited_amt|txn_count|net_flows|aum) for one "
+                       "month, with the cohort median; advisor narrows to that advisor's row.",
+        "params": [MONTH, _p("metric", "credited_amt|txn_count|net_flows|aum"), ADVISOR],
+        "returns": ["advisor_sid", "metric", "value", "rank", "cohort_median"],
+    },
+    "advisor_opportunities": {
+        "description": "Pipeline opportunities per advisor grouped by stage and status, with "
+                       "total amount and count. DUMMY data — every row carries data_source='DUMMY'.",
+        "params": [ADVISOR],
+        "returns": ["advisor_sid", "stage", "status", "total_amount", "opportunity_count",
+                    "data_source"],
     },
     "household_accounts": {
         "description": "Accounts of a household (owner-role relationships only), latest-month revenue.",

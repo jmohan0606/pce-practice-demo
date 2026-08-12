@@ -112,7 +112,7 @@ class InsightStore:
                 "version_id": version_id, "status": "RUNNING",
                 "query_count": 0, "budget_hit": False, "budget_hit_tokens": False,
                 "started_at": _now(), "completed_at": "",
-                "narrative": "", "bullets_json": "[]",
+                "narrative": "", "bullets_json": "[]", "recommendations_json": "[]",
                 "total_input_tokens": 0, "total_output_tokens": 0,
                 "total_cache_read_tokens": 0, "est_cost_usd": 0.0, "wall_ms": 0,
                 "generation": generation, "superseded": superseded,
@@ -195,11 +195,16 @@ class InsightStore:
     def complete_run(self, run_id: str, *, narrative: str, bullets: list[str],
                      findings: list[dict], query_count: int, budget_hit: bool,
                      coverage_ratio: float | None,
-                     budget_hit_tokens: bool = False) -> dict:
+                     budget_hit_tokens: bool = False,
+                     recommendations: list[dict] | None = None) -> dict:
         with self._lock:
             run = self.runs[run_id]
             run.update(status="COMPLETE", completed_at=_now(), narrative=narrative,
-                       bullets_json=json.dumps(bullets), query_count=int(query_count),
+                       bullets_json=json.dumps(bullets),
+                       # Round E task 5 — every entry verified traceable by the
+                       # reporter's in-code assertion before it gets here
+                       recommendations_json=json.dumps(recommendations or []),
+                       query_count=int(query_count),
                        budget_hit=bool(budget_hit),
                        budget_hit_tokens=bool(budget_hit_tokens),
                        coverage_ratio=coverage_ratio, error=None)

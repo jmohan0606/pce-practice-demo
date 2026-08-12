@@ -1,5 +1,5 @@
 // flows_for_advisor — C1 catalog query (docs/spec/ROUND_C_SPEC.md).
-// Net-new-money flows by flow product for one month.
+// Inflows, outflows and net flows by flow product for one month.
 // Local-tier equivalent: app/graph/queries/catalog.py::flows_for_advisor
 // advisor = advisor_sid or "all" (cohort only, in_cohort = true).
 CREATE QUERY flows_for_advisor(STRING advisor, STRING month_id) FOR GRAPH phx_dm_pce_practice_demo {
