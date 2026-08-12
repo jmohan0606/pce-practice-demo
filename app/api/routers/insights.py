@@ -56,6 +56,10 @@ def _rule_citation(rule_key: str | None) -> dict | None:
     citations = rule.get("citations") or []
     return {"rule_key": rule_key, "rule_code": rule.get("rule_code"),
             "rule_name": rule.get("rule_name"),
+            # Round F 5.1: the driver chip's tooltip is the matched rule's
+            # plain-English statement; the frontend falls back to its own
+            # definition table only when a finding has no rule.
+            "statement": rule.get("statement"),
             "citation": citations[0] if citations else None}
 
 

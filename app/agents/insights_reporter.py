@@ -280,7 +280,11 @@ def _fmt_money(value: float) -> str:
 def template_report(findings: list[dict], transition: dict) -> dict:
     """Deterministic fallback built DIRECTLY from the top findings — used when
     the LLM output contains an unverifiable figure (logged) or no LLM is
-    available. Every number is a finding/transition figure by construction."""
+    available. Every number is a finding/transition figure by construction.
+
+    Round F 5.2: emits ONLY the bullets that exist — one finding, one bullet
+    (capped at four). No padding: the old version repeated "No further
+    findings" up to three times to hit a bullet minimum."""
     change = float(transition.get("change_amt") or 0.0)
     direction = "rose" if change >= 0 else "fell"
     top = [f for f in findings if f.get("impact_amt") is not None][:4] or findings[:4]
@@ -296,9 +300,7 @@ def template_report(findings: list[dict], transition: dict) -> dict:
         impact = (f" — {_fmt_money(f['impact_amt'])}" if f.get("impact_amt") is not None
                   else "")
         bullets.append(f"**{f['title']}**{impact}. {f.get('summary', '')}".strip())
-    while len(bullets) < 4:
-        bullets.append("**No further findings** for this transition.")
-    return {"narrative": narrative, "bullets": bullets[:4], "fallback_used": True}
+    return {"narrative": narrative, "bullets": bullets, "fallback_used": True}
 
 
 # --------------------------------------------------------------------------- entrypoint

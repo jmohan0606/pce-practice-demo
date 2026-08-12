@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Finding, InsightRun } from "@/lib/api";
 import Chip from "@/components/Chip";
 import SourceLink from "@/components/SourceLink";
+import { driverDefinition } from "@/lib/driverDefinitions";
 import { money, percent } from "@/lib/format";
 
 /** Renders **bold** markdown-lite the reporter emits — nothing else. */
@@ -72,6 +73,24 @@ export function RecommendationsBlock({ run }: { run: InsightRun }) {
   );
 }
 
+/** "RSV_v1" -> "v1"; anything else passes through untouched. */
+function ruleSetLabel(versionId: string): string {
+  const match = /^RSV_v(\d+)$/.exec(versionId || "");
+  return match ? `v${match[1]}` : versionId;
+}
+
+/** Round F 5.3 — insights are STORED, not cached: insight_run vertices keyed
+ * by scope, month pair and rule set version. They persist, every user shares
+ * them, and a new rule version produces a new insight rather than overwriting
+ * the old one. */
+export function StoredFooter({ run }: { run: InsightRun }) {
+  return (
+    <div style={{ marginTop: 10, fontSize: 12, color: "var(--slate)" }}>
+      ✓ Stored — generated {run.generated_at} · rule set {ruleSetLabel(run.version_id)}
+    </div>
+  );
+}
+
 function cell(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(2);
@@ -102,7 +121,14 @@ export function FindingRow({ finding, defaultOpen }: { finding: Finding; default
             <Chip variant={finding.provenance === "REAL" ? "real" : "derived"}>
               {finding.provenance === "REAL" ? "Real" : "Derived"}
             </Chip>
-            <Chip variant="tag">{finding.driver_tag}</Chip>
+            {/* Round F 5.1 — hover explains the driver: the matched rule's
+                statement, or the shared definition table for rule-less findings */}
+            <Chip
+              variant="tag"
+              title={finding.rule_citation?.statement || driverDefinition(finding.driver_tag)}
+            >
+              {finding.driver_tag}
+            </Chip>
             {/* honesty flag: any finding built on opportunity (or other DUMMY-
                 sourced) rows says so — same pattern V2 used for MARKET/NET_FLOW */}
             {finding.evidence_rows.some((r) => r["data_source"] === "DUMMY") ||

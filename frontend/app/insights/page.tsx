@@ -26,7 +26,7 @@ import {
 import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
 import SourceLink from "@/components/SourceLink";
-import { FindingRow, NarrativeBlock, RecommendationsBlock } from "@/components/InsightPanel";
+import { FindingRow, NarrativeBlock, RecommendationsBlock, StoredFooter } from "@/components/InsightPanel";
 import { arrow, money, percent } from "@/lib/format";
 
 /** AI Insights — one page, two views (Round E 6.1/6.2):
@@ -360,6 +360,7 @@ function PracticeView({
             <>
               <NarrativeBlock run={complete} />
               <RecommendationsBlock run={complete} />
+              <StoredFooter run={complete} />
             </>
           ) : (
             <EmptyState
@@ -700,6 +701,7 @@ function AdvisorView({
           <>
             <NarrativeBlock run={run} />
             <RecommendationsBlock run={run} />
+            <StoredFooter run={run} />
             <div className="tcard" style={{ marginTop: 4 }}>
               {run.findings.map((f, i) => (
                 <FindingRow key={f.finding_id ?? i} finding={f} defaultOpen={i === 0} />

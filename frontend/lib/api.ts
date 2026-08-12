@@ -271,6 +271,9 @@ export interface Finding {
     rule_key: string;
     rule_code?: string;
     rule_name?: string;
+    // Round F 5.1: the matched rule's plain-English statement — the driver
+    // chip's tooltip. Findings with no rule fall back to lib/driverDefinitions.
+    statement?: string | null;
     citation?: RuleCitation | null;
   } | null;
 }
