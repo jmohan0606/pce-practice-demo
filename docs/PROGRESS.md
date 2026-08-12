@@ -72,6 +72,24 @@
       in main thread); practice-summary returns real figures (AUM $268.6M, net
       flows $13.6M for 202604→202605). Spec's per-subtask commits collapsed into
       one — work arrived complete from the parallel dispatch.
+- [x] Task 8 (main thread): real run V000002 202604→202605 (Haiku miner, Sonnet
+      reporter per model policy): 7 miner turns, 10 queries, 1 rule finding /
+      0 agent findings, residual $9,502.82 explained 0%, exploration_reserved 9;
+      69,354 prompt tokens (14,320 uncached + 47,172 cache-read + 7,862
+      cache-write), cache 68.0% (target 70 — near miss), $0.0504 (target $0.03 —
+      miss; the Task 5 search loop + Sonnet reporter added cost the Haiku-era
+      target didn't anticipate; spec's model policy and cost target now in
+      tension), 42.6s, cache_health PASS (one write turn 1, zero misses after).
+      ONE recommendation kept by the gate, fully traced (rules_evaluate_plan +
+      plan p.3 §3.1 citations, verbatim in ROUND_E_COMPLETE.md). Narrative fell
+      back to the template (Sonnet output tripped the numeric gate) — honest
+      but cosmetically weak ("No further findings" ×3); 0 agent findings on a
+      $9.5k residual is the Task 2 provisional concern made observable.
+      NEW scripts/verify_round_e.py 8/8 (E-7 amended: no NNM anywhere);
+      verify a/b/c re-run green 25/25, 19/19, 13/13.
+      docs/ROUND_E_COMPLETE.md written with actual output. Servers :8001/:3001
+      up on forwarded URLs (public visibility still needs the Ports panel).
+      Session LLM cost ≈ $1.72 of $15.
 
 ## Cost & UI fix session (docs/spec/SESSION_PROMPT_COST_AND_UI_FIXES.md)
 - [x] Hard rule 2: ANTHROPIC_MODEL=claude-haiku-4-5-20251001 in .env; settings default
@@ -132,11 +150,14 @@
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: E (docs/spec/ROUND_E_SPEC.md) — Tasks 1 and 2 COMPLETE and committed
-      (7fa20a8); Tasks 3–7 dispatched to concurrent subagents per the spec's
-      parallel-execution plan (A: Task 3 cache fix; B: Tasks 4–5 position metrics +
-      recommendations; C: Tasks 6–7 UI + trace totals). Main thread verifies each
-      subagent's claim, commits per task, then runs Task 8 last.
+Round: E (docs/spec/ROUND_E_SPEC.md) — COMPLETE. All 8 tasks done, verified and
+      committed; docs/ROUND_E_COMPLETE.md has the actual output. verify suites
+      a/b/c/e all green (25/25, 19/19, 13/13, 8/8). Open observations for the
+      next session: (1) Task 2 remains PROVISIONAL and the Task 8 run showed
+      why — 0 agent findings on a $9.5k residual; (2) the template fallback
+      pads bullets with repeated "No further findings" (cosmetic fix); (3) the
+      <$0.03 cost target conflicts with the spec's own Sonnet-reporter policy
+      ($0.0504 actual) — needs an operator ruling on which gives.
 SPEC CHANGE (operator, 2026-08-12): advisor_nnm_position DROPPED and every NNM
       reference removed from the practice view, exceptions table and
       recommendations — three months of net flows cannot stand in for an
