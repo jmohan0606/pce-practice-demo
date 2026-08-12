@@ -6,20 +6,38 @@
       this task brings the position line to Round F and commits the Round F
       spec files: ROUND_F_SPEC.md, ROUND_D_EXTRACTION.md,
       PLAN_EXPECTATIONS_FINDINGS.md, MOCKUP_DRILLDOWN.html).
-- [ ] Tasks 2+3 (Subagent A): v0 seed corrected to exactly 5 rules
-      (FEE_REDUCTION_SHARING + PARTIAL_PERIOD removed, NEW_BILLING added at
-      order 25 excluding NEW_ACCOUNT claims); three document-derived provisions
-      added to the sample PDF; 145 bps pinned as the standard schedule;
-      re-extraction reported.
-- [ ] Task 4 (Subagent B): select_cohort.py, generate_extraction_sql.py,
-      build_real_data.py (RAW_CONTRACT + ColumnMismatchError + 12 validations),
-      load/verify wrappers, schema checklist 5→7 places — all proven against
-      fabricated raw CSVs (client PostgreSQL unreachable from here).
-- [ ] Task 5 (Subagent C): Chip title tooltips with driver definitions,
-      fallback narrative no longer pads repeated bullets, "cached" wording →
-      "stored" with the ✓ Stored footer.
-- [ ] Task 6 (main thread): the 10 verification checks, verify a/b/c/e re-run,
-      docs/ROUND_F_COMPLETE.md, servers up.
+- [x] Tasks 2+3 (Subagent A, verified in main thread, 6e1b0b1): v0 seed is
+      exactly 5 rules (FEE_REDUCTION_SHARING and PARTIAL_PERIOD removed,
+      NEW_BILLING added at order 25 with data-driven exclude_matched_of —
+      overlap probe proved a NEW_ACCOUNT-claimed account is excluded);
+      NEW_BILLING fires 17 on 202605, empty-with-reason on 202604; three
+      provisions added to the sample PDF as prose and 145 bps pinned as the
+      standard schedule (115 only in labelled worked examples, DECISIONS.md);
+      re-extraction (Sonnet per .env role pins, $1.72): 38 extracted,
+      22 COMPILED (was 15), 4 NEEDS_INPUT, 12 NEEDS_DATA; all three provisions
+      compiled with p.2/p.2/p.5 citations, grid-sharing rule extracted with
+      p.3 §3.1 citation; miner VALID_TAGS gains "New Billing".
+- [x] Task 4 (Subagent B, verified in main thread, 302a939): select_cohort
+      (grid-reduction-first, 9/9 flag coverage, 3 no-flag slots),
+      generate_extraction_sql (12 templates with the confirmed corrections),
+      build_real_data (RAW_CONTRACT of all 12 raw files + ColumnMismatchError
+      naming file+column, all transformations in Python, ALL 12 VALIDATIONS
+      PASSED, per-file dropped-edge counts, manifest structurally identical to
+      the mock generator's), thin load/verify wrappers, schema checklist now
+      seven places — all proven on the fabricated data/real_test/ raw set
+      (client PostgreSQL unreachable from this Codespace). NOTE:
+      docs/spec/EXTRACTION_SQL.md doesn't exist in-repo; templates authored
+      from prompts/COPILOT_EXTRACTION_COLD_START.md + corrections.
+- [x] Task 5 (Subagent C, verified in main thread, 86c1da9): Chip gains a
+      title prop; driver chips pass the matched rule's statement, else the
+      single frontend/lib/driverDefinitions.ts table; fallback emits only
+      real bullets (1 finding → 1 bullet, probe verified); "cached" →
+      "✓ Stored — generated <time> · rule set v<n>" (Trace prompt-cache
+      metrics deliberately unchanged); npm build passes.
+- [x] Task 6 (main thread): all 10 checks pass with actual output in
+      docs/ROUND_F_COMPLETE.md; verify a/b/c/e re-run green
+      (25/25, 19/19, 13/13, 8/8); servers restarted on this round's code
+      (:8001 healthy, :3001 200).
 
 ## Round E (docs/spec/ROUND_E_SPEC.md)
 - [x] Task 1: rule grammar REMOVED (app/rules/grammar.py deleted); extractor emits
@@ -171,29 +189,33 @@
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: F (docs/spec/ROUND_F_SPEC.md) — IN PROGRESS. Task 1 done; Tasks 2-5
-      dispatched as three concurrent subagents (A: seed corrections + PDF
-      provisions + 145 bps; B: extraction/build/load scripts vs fabricated raw
-      CSVs; C: UI fixes); Task 6 verification runs last in the main thread.
-      No LLM calls this round except Task 3's re-extraction; ceiling $3.
-Round E is COMPLETE (all 8 tasks; docs/ROUND_E_COMPLETE.md has actual output;
-      verify a/b/c/e green 25/25, 19/19, 13/13, 8/8). Carried observations:
-      (1) Round E Task 2 remains PROVISIONAL — 0 agent findings on a $9.5k
-      residual (deferred to a future round per ROUND_F_SPEC "Not in this
-      round"); (2) template-fallback bullet padding — fixed this round (Task
-      5.2); (3) the <$0.03 cost target conflicts with the Sonnet-reporter
-      policy ($0.0504 actual) — still needs an operator ruling.
+Round: F (docs/spec/ROUND_F_SPEC.md) — COMPLETE. All 6 tasks done, verified in
+      the main thread and committed; docs/ROUND_F_COMPLETE.md has the actual
+      output of all 10 checks. verify a/b/c/e green (25/25, 19/19, 13/13,
+      8/8). Extraction scripts are proven against fabricated raw CSVs only —
+      the real client extract still has to be run (select_cohort →
+      generate_extraction_sql → operator runs SQL → build_real_data →
+      load/verify, per ROUND_D_EXTRACTION.md).
+Named next (ROUND_F_SPEC "Not in this round"): the product drill-down panel
+      (docs/ui/MOCKUP_DRILLDOWN.html) and the Round E Task 2 finding-generation
+      fix (0 agent findings on a $9.5k residual — needs real LLM iteration).
+Carried observations: (1) Round E Task 2 remains PROVISIONAL; (2) the <$0.03
+      cost target conflicts with the Sonnet-reporter policy ($0.0504 actual) —
+      still needs an operator ruling; (3) the compiled grid-sharing rule
+      matches 0 rows on mock data (reads eff_disc_pct as whole percent) —
+      worth a look next session.
 SPEC CHANGE (operator, 2026-08-12): advisor_nnm_position DROPPED and every NNM
       reference removed from the practice view, exceptions table and
       recommendations — three months of net flows cannot stand in for an
       annually-measured NNM figure; even labelled, it presents a proxy as a fact.
       AUM and net flows ship; NNM waits for real data. Task 8's verify item 7
       becomes "no NNM metric or reference anywhere".
-Cost: running LLM total $1.63 of the $15 ceiling.
+Cost: running LLM total ≈ $3.44 of the $15 ceiling ($1.72 this round, all on
+      Round F Task 3 extraction — Sonnet per the .env role pins).
+Last updated: 2026-08-12 (Round F session, after Task 6)
 Carry-over from Round C: per-advisor sweep still finishable via
       `python3 scripts/e2e_finish.py` once credits allow; port visibility for
       8001/3001 still needs the Ports panel (gh token lacks the codespace scope).
-Last updated: 2026-08-12 (Round E session, after Task 2 / subagent dispatch)
 
 ## Task checklist (Round C)
 - [x] 0.1 Param validation before population fetch (evaluator + compiler attribute params;
