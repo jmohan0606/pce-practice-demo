@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drill-Down Panel — Mockup</title>
+<style>
+:root{
+  --navy:#16365C; --navy-hi:#1E4675; --ink:#1A2430; --slate:#5A6B7D; --slate-2:#8A9AAA;
+  --rule:#E2E7ED; --rule-2:#EFF2F6; --canvas:#F4F6F9; --panel:#FBFCFD;
+  --rec:#C5B88F; --nrec:#6699C2;
+  --pos:#157F4C; --pos-bg:#E8F5EE; --pos-br:#B5D9C6;
+  --neg:#B3261E; --neg-bg:#FBECEA; --neg-br:#EFC6C2;
+  --real-bg:#E6F4EC; --real-tx:#1A6B42;
+  --der-bg:#FBF0DC; --der-tx:#8A5A00;
+  --tag-bg:#EDF1F5; --tag-tx:#4A5B6D;
+  --ai:#4C4EA3; --ai-bg:#EEEEF8; --ai-br:#C9CAE8;
+  --tot-bg:#EAF0F7;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-variant-numeric:tabular-nums}
+h2,h3{margin:0;font-weight:600;letter-spacing:-.01em}
+.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.topbar{background:var(--navy);color:#fff;padding:0 24px;height:50px;display:flex;
+  align-items:center;justify-content:space-between}
+.brand{font-weight:600;font-size:16px}
+.topbar .right{font-size:12.5px;opacity:.9}
+.wrap{max-width:1240px;margin:0 auto;padding:20px 24px 64px}
+.hint{background:var(--ai-bg);border:1px solid var(--ai-br);border-radius:6px;padding:12px 16px;
+  font-size:13px;color:var(--ai);margin-bottom:16px}
+.card{background:#fff;border:1px solid var(--rule);border-radius:6px;margin-bottom:16px}
+.card-h{padding:16px 20px;border-bottom:1px solid var(--rule)}
+.card-h h2{font-size:16px}
+.card-h p{margin:4px 0 0;color:var(--slate);font-size:12.5px}
+.card-b.flush{padding:0}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:11px;letter-spacing:.03em;color:#DCE4EE;font-weight:600;
+  padding:11px 14px;background:var(--navy)}
+th.num{text-align:right}
+td{padding:9px 14px;border-bottom:1px solid var(--rule-2)}
+tr.sect td{background:var(--panel);font-weight:600;font-size:12px;color:var(--slate);padding:8px 14px}
+tr.sub td{background:var(--panel);font-weight:600;border-top:1px solid var(--rule)}
+tr.tot td{background:var(--tot-bg);font-weight:700;font-size:14px;border-top:2px solid var(--navy);
+  border-bottom:0;padding:12px 14px}
+tbody tr:not(.sect):not(.tot):hover td{background:#F6F9FC}
+.up{color:var(--pos);font-weight:600}.dn{color:var(--neg);font-weight:600}
+.share{color:var(--slate)}
+.pfx{color:var(--slate-2)}
+/* the clickable change number */
+.drill{background:none;border:0;font:inherit;font-variant-numeric:tabular-nums;
+  cursor:pointer;padding:2px 5px;margin:-2px -5px;border-radius:3px;
+  border-bottom:1px dashed currentColor}
+.drill:hover{background:var(--ai-bg);border-bottom-style:solid}
+.drill:focus-visible{outline:2px solid var(--ai);outline-offset:1px}
+.drill.up{color:var(--pos);font-weight:600}
+.drill.dn{color:var(--neg);font-weight:600}
+
+/* ---------- SIDE PANEL ---------- */
+.scrim{position:fixed;inset:0;background:rgba(16,28,44,.28);opacity:0;pointer-events:none;
+  transition:opacity .18s}
+.scrim.on{opacity:1;pointer-events:auto}
+.panel{position:fixed;top:0;right:0;bottom:0;width:min(760px,94vw);background:#fff;
+  border-left:1px solid var(--rule);box-shadow:-8px 0 32px rgba(16,28,44,.14);
+  transform:translateX(100%);transition:transform .22s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column;z-index:40}
+.panel.on{transform:translateX(0)}
+.p-head{padding:14px 20px;border-bottom:1px solid var(--rule);display:flex;
+  justify-content:space-between;align-items:flex-start;gap:12px}
+.crumb{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px;color:var(--slate)}
+.crumb button{background:none;border:0;font:inherit;color:var(--navy-hi);cursor:pointer;padding:0;
+  text-decoration:underline}
+.crumb .sep{color:var(--slate-2)}
+.crumb .cur{color:var(--ink);font-weight:600}
+.p-title{font-size:17px;font-weight:600;margin-top:6px}
+.p-sub{font-size:12.5px;color:var(--slate);margin-top:3px}
+.p-close{background:none;border:1px solid var(--rule);border-radius:4px;width:30px;height:30px;
+  cursor:pointer;font-size:16px;color:var(--slate);line-height:1;flex-shrink:0}
+.p-close:hover{background:var(--rule-2);color:var(--ink)}
+.p-body{overflow-y:auto;padding:18px 20px 40px;flex:1}
+.p-foot{padding:10px 20px;border-top:1px solid var(--rule);background:var(--panel);
+  font-size:12px;color:var(--slate);display:flex;justify-content:space-between;gap:12px}
+.p-view{display:none}.p-view.on{display:block}
+
+/* metric strip */
+.mstrip{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:14px;
+  padding:14px 16px;border:1px solid var(--rule);border-radius:6px;background:var(--panel);
+  margin-bottom:16px}
+.mstrip .k{font-size:10.5px;letter-spacing:.03em;color:var(--slate);text-transform:uppercase}
+.mstrip .v{font-size:17px;font-weight:600;margin-top:3px}
+.mstrip .d{font-size:11.5px;margin-top:2px}
+.mstrip .d.mut{color:var(--slate)}
+.count-drill{background:none;border:0;font:inherit;font-size:17px;font-weight:600;color:var(--navy-hi);
+  cursor:pointer;padding:0;border-bottom:1px dashed var(--navy-hi);margin-top:3px}
+.count-drill:hover{border-bottom-style:solid}
+
+.narr{background:#FCFCFE;border:1px solid var(--ai-br);border-left:3px solid var(--ai);
+  border-radius:0 5px 5px 0;padding:14px 16px;margin-bottom:16px}
+.narr p{margin:0 0 10px;line-height:1.6}
+.narr ul{margin:0;padding-left:18px}
+.narr li{margin-bottom:6px;line-height:1.55}
+.narr li:last-child{margin-bottom:0}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;
+  padding:3px 7px;border-radius:3px;letter-spacing:.03em;text-transform:uppercase}
+.chip.real{background:var(--real-bg);color:var(--real-tx)}
+.chip.derived{background:var(--der-bg);color:var(--der-tx)}
+.chip.tag{background:var(--tag-bg);color:var(--tag-tx);cursor:help;border-bottom:1px dotted var(--tag-tx)}
+.chip.aigen{background:var(--ai-bg);color:var(--ai)}
+.src{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ai);
+  text-decoration:none;border-bottom:1px solid var(--ai-br);padding-bottom:1px}
+.src::before{content:"";width:13px;height:7px;border-left:1px solid var(--ai-br);
+  border-bottom:1px solid var(--ai-br);border-bottom-left-radius:4px;margin-bottom:4px}
+.sec-h{font-size:12px;letter-spacing:.03em;color:var(--slate);text-transform:uppercase;
+  margin:20px 0 8px;font-weight:600}
+.why{border:1px solid var(--rule);border-radius:6px;overflow:hidden;margin-bottom:6px}
+.why table{font-size:12.5px}
+.why th{padding:8px 12px;font-size:10.5px}
+.why td{padding:7px 12px}
+.finding{border:1px solid var(--rule);border-radius:6px;margin-bottom:8px;overflow:hidden}
+.finding-h{padding:11px 14px;display:flex;justify-content:space-between;gap:12px;
+  align-items:flex-start;cursor:pointer}
+.finding-h:hover{background:#F7FAFD}
+.finding-t{font-weight:600;font-size:13px}
+.finding-m{color:var(--slate);font-size:12.5px;margin-top:3px;line-height:1.5}
+.finding-b{display:none;padding:0 14px 14px;border-top:1px solid var(--rule-2)}
+.finding.open .finding-b{display:block}
+.chips{display:flex;gap:5px;justify-content:flex-end;margin-top:4px;flex-wrap:wrap}
+.gen{display:flex;flex-direction:column;align-items:center;gap:10px;padding:34px 20px;
+  border:1px dashed var(--ai-br);border-radius:6px;background:#FCFCFE;text-align:center}
+.gen .t{font-weight:600}
+.gen .m{font-size:12.5px;color:var(--slate);max-width:400px}
+.btn{font:inherit;font-size:13px;border:1px solid var(--rule);background:#fff;color:var(--ink);
+  padding:7px 12px;border-radius:4px;cursor:pointer}
+.btn.primary{background:var(--navy);color:#fff;border-color:var(--navy);font-weight:500}
+.stored{font-size:11.5px;color:var(--pos);background:var(--pos-bg);border:1px solid var(--pos-br);
+  padding:2px 8px;border-radius:10px;font-weight:600}
+@media(max-width:880px){.wrap{padding:16px 12px}th,td{padding:8px 9px}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">Practice Management</div>
+  <div class="right">As of 30 Jun 2026</div>
+</div>
+
+<div class="wrap">
+  <div class="hint">
+    <b>Mockup — drill-down chain.</b> Click any <b>Change</b> figure in the table below.
+    Inside the panel, click the underlined <b>Advisors</b> or <b>Accounts</b> counts to go deeper.
+    Breadcrumb navigates back up.
+  </div>
+
+  <div class="card">
+    <div class="card-h">
+      <h2>Product Contribution &mdash; Apr 2026 &rarr; May 2026</h2>
+      <p>Select a Change figure to see what drove it.</p>
+    </div>
+    <div class="card-b flush">
+      <table>
+        <thead><tr><th style="width:34%">Product</th><th class="num">Apr 2026</th><th class="num">May 2026</th>
+          <th class="num">Change</th><th class="num">Change %</th><th class="num">% Share of Total</th></tr></thead>
+        <tbody>
+          <tr class="sect"><td colspan="6">Recurring</td></tr>
+          <tr><td>Managed Accounts</td><td class="num">$182,340</td><td class="num">$196,720</td>
+            <td class="num"><button class="drill up" onclick="openPanel()">&#9650; $14,380</button></td>
+            <td class="num up">7.9%</td><td class="num share">21.1%</td></tr>
+          <tr><td>Managed &ndash; Unified Managed Accounts</td><td class="num">$54,180</td><td class="num">$58,940</td>
+            <td class="num"><button class="drill up" onclick="openPanel()">&#9650; $4,760</button></td>
+            <td class="num up">8.8%</td><td class="num share">6.3%</td></tr>
+          <tr><td>Trails &ndash; Mutual Funds</td><td class="num">$41,220</td><td class="num">$42,110</td>
+            <td class="num"><button class="drill up" onclick="openPanel()">&#9650; $890</button></td>
+            <td class="num up">2.2%</td><td class="num share">4.5%</td></tr>
+          <tr><td>Trails &ndash; Life &amp; Annuities</td><td class="num">$38,640</td><td class="num">$37,275</td>
+            <td class="num"><button class="drill dn" onclick="openPanel()">&#9660; ($1,365)</button></td>
+            <td class="num dn">(3.5%)</td><td class="num share">4.0%</td></tr>
+          <tr class="sub"><td>Recurring Subtotal</td><td class="num">$356,880</td><td class="num">$382,565</td>
+            <td class="num up">&#9650; $25,685</td><td class="num up">7.2%</td><td class="num share">41.0%</td></tr>
+          <tr class="sect"><td colspan="6">Non-Recurring</td></tr>
+          <tr><td><span class="pfx">TWHS &ndash;</span> Structured Products</td><td class="num">$96,410</td><td class="num">$118,220</td>
+            <td class="num"><button class="drill up" onclick="openPanel()">&#9650; $21,810</button></td>
+            <td class="num up">22.6%</td><td class="num share">12.7%</td></tr>
+          <tr><td><span class="pfx">TWHS &ndash;</span> Options</td><td class="num">$24,760</td><td class="num">$23,522</td>
+            <td class="num"><button class="drill dn" onclick="openPanel()">&#9660; ($1,238)</button></td>
+            <td class="num dn">(5.0%)</td><td class="num share">2.5%</td></tr>
+          <tr class="tot"><td>Total Credited Revenue</td><td class="num">$870,537</td><td class="num">$932,993</td>
+            <td class="num up">&#9650; $62,456</td><td class="num up">7.2%</td><td class="num">100.0%</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" onclick="closePanel()"></div>
+
+<aside class="panel" id="panel" role="dialog" aria-label="Drill-down">
+  <div class="p-head">
+    <div style="min-width:0">
+      <div class="crumb" id="crumb"></div>
+      <div class="p-title" id="ptitle"></div>
+      <div class="p-sub" id="psub"></div>
+    </div>
+    <button class="p-close" onclick="closePanel()" aria-label="Close">&times;</button>
+  </div>
+
+  <div class="p-body">
+
+    <!-- ============ LEVEL 1 · PRODUCT ============ -->
+    <div class="p-view on" id="lvl-product">
+      <div class="mstrip">
+        <div><div class="k">Apr 2026</div><div class="v">$182,340</div></div>
+        <div><div class="k">May 2026</div><div class="v">$196,720</div></div>
+        <div><div class="k">Change</div><div class="v up">&#9650; $14,380</div><div class="d up">7.9%</div></div>
+        <div><div class="k">AUM</div><div class="v">$412.6M</div><div class="d up">&#9650; 3.1%</div></div>
+        <div><div class="k">Advisors</div>
+          <button class="count-drill" onclick="go('advisors')">14</button>
+          <div class="d mut">12 in April</div></div>
+        <div><div class="k">Accounts</div>
+          <button class="count-drill" onclick="go('accounts')">286</button>
+          <div class="d mut">274 in April</div></div>
+      </div>
+
+      <div class="narr">
+        <span class="chip aigen" style="margin-bottom:8px">&#9670; AI Generated</span>
+        <p><b>Managed Accounts rose $14,380, and almost none of it is new business.</b>
+        Twelve of the fourteen advisors were already selling this product in April; the two
+        additions contributed $1,120 between them.</p>
+        <ul>
+          <li><b>$8,383 came from six accounts that began billing</b> &mdash; they held balances in
+            April and produced no revenue, then billed in May.</li>
+          <li><b>$4,877 is fee growth on the existing 274 accounts</b>, tracking a 3.1% rise in
+            billable assets with no change in rate.</li>
+          <li><b>Four accounts carry discounts above the 10% sharing threshold</b> with no grid
+            reduction recorded, worth ($4,200) against the increase.</li>
+        </ul>
+      </div>
+
+      <div class="sec-h">Why the number moved</div>
+      <div class="why">
+        <table>
+          <thead><tr><th>Cause</th><th class="num">Apr</th><th class="num">May</th><th class="num">Effect</th></tr></thead>
+          <tbody>
+            <tr><td>Advisors selling this product</td><td class="num">12</td><td class="num">14</td><td class="num up">&#9650; $1,120</td></tr>
+            <tr><td>Accounts holding this product</td><td class="num">274</td><td class="num">286</td><td class="num up">&#9650; $8,383</td></tr>
+            <tr><td>Revenue per existing account</td><td class="num">$665</td><td class="num">$688</td><td class="num up">&#9650; $4,877</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:12px;color:var(--slate);margin:0 0 4px">
+        Counts are query results. The effect column is descriptive, not a decomposition &mdash;
+        the parts are not expected to sum exactly to the change.</p>
+
+      <div class="sec-h">Findings</div>
+      <div class="finding open">
+        <div class="finding-h" onclick="this.parentNode.classList.toggle('open')">
+          <div><div class="finding-t">Six accounts began billing in May</div>
+            <div class="finding-m">Held balances in April with no credited revenue</div></div>
+          <div style="text-align:right"><div class="num up">$8,383</div>
+            <div class="chips"><span class="chip real">Real</span>
+              <span class="chip tag" title="An account that held a balance in the prior month but produced no credited revenue, and produced credited revenue this month. Distinct from a new account, which did not exist before.">New Billing</span></div></div>
+        </div>
+        <div class="finding-b">
+          <table style="margin-top:12px"><thead><tr><th>Account</th><th>Advisor</th><th class="num">Apr Balance</th><th class="num">May Revenue</th></tr></thead>
+            <tbody>
+              <tr><td>3053</td><td>V000002</td><td class="num">$1.42M</td><td class="num up">$1,510</td></tr>
+              <tr><td>3060</td><td>V000002</td><td class="num">$1.86M</td><td class="num up">$1,970</td></tr>
+              <tr><td>3067</td><td>V000009</td><td class="num">$1.21M</td><td class="num up">$1,283</td></tr>
+            </tbody></table>
+          <div style="font-size:12px;color:var(--slate);padding:8px 2px">Showing 3 of 6 &middot; <a href="#">View all</a></div>
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-h" onclick="this.parentNode.classList.toggle('open')">
+          <div><div class="finding-t">Discounts above the sharing threshold with no grid reduction</div>
+            <div class="finding-m">4 accounts at 12&ndash;19% reduction; plan requires a grid adjustment above 10%</div></div>
+          <div style="text-align:right"><div class="num dn">($4,200)</div>
+            <div class="chips"><span class="chip real">Real</span>
+              <span class="chip tag" title="Effective fee reduction against the standard 145 bps managed schedule, measured per account.">Fee Rate</span></div></div>
+        </div>
+        <div class="finding-b"><a class="src" href="#" style="margin-top:12px">CWM Private Client Advisor Plan &middot; p. 4 &middot; Discount Sharing</a></div>
+      </div>
+    </div>
+
+    <!-- ============ LEVEL 2 · ADVISORS ============ -->
+    <div class="p-view" id="lvl-advisors">
+      <div class="mstrip">
+        <div><div class="k">Advisors in May</div><div class="v">14</div><div class="d mut">12 in April</div></div>
+        <div><div class="k">New to Product</div><div class="v up">2</div></div>
+        <div><div class="k">Stopped</div><div class="v">0</div></div>
+        <div><div class="k">Top 3 Share</div><div class="v">61%</div><div class="d mut">of the change</div></div>
+      </div>
+
+      <div class="narr">
+        <span class="chip aigen" style="margin-bottom:8px">&#9670; AI Generated</span>
+        <p><b>Three advisors produced 61% of the increase, and two of them for the same reason</b>
+        &mdash; accounts that began billing after sitting idle in April.</p>
+        <ul>
+          <li><b>V000002 contributed $5,240</b>, all from three accounts starting to bill.</li>
+          <li><b>V000009 added $3,530</b> on two accounts, and also holds two of the four
+            discount exceptions.</li>
+          <li><b>Two advisors are new to this product</b> (V000017, V000020), together
+            contributing $1,120 &mdash; small, but they change the advisor count.</li>
+        </ul>
+      </div>
+
+      <div class="sec-h">Contribution by advisor</div>
+      <div class="why">
+        <table>
+          <thead><tr><th>Advisor</th><th class="num">Apr</th><th class="num">May</th><th class="num">Change</th>
+            <th class="num">Accounts</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>V000002 &middot; S. Mehta</td><td class="num">$18,420</td><td class="num">$23,660</td>
+              <td class="num up">&#9650; $5,240</td>
+              <td class="num"><button class="count-drill" style="font-size:13px" onclick="go('accounts')">31</button></td>
+              <td><button class="btn" style="padding:3px 9px" onclick="go('accounts')">&rsaquo;</button></td></tr>
+            <tr><td>V000009 &middot; K. Alvarez</td><td class="num">$16,180</td><td class="num">$19,710</td>
+              <td class="num up">&#9650; $3,530</td>
+              <td class="num"><button class="count-drill" style="font-size:13px" onclick="go('accounts')">27</button></td>
+              <td><button class="btn" style="padding:3px 9px" onclick="go('accounts')">&rsaquo;</button></td></tr>
+            <tr><td>V000014 &middot; R. Okafor</td><td class="num">$14,900</td><td class="num">$14,010</td>
+              <td class="num dn">&#9660; ($890)</td>
+              <td class="num"><button class="count-drill" style="font-size:13px" onclick="go('accounts')">24</button></td>
+              <td><button class="btn" style="padding:3px 9px" onclick="go('accounts')">&rsaquo;</button></td></tr>
+            <tr><td>V000017 &middot; D. Ibrahim <span class="chip tag" title="This advisor recorded no revenue for this product in the prior month.">New</span></td>
+              <td class="num">&mdash;</td><td class="num">$640</td><td class="num up">&#9650; $640</td>
+              <td class="num"><button class="count-drill" style="font-size:13px" onclick="go('accounts')">2</button></td>
+              <td><button class="btn" style="padding:3px 9px" onclick="go('accounts')">&rsaquo;</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="font-size:12px;color:var(--slate);padding:6px 2px">Showing 4 of 14 &middot; <a href="#">View all</a></div>
+    </div>
+
+    <!-- ============ LEVEL 3 · ACCOUNTS ============ -->
+    <div class="p-view" id="lvl-accounts">
+      <div class="mstrip">
+        <div><div class="k">Apr 2026</div><div class="v">$18,420</div></div>
+        <div><div class="k">May 2026</div><div class="v">$23,660</div></div>
+        <div><div class="k">Change</div><div class="v up">&#9650; $5,240</div></div>
+        <div><div class="k">Accounts</div><div class="v">31</div><div class="d mut">28 in April</div></div>
+        <div><div class="k">AUM</div><div class="v">$62.4M</div><div class="d up">&#9650; 2.8%</div></div>
+      </div>
+
+      <div class="narr">
+        <span class="chip aigen" style="margin-bottom:8px">&#9670; AI Generated</span>
+        <p><b>Three accounts explain $4,190 of Sandra's $5,240.</b> All three held balances through
+        April without billing, then billed a full month in May.</p>
+        <ul>
+          <li><b>Account 3060 is the largest single contributor</b> at $1,970 on a $1.86M balance.</li>
+          <li><b>The remaining 28 accounts moved $1,050 in total</b>, consistent with asset growth
+            rather than activity.</li>
+        </ul>
+      </div>
+
+      <div class="sec-h">Contribution by account</div>
+      <div class="why">
+        <table>
+          <thead><tr><th>Account</th><th class="num">Apr</th><th class="num">May</th><th class="num">Change</th>
+            <th class="num">Balance</th><th class="num">Txns</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>3060</td><td class="num">&mdash;</td><td class="num">$1,970</td><td class="num up">&#9650; $1,970</td>
+              <td class="num">$1.86M</td>
+              <td class="num"><button class="count-drill" style="font-size:13px" onclick="go('txns')">4</button></td>
+              <td><button class="btn" style="padding:3px 9px" onclick="go('txns')">&rsaquo;</button></td></tr>
+            <tr><td>3053</td><td class="num">&mdash;</td><td class="num">$1,510</td><td class="num up">&#9650; $1,510</td>
+              <td class="num">$1.42M</td>
+              <td class="num"><button class="count-drill" style="font-size:13px" onclick="go('txns')">3</button></td>
+              <td><button class="btn" style="padding:3px 9px" onclick="go('txns')">&rsaquo;</button></td></tr>
+            <tr><td>3074</td><td class="num">&mdash;</td><td class="num">$710</td><td class="num up">&#9650; $710</td>
+              <td class="num">$0.67M</td>
+              <td class="num"><button class="count-drill" style="font-size:13px" onclick="go('txns')">2</button></td>
+              <td><button class="btn" style="padding:3px 9px" onclick="go('txns')">&rsaquo;</button></td></tr>
+            <tr><td>1667</td><td class="num">$2,140</td><td class="num">$2,310</td><td class="num up">&#9650; $170</td>
+              <td class="num">$2.18M</td>
+              <td class="num"><button class="count-drill" style="font-size:13px" onclick="go('txns')">6</button></td>
+              <td><button class="btn" style="padding:3px 9px" onclick="go('txns')">&rsaquo;</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="font-size:12px;color:var(--slate);padding:6px 2px">Showing 4 of 31 &middot; <a href="#">View all</a></div>
+    </div>
+
+    <!-- ============ LEVEL 4 · TRANSACTIONS ============ -->
+    <div class="p-view" id="lvl-txns">
+      <div class="mstrip">
+        <div><div class="k">Apr Txns</div><div class="v">0</div></div>
+        <div><div class="k">May Txns</div><div class="v">4</div></div>
+        <div><div class="k">May Revenue</div><div class="v up">$1,970</div></div>
+        <div><div class="k">Balance</div><div class="v">$1.86M</div></div>
+        <div><div class="k">Rate</div><div class="v">145 bps</div><div class="d mut">standard</div></div>
+      </div>
+
+      <div class="narr">
+        <span class="chip aigen" style="margin-bottom:8px">&#9670; AI Generated</span>
+        <p><b>Account 3060 produced no credited revenue in April and four billing transactions in
+        May</b>, all under Managed &ndash; Advisory. The balance was already in place, so this is
+        billing starting rather than assets arriving.</p>
+      </div>
+
+      <div class="sec-h">Transactions &mdash; May 2026</div>
+      <div class="why">
+        <table>
+          <thead><tr><th>Date</th><th>Description</th><th>Product</th><th class="num">Rate</th>
+            <th class="num">Credited</th></tr></thead>
+          <tbody>
+            <tr><td>04 May 2026</td><td>Managed Accounts &mdash; OISC advisory fee</td><td>OISC | PMP</td>
+              <td class="num">145 bps</td><td class="num up">$682</td></tr>
+            <tr><td>11 May 2026</td><td>Managed Accounts &mdash; OISC advisory fee</td><td>OISC | PMP</td>
+              <td class="num">145 bps</td><td class="num up">$610</td></tr>
+            <tr><td>18 May 2026</td><td>Managed Accounts &mdash; OISC advisory fee</td><td>OISC | PMP</td>
+              <td class="num">145 bps</td><td class="num up">$402</td></tr>
+            <tr><td>26 May 2026</td><td>Managed Accounts &mdash; OISC advisory fee</td><td>OISC | PMP</td>
+              <td class="num">145 bps</td><td class="num up">$276</td></tr>
+            <tr class="tot"><td colspan="4">Total &mdash; 4 transactions</td><td class="num up">$1,970</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="font-size:12px;color:var(--slate);padding:8px 2px">
+        April had no credited transactions for this account. Reason-coded rows are excluded from
+        credited totals but remain queryable.</div>
+    </div>
+
+    <!-- ============ NOT YET GENERATED ============ -->
+    <div class="p-view" id="lvl-gen">
+      <div class="gen">
+        <div class="t">No insight generated for this view yet</div>
+        <div class="m">Generated once, then stored permanently against rule set v1. Everyone who
+          opens this view sees the same insight and the same figures &mdash; it is not regenerated
+          per person. A new rule version produces a new insight; nothing is overwritten.</div>
+        <button class="btn primary" onclick="go('product')">Generate &mdash; approx $0.02, ~20s</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="p-foot">
+    <span id="pfootleft"><span class="stored">&#10003; Stored</span> generated 11 Aug 2026, 09:22 &middot; rule set v1 &middot; shared by everyone</span>
+    <span><button class="btn" style="padding:3px 9px">&#8635; Regenerate</button></span>
+  </div>
+</aside>
+
+<script>
+const LEVELS = {
+  product:  {title:"Managed Accounts", sub:"Apr 2026 &rarr; May 2026 &middot; Recurring",
+             crumb:[["Managed Accounts",null]]},
+  advisors: {title:"Advisors", sub:"14 advisors selling Managed Accounts in May 2026",
+             crumb:[["Managed Accounts","product"],["14 Advisors",null]]},
+  accounts: {title:"V000002 &middot; Sandra Mehta", sub:"31 accounts in Managed Accounts &middot; Apr &rarr; May 2026",
+             crumb:[["Managed Accounts","product"],["14 Advisors","advisors"],["V000002",null]]},
+  txns:     {title:"Account 3060", sub:"Managed Accounts &middot; V000002 &middot; May 2026",
+             crumb:[["Managed Accounts","product"],["14 Advisors","advisors"],["V000002","accounts"],["Account 3060",null]]},
+  gen:      {title:"Managed Accounts", sub:"Apr 2026 &rarr; May 2026", crumb:[["Managed Accounts",null]]}
+};
+function go(level){
+  document.querySelectorAll('.p-view').forEach(v=>v.classList.remove('on'));
+  document.getElementById('lvl-'+level).classList.add('on');
+  const L = LEVELS[level];
+  document.getElementById('ptitle').innerHTML = L.title;
+  document.getElementById('psub').innerHTML = L.sub;
+  const c = document.getElementById('crumb'); c.innerHTML='';
+  L.crumb.forEach((item,i)=>{
+    if(i>0){const s=document.createElement('span');s.className='sep';s.textContent='›';c.appendChild(s);}
+    if(item[1]){const b=document.createElement('button');b.innerHTML=item[0];
+      b.onclick=()=>go(item[1]);c.appendChild(b);}
+    else{const s=document.createElement('span');s.className='cur';s.innerHTML=item[0];c.appendChild(s);}
+  });
+  document.getElementById('pfootleft').style.visibility = (level==='gen')?'hidden':'visible';
+  document.querySelector('.p-body').scrollTop = 0;
+}
+function openPanel(){
+  document.getElementById('panel').classList.add('on');
+  document.getElementById('scrim').classList.add('on');
+  go('product');
+}
+function closePanel(){
+  document.getElementById('panel').classList.remove('on');
+  document.getElementById('scrim').classList.remove('on');
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closePanel();});
+</script>
+</body>
+</html>

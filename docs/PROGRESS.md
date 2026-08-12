@@ -1,5 +1,26 @@
 # Build Progress
 
+## Round F (docs/spec/ROUND_F_SPEC.md)
+- [x] Task 1: PROGRESS.md current-position refreshed for Round F (the Round C
+      staleness the spec flagged was already fixed in 54a07d0 during Round E;
+      this task brings the position line to Round F and commits the Round F
+      spec files: ROUND_F_SPEC.md, ROUND_D_EXTRACTION.md,
+      PLAN_EXPECTATIONS_FINDINGS.md, MOCKUP_DRILLDOWN.html).
+- [ ] Tasks 2+3 (Subagent A): v0 seed corrected to exactly 5 rules
+      (FEE_REDUCTION_SHARING + PARTIAL_PERIOD removed, NEW_BILLING added at
+      order 25 excluding NEW_ACCOUNT claims); three document-derived provisions
+      added to the sample PDF; 145 bps pinned as the standard schedule;
+      re-extraction reported.
+- [ ] Task 4 (Subagent B): select_cohort.py, generate_extraction_sql.py,
+      build_real_data.py (RAW_CONTRACT + ColumnMismatchError + 12 validations),
+      load/verify wrappers, schema checklist 5→7 places — all proven against
+      fabricated raw CSVs (client PostgreSQL unreachable from here).
+- [ ] Task 5 (Subagent C): Chip title tooltips with driver definitions,
+      fallback narrative no longer pads repeated bullets, "cached" wording →
+      "stored" with the ✓ Stored footer.
+- [ ] Task 6 (main thread): the 10 verification checks, verify a/b/c/e re-run,
+      docs/ROUND_F_COMPLETE.md, servers up.
+
 ## Round E (docs/spec/ROUND_E_SPEC.md)
 - [x] Task 1: rule grammar REMOVED (app/rules/grammar.py deleted); extractor emits
       plain-English statement/kind/missing (nothing discarded for form); new Rule
@@ -150,14 +171,18 @@
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: E (docs/spec/ROUND_E_SPEC.md) — COMPLETE. All 8 tasks done, verified and
-      committed; docs/ROUND_E_COMPLETE.md has the actual output. verify suites
-      a/b/c/e all green (25/25, 19/19, 13/13, 8/8). Open observations for the
-      next session: (1) Task 2 remains PROVISIONAL and the Task 8 run showed
-      why — 0 agent findings on a $9.5k residual; (2) the template fallback
-      pads bullets with repeated "No further findings" (cosmetic fix); (3) the
-      <$0.03 cost target conflicts with the spec's own Sonnet-reporter policy
-      ($0.0504 actual) — needs an operator ruling on which gives.
+Round: F (docs/spec/ROUND_F_SPEC.md) — IN PROGRESS. Task 1 done; Tasks 2-5
+      dispatched as three concurrent subagents (A: seed corrections + PDF
+      provisions + 145 bps; B: extraction/build/load scripts vs fabricated raw
+      CSVs; C: UI fixes); Task 6 verification runs last in the main thread.
+      No LLM calls this round except Task 3's re-extraction; ceiling $3.
+Round E is COMPLETE (all 8 tasks; docs/ROUND_E_COMPLETE.md has actual output;
+      verify a/b/c/e green 25/25, 19/19, 13/13, 8/8). Carried observations:
+      (1) Round E Task 2 remains PROVISIONAL — 0 agent findings on a $9.5k
+      residual (deferred to a future round per ROUND_F_SPEC "Not in this
+      round"); (2) template-fallback bullet padding — fixed this round (Task
+      5.2); (3) the <$0.03 cost target conflicts with the Sonnet-reporter
+      policy ($0.0504 actual) — still needs an operator ruling.
 SPEC CHANGE (operator, 2026-08-12): advisor_nnm_position DROPPED and every NNM
       reference removed from the practice view, exceptions table and
       recommendations — three months of net flows cannot stand in for an
