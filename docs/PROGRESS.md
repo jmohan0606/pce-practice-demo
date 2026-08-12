@@ -1,5 +1,19 @@
 # Build Progress
 
+## Round H (docs/ROUND_H_SPEC.md)
+- [x] Port change (e2eda07, pre-round): app now runs on 8002 (API) / 3002
+      (frontend) — 8001/3001 taken by another app. .env(+example),
+      frontend/.env.local(+example), package.json, lib/api.ts, next.config.mjs,
+      e2e_finish.py, settings defaults; CORS derives from settings.frontend_port.
+- [x] Task 1 (main thread): implicit transferred_keys accumulation DELETED from
+      evaluate_rule_set — exclusion is explicit-only via exclude_matched_of;
+      LOST_ACCOUNT declares ["ACCOUNT_TRANSFERRED_IN","ACCOUNT_TRANSFERRED_OUT"].
+      Practice 202604: IN=13 AND OUT=13 independently (OUT was structurally 0).
+      NEW scripts/verify_round_h.py H-1/2/3 (H-2 proves the exclusion with an
+      injected 202605 transfer probe: IN claims it, LOST drops 10→9). Stale
+      durable rule_store.db cleared so the corrected seed applies (DECISIONS.md).
+      verify a/b/c/e re-run green 25/25, 19/19, 13/13, 8/8.
+
 ## Round G (docs/spec/ROUND_G_SPEC.md)
 - [x] Task 1 (main thread, 2d22311): rules declare their own scope — scopes on
       the rule model (derived at compile from :advisor_sid, human-overridable,

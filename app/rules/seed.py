@@ -180,6 +180,12 @@ V0_RULES: list[dict] = [
         "grain": "account",
         "driver_tag": "Lost Accounts",
         "evaluation_order": 30,
+        # Round H task 1: the transfer exclusion is DECLARED here, replacing the
+        # implicit transferred_keys accumulation in evaluate_rule_set (which
+        # silently excluded IN's matches from OUT at practice scope). A
+        # transferred account is still never counted as lost — but the exclusion
+        # is now visible on the rule and cannot catch a rule it wasn't meant to.
+        "exclude_matched_of": ["ACCOUNT_TRANSFERRED_IN", "ACCOUNT_TRANSFERRED_OUT"],
         "plan": {
             "vertex": "phx_dm_pce_account_month",
             "filters": [{"field": "is_zero_balance", "op": "=", "value": True},

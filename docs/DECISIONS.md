@@ -175,3 +175,13 @@ Reversible: yes
 Context: The sample PDF's worked example used "a standard schedule rate of 115 bps", and the (now removed) FEE_REDUCTION_SHARING seed's worked example carried the same figure, leaving 145 vs 115 ambiguous. Copilot's transcription of the four real plan documents (docs/spec/PLAN_EXPECTATIONS_FINDINGS.md) resolves it: 145 bps appears three times as *the schedule* (FAQ p.13, PCA p.3, SAG p.4); 115 bps appears exactly once, inside a worked example (FAQ p.15). Both are correct — they are different things.
 Decision: Wherever the sample PDF or any seeded text implies a standard rate, it is 145 bps (the sample PDF's §3.1 now states "the standard managed fee schedule is 145 bps"; the mock data generator already used std_bps=145.0). 115 bps may appear ONLY inside an illustrative worked example clearly labelled as such (sample PDF §3.2 "Worked Example (Illustrative Only)", mirroring FAQ p.15).
 Reversible: yes (regenerate the PDF)
+
+## 2026-08-12 · Round H task 1 · Stale durable rule store cleared for the corrected seed
+Context: Task 1 moves the transfer exclusion from an implicit `transferred_keys` accumulation in `evaluate_rule_set` onto `LOST_ACCOUNT`'s explicit `exclude_matched_of`. The Round G durable store (`data/runtime/rule_store.db`, gitignored) held the pre-fix seed WITHOUT that declaration, and `ensure_v0_seed` is a no-op when any version exists — so the running system would have kept a LOST_ACCOUNT that no longer excludes transfers at all.
+Decision: The gitignored `data/runtime/*.db` files were moved aside (session scratchpad backup) so the corrected seed re-runs at startup. Round G's stored drill-down runs go with them; Round H task 6 generates fresh ones. In a client environment with real history this would instead be an operator edit→publish minting a new version — acceptable here because the dbs are regenerable dev artifacts and no real data is involved.
+Reversible: yes (backup retained for this session)
+
+## 2026-08-12 · Round H task 1 · Verify H-2 proves the exclusion by injected probe
+Context: All 13 mock transfers sit in 202604, the baseline month where LOST_ACCOUNT cannot fire, so on stock mock data the transfer exclusion never binds and a naive check would pass vacuously.
+Decision: verify_round_h H-2 injects a synthetic 202605 transfer row for an account LOST_ACCOUNT actually matches, then asserts TRANSFERRED_IN claims it AND LOST_ACCOUNT's count drops by exactly one (10→9), removing the probe row afterwards.
+Reversible: yes

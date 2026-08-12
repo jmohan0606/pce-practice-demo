@@ -5,15 +5,13 @@ Evaluation goes through ``get_graph_client().run_query("rules_evaluate_plan")``
 so the same call path serves mock and, later, a live TigerGraph.
 
 ``evaluate_rule_set`` honours B3.7 ordering: rules run in ``evaluation_order``,
-and account keys matched by an earlier TRANSFER rule (driving vertex
-phx_dm_pce_account_transfer) are EXCLUDED from later account-grain populations —
-so a transferred account is never counted as lost.
-
-Round F: a rule may also carry ``exclude_matched_of: [rule_code, ...]`` —
-account keys matched by those earlier rules in the same evaluation pass are
-excluded from its population. NEW_BILLING uses it to exclude accounts already
-claimed by NEW_ACCOUNT (an account opened this month is new, not newly
-billing).
+and exclusion between rules happens ONE way — a rule that needs it declares
+``exclude_matched_of: [rule_code, ...]``: account keys matched by those earlier
+rules in the same evaluation pass are excluded from its population. NEW_BILLING
+uses it to exclude accounts already claimed by NEW_ACCOUNT; LOST_ACCOUNT uses it
+to exclude transferred accounts (Round H task 1 — this replaces the implicit
+``transferred_keys`` accumulation, which silently excluded IN's matches from OUT
+at practice scope where both rules see the same transfer rows).
 """
 from __future__ import annotations
 
@@ -22,8 +20,6 @@ from app.rules.store import get_rule_store
 from app.shared.logging import get_logger
 
 _log = get_logger("app.rules.service")
-
-_TRANSFER_VERTEX = "phx_dm_pce_account_transfer"
 
 
 def rule_scopes(rule: dict) -> list[str]:
@@ -102,9 +98,9 @@ def evaluate_rule(rule: dict, month: str | None = None, advisor_sid: str | None 
 def evaluate_rule_set(version_id: str, month: str | None = None,
                       advisor_sid: str | None = None,
                       scope: str | None = None) -> dict:
-    """Evaluate every rule of a version in evaluation_order at one scope,
-    excluding accounts claimed by earlier transfer rules from later
-    account-grain populations.
+    """Evaluate every rule of a version in evaluation_order at one scope.
+    Exclusion is explicit only: a rule's ``exclude_matched_of`` names the
+    earlier rules whose matched account keys are removed from its population.
 
     Round G task 1: rules whose ``scopes`` do not include the evaluation scope
     are NOT evaluated — they come back ``skipped`` with a skip_reason. Skipped
@@ -120,7 +116,6 @@ def evaluate_rule_set(version_id: str, month: str | None = None,
     if scope not in SCOPES:
         raise ValueError(f"unknown scope {scope!r} — expected one of {', '.join(SCOPES)}")
     rules = store.version_rules(version["version_id"])
-    transferred_keys: set[str] = set()
     matched_by_code: dict[str, set[str]] = {}
     results = []
     for rule in rules:
@@ -136,9 +131,10 @@ def evaluate_rule_set(version_id: str, month: str | None = None,
                 "evaluation_order": rule.get("evaluation_order"),
             })
             continue
-        exclude: set[str] = set(transferred_keys) if rule.get("grain") == "account" else set()
-        # Round F: explicit claims — keys matched by the named earlier rules
-        # (e.g. NEW_BILLING excludes NEW_ACCOUNT's accounts).
+        # Explicit claims only — keys matched by the named earlier rules
+        # (e.g. NEW_BILLING excludes NEW_ACCOUNT's accounts, LOST_ACCOUNT
+        # excludes both transfer rules' accounts).
+        exclude: set[str] = set()
         for code in rule.get("exclude_matched_of") or []:
             exclude |= matched_by_code.get(code, set())
         outcome = evaluate_rule(rule, month=month, advisor_sid=advisor_sid,
@@ -149,8 +145,5 @@ def evaluate_rule_set(version_id: str, month: str | None = None,
         if outcome.get("evaluated"):
             matched_by_code.setdefault(rule["rule_code"], set()).update(
                 str(entry["key"]) for entry in outcome.get("matched", []))
-            if outcome.get("vertex") == _TRANSFER_VERTEX:
-                # transfer rules match transfer rows; the excluded entity is the account.
-                transferred_keys |= {entry["key"] for entry in outcome.get("matched", [])}
     return {"version_id": version["version_id"], "month": month,
             "advisor_sid": advisor_sid, "scope": scope, "results": results}
