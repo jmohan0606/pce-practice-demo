@@ -148,7 +148,10 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
     if rule_outcomes is not None:
         outcome_lines = []
         for o in rule_outcomes:
-            if o.get("error"):
+            if o.get("skipped"):
+                # skipped is normal and expected — never an error
+                outcome_lines.append(f"- {o['rule_code']}: skipped ({o['skip_reason']})")
+            elif o.get("error"):
                 outcome_lines.append(f"- {o['rule_code']}: not evaluated ({o['error']})")
             elif o.get("empty_reason"):
                 outcome_lines.append(f"- {o['rule_code']}: empty ({o['empty_reason']})")

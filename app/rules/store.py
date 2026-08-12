@@ -208,15 +208,24 @@ class RuleStore:
     # ----- lifecycle operations -----
 
     def mark_compiled(self, rule_key: str, plan: dict, explanation: str,
-                      execution: dict) -> dict:
+                      execution: dict, scopes: list[str] | None = None,
+                      plan_by_scope: dict | None = None) -> dict:
         """The Rule Compiler produced a plan that passed all five checks
-        (including execution against mock data). DRAFT → COMPILED."""
-        return self._update_rule_fields(
-            rule_key, status="COMPILED", plan=plan, explanation=explanation,
+        (including execution against mock data). DRAFT → COMPILED. Round G:
+        the compiler also sets ``scopes`` (derived from the plan's scope
+        parameters; human-overridable via edit) and may carry per-scope plan
+        variants in ``plan_by_scope``."""
+        fields: dict = dict(
+            status="COMPILED", plan=plan, explanation=explanation,
             compile_error=None, needs_data_reason=None,
             compiled_evaluated_rows=execution.get("evaluated_rows"),
             compiled_matched_count=execution.get("matched_count"),
             compiled_at=_now())
+        if scopes is not None:
+            fields["scopes"] = list(scopes)
+        if plan_by_scope is not None:
+            fields["plan_by_scope"] = plan_by_scope
+        return self._update_rule_fields(rule_key, **fields)
 
     def mark_needs_data(self, rule_key: str, reason: str, plan: dict | None = None,
                         explanation: str | None = None) -> dict:
@@ -269,6 +278,8 @@ class RuleStore:
                 "rule_code", "rule_name", "statement", "plain_description",
                 "worked_example", "kind", "grain", "driver_tag", "confidence",
                 "missing", "unclear_notes", "evaluation_order",
+                # Round G: a human may override the compiler-derived scopes
+                "scopes",
             }
             rejected = sorted(set(changes) - editable)
             if rejected:
@@ -283,7 +294,7 @@ class RuleStore:
                                   "approved_by", "approved_at", "created_at", "published_as",
                                   # a changed statement invalidates the compiled plan —
                                   # the new draft recompiles from scratch
-                                  "plan", "explanation", "compile_error",
+                                  "plan", "plan_by_scope", "explanation", "compile_error",
                                   "needs_data_reason", "compiled_evaluated_rows",
                                   "compiled_matched_count", "compiled_at")}
             draft.update(changes)

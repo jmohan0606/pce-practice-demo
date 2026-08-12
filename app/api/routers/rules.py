@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from app.rules.compiler import compile_status
 from app.rules.seed import ensure_v0_seed
-from app.rules.service import evaluate_rule, evaluate_rule_set
+from app.rules.service import evaluate_rule, evaluate_rule_set, rule_scopes
 from app.rules.store import RuleStoreError, get_rule_store
 
 router = APIRouter(prefix="/api/rules", tags=["rules"],
@@ -35,6 +35,9 @@ def _serialize(rule: dict) -> dict:
     out.setdefault("explanation", None)
     out.setdefault("missing", rule.get("unclear_notes") or None)
     out.setdefault("needs_data_reason", None)
+    # Round G: the effective scope set (explicit or derived) is always shown,
+    # so the review UI can display and override it.
+    out["scopes"] = rule_scopes(rule) if rule.get("plan") else (rule.get("scopes") or [])
     if rule.get("status") == "NEEDS_INPUT":
         out.update({"compiled": False,
                     "compile_error": rule.get("missing") or rule.get("unclear_notes")
@@ -109,6 +112,9 @@ class EvaluateRequest(BaseModel):
     version: str | None = None  # evaluate a whole version in evaluation_order
     month: str | None = None
     advisor_sid: str | None = None
+    # Round G: evaluation scope (practice|advisor|product|product_advisor|
+    # account). None derives it: advisor_sid supplied → advisor, else practice.
+    scope: str | None = None
 
 
 @router.post("/evaluate")
@@ -118,10 +124,12 @@ def evaluate(body: EvaluateRequest) -> dict:
         rule = store.get(body.rule_key)
         if rule is None:
             raise HTTPException(status_code=404, detail=f"unknown rule_key {body.rule_key!r}")
-        return evaluate_rule(rule, month=body.month, advisor_sid=body.advisor_sid)
+        return evaluate_rule(rule, month=body.month, advisor_sid=body.advisor_sid,
+                             scope=body.scope)
     version = body.version or "latest"
     try:
-        return evaluate_rule_set(version, month=body.month, advisor_sid=body.advisor_sid)
+        return evaluate_rule_set(version, month=body.month, advisor_sid=body.advisor_sid,
+                                 scope=body.scope)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

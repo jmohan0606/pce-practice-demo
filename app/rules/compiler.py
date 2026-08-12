@@ -68,6 +68,14 @@ _JOIN_KEYS = ("acct_key", "advisor_sid", "month_id", "product_id")
 NUMERIC_TYPES = {"INT", "UINT", "DOUBLE", "FLOAT"}
 
 ALLOWED_PARAMS = ("month", "advisor_sid", "from_month", "to_month", "threshold")
+
+# Round G task 1 — evaluation scopes a rule can run at. A rule whose plan
+# references a scope parameter is restricted to the scopes that supply it;
+# a rule with no scope parameter is scope-agnostic and runs everywhere.
+SCOPES = ("practice", "advisor", "product", "product_advisor", "account")
+_SCOPE_PARAM_IMPLIES: dict[str, tuple[str, ...]] = {
+    "advisor_sid": ("advisor", "product_advisor", "account"),
+}
 ALLOWED_AGGS = ("none", "sum", "count", "count_distinct", "avg", "min", "max")
 FILTER_OPS = ("=", "!=", ">", ">=", "<", "<=", "LIKE", "IN", "IS_NULL", "IS_NOT_NULL")
 SCALAR_FUNCTIONS = ("round", "abs", "min", "max")
@@ -520,6 +528,37 @@ def execute_check(compiled: CompiledRule) -> dict | CompileError:
                             f"plan raised against mock data: {type(exc).__name__}: {exc}")
     return {"evaluated_rows": row.get("evaluated_rows", 0),
             "matched_count": row.get("matched_count", 0)}
+
+
+# --------------------------------------------------------------------------- scopes (Round G)
+
+def derive_scopes(plan_json: dict | None,
+                  plan_by_scope: dict[str, dict] | None = None) -> list[str]:
+    """Default scope set for a rule, derived from its plan(s): a plan that
+    references a scope parameter restricts the rule to the scopes that supply
+    it; a scope with its own plan in plan_by_scope is applicable regardless.
+    No scope parameter anywhere → all scopes (scope-agnostic)."""
+    def _plan_params(plan: dict) -> set[str]:
+        declared = {str(p).lstrip(":") for p in plan.get("params") or []}
+        try:
+            found = {str(v)[1:] for f in plan.get("filters") or []
+                     if isinstance(f, dict) and isinstance(f.get("value"), str)
+                     and str(f["value"]).startswith(":")}
+        except Exception:  # noqa: BLE001 — malformed filters fail translation, not here
+            found = set()
+        return declared | found
+
+    base_params = _plan_params(plan_json or {})
+    restricting = [p for p in base_params if p in _SCOPE_PARAM_IMPLIES]
+    if not restricting:
+        scopes = set(SCOPES)
+    else:
+        scopes = set()
+        for param in restricting:
+            scopes |= set(_SCOPE_PARAM_IMPLIES[param])
+    # a scope with its own dedicated plan is applicable by construction
+    scopes |= {s for s in (plan_by_scope or {}) if s in SCOPES}
+    return [s for s in SCOPES if s in scopes]
 
 
 # --------------------------------------------------------------------------- rule-facing API

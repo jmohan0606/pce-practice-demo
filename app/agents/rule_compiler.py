@@ -34,6 +34,8 @@ from app.rules.compiler import (
     ALLOWED_AGGS,
     ALLOWED_PARAMS,
     FILTER_OPS,
+    SCOPES,
+    derive_scopes,
     load_schema_catalog,
     validate_plan,
 )
@@ -82,7 +84,14 @@ def build_system_prompt() -> str:
         '   "attribute":{"name":"<label>","expr":"<arithmetic over fields and value>"} or null,\n'
         '   "params":[":month",":advisor_sid"],\n'
         '   "explanation":"<2-3 plain-English sentences: what the plan reads, computes and flags>",\n'
-        '   "unsupported":null}\n\n'
+        '   "unsupported":null,\n'
+        '   "plan_by_scope":{"practice":{...a full plan object...}} or omit}\n\n'
+        "Scopes (set automatically — you rarely need to think about them): a plan "
+        "referencing :advisor_sid can only run at scopes that supply an advisor "
+        "(advisor, product_advisor, account). If the rule is ALSO meaningful "
+        "firm-wide without the advisor filter, emit \"plan_by_scope\" with a "
+        "\"practice\" variant of the plan that drops the :advisor_sid filter — "
+        "scopes are " + ", ".join(SCOPES) + ".\n\n"
         "Plan semantics (how your plan is executed — no SQL is ever generated):\n"
         "- Rows come from `vertex`; when the caller passes :month or :advisor_sid "
         "and the vertex carries month_id/advisor_sid, rows are scoped to them "
@@ -217,21 +226,37 @@ def compile_rule_with_agent(rule_key: str,
             return store.mark_needs_data(rule_key, str(unsupported),
                                          plan=decoded, explanation=decoded.get("explanation"))
 
+        plan_by_scope = decoded.pop("plan_by_scope", None)
         outcome = validate_plan(rule.get("rule_code") or rule_key,
                                 rule.get("grain") or "", decoded)
-        if outcome["ok"]:
+        scope_error = None
+        if outcome["ok"] and isinstance(plan_by_scope, dict):
+            # every scope variant passes the same five checks as the main plan
+            for scope_name, scope_plan in plan_by_scope.items():
+                if scope_name not in SCOPES or not isinstance(scope_plan, dict):
+                    scope_error = (f"plan_by_scope key {scope_name!r} must be one of "
+                                   f"{', '.join(SCOPES)} with a plan object")
+                    break
+                scope_outcome = validate_plan(rule.get("rule_code") or rule_key,
+                                              rule.get("grain") or "", scope_plan)
+                if not scope_outcome["ok"]:
+                    scope_error = f"plan_by_scope[{scope_name}]: {scope_outcome['error']}"
+                    break
+        if outcome["ok"] and scope_error is None:
             return store.mark_compiled(
                 rule_key, plan=decoded,
                 explanation=str(decoded.get("explanation") or ""),
-                execution=outcome["execution"])
+                execution=outcome["execution"],
+                scopes=derive_scopes(decoded, plan_by_scope),
+                plan_by_scope=plan_by_scope if isinstance(plan_by_scope, dict) else None)
         repairs += 1
-        last_error = outcome["error"]
+        last_error = scope_error or outcome["error"]
         _log.info("rule %s: plan failed validation (%s) — repair attempt %d",
-                  rule_key, outcome["error"], repairs)
+                  rule_key, last_error, repairs)
         if repairs > MAX_REPAIRS:
             break
         transcript.append(
-            f"PLAN REJECTED by validation: {outcome['error']}\n"
+            f"PLAN REJECTED by validation: {last_error}\n"
             f"Fix the plan and emit the corrected JSON (or set \"unsupported\" if "
             f"the schema truly cannot express the rule).")
 

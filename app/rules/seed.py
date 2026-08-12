@@ -64,6 +64,10 @@ V0_RULES: list[dict] = [
         "grain": "account",
         "driver_tag": "Transfers",
         "evaluation_order": 20,
+        # Round G task 1: meaningful firm-wide too — "how many accounts moved
+        # between advisors this month" is a practice question, answered by a
+        # practice-scope plan that drops the advisor filter.
+        "scopes": ["practice", "advisor", "product_advisor", "account"],
         "plan": {
             "vertex": "phx_dm_pce_account_transfer",
             "filters": [{"field": "to_advisor_sid", "op": "=", "value": ":advisor_sid"}],
@@ -74,6 +78,20 @@ V0_RULES: list[dict] = [
             "explanation": "Reads transfer records whose destination is the requested advisor "
                            "and flags each transferred-in account.",
             "unsupported": None,
+        },
+        "plan_by_scope": {
+            "practice": {
+                "vertex": "phx_dm_pce_account_transfer",
+                "filters": [],
+                "compute": {"agg": "count", "expr": "*"},
+                "trigger": {"op": ">", "value": 0},
+                "attribute": None,
+                "params": [],
+                "explanation": "At practice scope no advisor filter applies: reads every "
+                               "transfer record in the month and flags each account that "
+                               "moved between advisors.",
+                "unsupported": None,
+            },
         },
     },
     {
@@ -87,6 +105,9 @@ V0_RULES: list[dict] = [
         "grain": "account",
         "driver_tag": "Transfers",
         "evaluation_order": 20,
+        # Round G task 1: at practice scope the advisor filter drops — every
+        # transferred account is excluded from the firm-wide lost population.
+        "scopes": ["practice", "advisor", "product_advisor", "account"],
         "plan": {
             "vertex": "phx_dm_pce_account_transfer",
             "filters": [{"field": "from_advisor_sid", "op": "=", "value": ":advisor_sid"}],
@@ -97,6 +118,20 @@ V0_RULES: list[dict] = [
             "explanation": "Reads transfer records whose origin is the requested advisor; "
                            "matched accounts are excluded from the lost-account population.",
             "unsupported": None,
+        },
+        "plan_by_scope": {
+            "practice": {
+                "vertex": "phx_dm_pce_account_transfer",
+                "filters": [],
+                "compute": {"agg": "count", "expr": "*"},
+                "trigger": {"op": ">", "value": 0},
+                "attribute": None,
+                "params": [],
+                "explanation": "At practice scope no advisor filter applies: reads every "
+                               "transfer record in the month; matched accounts are excluded "
+                               "from the firm-wide lost-account population.",
+                "unsupported": None,
+            },
         },
     },
     {
@@ -177,10 +212,13 @@ def ensure_v0_seed() -> dict:
             return {"seeded": False, "version_id": existing["version_id"],
                     "rule_count": existing["rule_count"]}
         for rule in V0_RULES:
-            outcome = validate_plan(rule["rule_code"], rule["grain"], rule["plan"])
-            if not outcome["ok"]:
-                raise RuntimeError(f"v0 seed rule {rule['rule_code']} failed validation: "
-                                   f"{outcome['error']}")
+            plans = {"(default)": rule["plan"],
+                     **{f"scope {s}": p for s, p in (rule.get("plan_by_scope") or {}).items()}}
+            for label, plan in plans.items():
+                outcome = validate_plan(rule["rule_code"], rule["grain"], plan)
+                if not outcome["ok"]:
+                    raise RuntimeError(f"v0 seed rule {rule['rule_code']} {label} plan "
+                                       f"failed validation: {outcome['error']}")
         version = store.create_version(
             0, "PUBLISHED",
             notes="v0 operator-specified seed (ROUND_B_SPEC B3.7, Round E plan format)",

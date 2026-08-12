@@ -69,9 +69,13 @@ def evaluate_published_rules(advisor_sid: str, from_month: str, to_month: str,
     (rule_findings, rule_outcomes_for_the_prompt)."""
     from app.rules.service import evaluate_rule_set
 
+    # Round G task 1: the aggregate book runs at practice scope — rules that
+    # need an advisor either use their practice-scope plan variant or are
+    # skipped as not applicable (never evaluated into an expected error).
     outcome = evaluate_rule_set(
         version["version_id"], month=to_month,
-        advisor_sid=None if advisor_sid == "all" else advisor_sid)
+        advisor_sid=None if advisor_sid == "all" else advisor_sid,
+        scope="practice" if advisor_sid == "all" else "advisor")
     rule_map = {r["rule_key"]: r
                 for r in get_rule_store().version_rules(version["version_id"])}
     findings: list[dict] = []
@@ -83,7 +87,9 @@ def evaluate_published_rules(advisor_sid: str, from_month: str, to_month: str,
                  "evaluated": result.get("evaluated", False),
                  "matched_count": result.get("matched_count", 0),
                  "error": result.get("error"),
-                 "empty_reason": result.get("empty_reason")}
+                 "empty_reason": result.get("empty_reason"),
+                 "skipped": result.get("skipped", False),
+                 "skip_reason": result.get("skip_reason")}
         outcomes.append(entry)
         matched = result.get("matched") or []
         if not (result.get("evaluated") and matched):

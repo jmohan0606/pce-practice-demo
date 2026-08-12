@@ -218,9 +218,13 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     # identically in every month, regardless of whether the month has rows.
     from app.rules.service import evaluate_rule_set
 
+    # Round G: with no advisor_sid the set derives PRACTICE scope, where the
+    # transfer rules legitimately run their practice-scope plan — so the
+    # missing-parameter contract is pinned at explicit ADVISOR scope, where
+    # :advisor_sid is genuinely required and genuinely absent.
     errors = {}
     for month in ("202604", "202605", "202606"):
-        out = evaluate_rule_set(v0["version_id"], month=month)  # no advisor_sid
+        out = evaluate_rule_set(v0["version_id"], month=month, scope="advisor")  # no advisor_sid
         ti = next(x for x in out["results"] if x["rule_code"] == "ACCOUNT_TRANSFERRED_IN")
         errors[month] = (ti["evaluated"], ti.get("error"))
     all_error = all(ev is False and err and ":advisor_sid" in err
