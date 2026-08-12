@@ -57,11 +57,40 @@
       confirmed across all renderers (4.4). Main thread closed the gap B
       found: the drill-down GET now serializes limit_hit/limits_hit from the
       stored run. npm run build passes; typed API clients updated.
-- [ ] Task 5 (scale test) — DEFERRED TO NEXT SESSION, untouched (operator call,
-      session budget). Nothing of 5.1–5.3 exists yet: no --scale flag on
-      scripts/generate_mock_data.py, no scale run, no measurements. Task 6
-      check 11 is deferred with it. The 2.2 resized defaults are sized for the
-      target volume but UNMEASURED until this runs.
+- [x] Re-verification session (2026-08-12, post-restart): tasks 2/3/4 proven
+      by EXECUTION, not inspection. Task 2: 18 limits printed at runtime,
+      MINER_QUERY_BUDGET=2 override binds behaviourally. Task 3:
+      check_cache_support real Claude (caching ENGAGES, 99.8% read call 2);
+      check_cache_health real run PASS (one write turn 1, reads=176,148
+      writes=0 after; write:read 0.04 vs Round E's 0.17); claude_wire 2
+      anchors / openai path leak-free byte-identical. Task 4: npm build 8/8;
+      headless-chromium OBSERVED: amber limit notice on insights, Trace
+      Limits column + name=value—effect detail, never-fired card,
+      "Showing 20 of 84" evidence clip. FOUND+FIXED en route: budget<3
+      opening queries crashed bare (442b47e); rule-finding evidence hardcoded
+      [:50] in service.py AND drilldown.py silently under-reported
+      evidence_total (06831c7, found at scale); drill-down budget binds
+      mislabelled MINER_QUERY_BUDGET (11c536f).
+- [x] Task 5 (main thread, this session): --scale on generate_mock_data.py
+      (S× txns, ceil(S/2)× accounts; S=1 preserves RNG order; 432c100).
+      --scale 28 = 57,657 txns / 3,066 accounts / 490 households / 20
+      advisors. Measured (ROUND_H_COMPLETE.md full table): gen 3.2s, ingest
+      2m20s 46/46 verified, rule eval 3.34s, insight run 91.6s/$0.178
+      (ROWS_SHOWN ×5 + MAX_RUN_INPUT_TOKENS bound, wrap-up + findings kept),
+      drill-down 57.3s/$0.122 (8-query budget bound), largest tool result
+      3,066 rows/306k chars → 40 rows shown as SAMPLE. NOTHING RESIZED —
+      every bound limit degraded as designed; ingestion cap measured at 116
+      calls max (500 kept, now with evidence). accounts_opened 3.1s latency
+      outlier noted. FOUND: generator never cross-process deterministic
+      (salted hash() product subsets; committed data/ canonical; DECISIONS.md).
+      Scale data transient — canonical data/ restored, runtime dbs cleared.
+- [x] Task 6 (main thread): all 13 checks PASS with actual output in
+      docs/ROUND_H_COMPLETE.md (1–8, 13 via verify_round_h 9/9 on restored
+      canonical data; 9 by grep+wire test; 10 by real run; 11 by the scale
+      run; 12 by browser observation). verify a/b/c/e re-run green
+      (25/25, 19/19, 13/13, 8/8). Servers restarted on this round's code
+      (:8002 healthy, :3002 200); public visibility still needs the Ports
+      panel (gh token lacks codespace scope).
 
 ## Round G (docs/spec/ROUND_G_SPEC.md)
 - [x] Task 1 (main thread, 2d22311): rules declare their own scope — scopes on
@@ -299,12 +328,12 @@
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: G (docs/spec/ROUND_G_SPEC.md) — COMPLETE. All 6 tasks done, verified in
-      the main thread and committed; docs/ROUND_G_COMPLETE.md has the actual
-      output of all 12 checks (check 11 is code-level — a human browser
-      keyboard pass remains). verify a/b/c/e green (25/25, 19/19, 13/13, 8/8).
-      Round E Task 2's PROVISIONAL flag lifted on evidence
-      (docs/ROUND_G_DIAGNOSIS.md + DECISIONS.md).
+Round: H (docs/ROUND_H_SPEC.md) — COMPLETE. All 6 tasks done; tasks 2/3/4
+      additionally re-verified BY EXECUTION after the mid-round restart;
+      docs/ROUND_H_COMPLETE.md has the actual output of all 13 checks plus
+      the full scale-test table (--scale 28: 57,657 txns). No limit resized —
+      every bound limit degraded as designed and surfaced loudly. verify
+      a/b/c/e/h green (25/25, 19/19, 13/13, 8/8, 9/9).
 Carried observations: (1) the <$0.03 cost target vs Sonnet-reporter policy
       still needs an operator ruling (advisor run now $0.091, scoped product
       run $0.102); (2) the compiled grid-sharing rule matches 0 rows on mock
@@ -323,9 +352,11 @@ SPEC CHANGE (operator, 2026-08-12): advisor_nnm_position DROPPED and every NNM
       recommendations — three months of net flows cannot stand in for an
       annually-measured NNM figure; even labelled, it presents a proxy as a fact.
       AUM and net flows ship; NNM waits for real data.
-Cost: running LLM total ≈ $3.74 of the $15 ceiling ($0.30 this round:
-      diagnosis $0.106 + comparison run $0.091 + scoped generation $0.102).
-Last updated: 2026-08-12 (Round G session, after Task 6)
+Cost: running LLM total ≈ $4.66 project-wide. This session ≈ $0.92 of its $10
+      ceiling (cache support $0.01 + cache health $0.14 + forced-limit runs
+      ~$0.10 + scale insight run ×2 $0.36 + scale drill-down $0.12 + small
+      re-runs in verify sweeps ~$0.19).
+Last updated: 2026-08-12 (Round H completion session, after Task 6)
 Carry-over from Round C: per-advisor sweep still finishable via
       `python3 scripts/e2e_finish.py` once credits allow; port visibility for
       8001/3001 still needs the Ports panel (gh token lacks the codespace scope).
