@@ -4,8 +4,17 @@ Round E shape: each rule is a plain-English ``statement`` plus an
 operator-authored ``plan`` in the Rule Compiler's JSON format, validated
 through the SAME five checks every compiled rule passes (including execution
 against mock data). Provenance OPERATOR_SPECIFIED, evaluation_order
-10,20,20,30,40,50; ACCOUNT_TRANSFERRED_OUT evaluates before LOST_ACCOUNT and
-transferred accounts are excluded from the lost population.
+10,20,20,25,30.
+
+Round F correction: v0 holds ONLY logic the operator supplied because no plan
+document states it — exactly five account-lifecycle rules. FEE_REDUCTION_SHARING
+was removed (it IS stated in the documents — PCA p.4, SAG p.4, FAQ p.13 — so it
+must come from the extractor with its citation, never the seed) and
+PARTIAL_PERIOD was removed (client Phase 0 confirmed June is complete: 30
+distinct dates, so the rule could never fire). NEW_BILLING was added at order
+25: it runs AFTER NEW_ACCOUNT and excludes accounts NEW_ACCOUNT already claimed
+(``exclude_matched_of`` — an account opened this month is new, not newly
+billing).
 
 ``ensure_v0_seed()`` is idempotent: it does nothing when any rule-set version
 already exists.
@@ -91,6 +100,41 @@ V0_RULES: list[dict] = [
         },
     },
     {
+        "rule_code": "NEW_BILLING",
+        "rule_name": "New Billing",
+        "statement": "An account that held a balance in the prior month but produced no "
+                     "credited revenue, and produced credited revenue this month. Distinct "
+                     "from a new account, which did not exist before.",
+        "worked_example": "An account with a $50,000 April balance, no April revenue and "
+                          "$400 of May revenue is newly billing in May.",
+        "kind": "TRIGGER",
+        "grain": "account",
+        "driver_tag": "New Billing",
+        "evaluation_order": 25,
+        # Runs AFTER NEW_ACCOUNT (order 10): accounts NEW_ACCOUNT already
+        # claimed are excluded — an account opened this month is new, not
+        # newly billing.
+        "exclude_matched_of": ["NEW_ACCOUNT"],
+        "plan": {
+            "vertex": "phx_dm_pce_account_month",
+            # present_prior_month carries the baseline guard: like LOST_ACCOUNT,
+            # this rule cannot fire on 202604 (no prior month exists) and returns
+            # empty-with-reason there instead of a fake zero-match.
+            "filters": [{"field": "present_prior_month", "op": "=", "value": True},
+                        {"field": "prior_end_balance", "op": ">", "value": 0},
+                        {"field": "prior_credited_amt", "op": "=", "value": 0},
+                        {"field": "credited_amt", "op": ">", "value": 0}],
+            "compute": {"agg": "sum", "expr": "credited_amt"},
+            "trigger": {"op": ">", "value": 0},
+            "attribute": None,
+            "params": [],
+            "explanation": "Reads account-months that held a prior-month balance with no "
+                           "prior-month credited revenue, sums this month's credited "
+                           "revenue, and flags accounts that started billing this month.",
+            "unsupported": None,
+        },
+    },
+    {
         "rule_code": "LOST_ACCOUNT",
         "rule_name": "Lost Account",
         "statement": "An account whose balance fell to zero, or which had revenue in "
@@ -114,56 +158,6 @@ V0_RULES: list[dict] = [
             "explanation": "Reads zero-balance account-months that existed in the prior month, "
                            "sums the prior month's credited revenue, and flags accounts that "
                            "had revenue then and none now.",
-            "unsupported": None,
-        },
-    },
-    {
-        "rule_code": "FEE_REDUCTION_SHARING",
-        "rule_name": "Sharing a Client Fee Discount",
-        "statement": "When a client pays more than 10% below the standard fee, the "
-                     "advisor's payout grid moves down one point for every 1% below "
-                     "that threshold...",
-        "worked_example": "115 bps standard, 100 bps actual is a 13% reduction, so the grid "
-                          "moves down 3 points.",
-        "kind": "TRIGGER",
-        "grain": "account",
-        "driver_tag": "Fee Rate",
-        "evaluation_order": 40,
-        "plan": {
-            "vertex": "phx_dm_pce_account_month",
-            "filters": [{"field": "is_managed", "op": "=", "value": True},
-                        {"field": "month_id", "op": "=", "value": ":month"}],
-            "compute": {"agg": "none",
-                        "expr": "round((standard_rate_bps - client_rate_bps) / standard_rate_bps * 100)"},
-            "trigger": {"op": ">", "value": 10},
-            "attribute": {"name": "grid_points", "expr": "min(value - 10, 10)"},
-            "params": [":month"],
-            "explanation": "Reads each managed account-month, computes the percentage the "
-                           "client fee sits below standard, and flags those above 10% with "
-                           "the grid-point movement capped at 10.",
-            "unsupported": None,
-        },
-    },
-    {
-        "rule_code": "PARTIAL_PERIOD",
-        "rule_name": "Partial Period",
-        "statement": "A month with fewer trading days than the one before it will show "
-                     "lower revenue for reasons unrelated to the book.",
-        "worked_example": "A 19-trading-day month following a 21-day month shows roughly 10% "
-                          "less recurring revenue with no change in the book.",
-        "kind": "WINDOW",
-        "grain": "advisor",
-        "driver_tag": "Calendar",
-        "evaluation_order": 50,
-        "plan": {
-            "vertex": "phx_dm_pce_month",
-            "filters": [{"field": "is_partial", "op": "=", "value": True}],
-            "compute": {"agg": "none", "expr": "trading_days"},
-            "trigger": {"op": "<", "value": 21},
-            "attribute": None,
-            "params": [],
-            "explanation": "Reads the month calendar and flags months marked partial whose "
-                           "trading-day count is below a full month.",
             "unsupported": None,
         },
     },

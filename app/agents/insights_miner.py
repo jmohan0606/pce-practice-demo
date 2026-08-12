@@ -48,8 +48,8 @@ TOOL_RESULT_CHAR_CAP = 1500  # per-payload character cap on tool results
 STATIC_PREFIX_MIN_TOKENS = 4096
 
 VALID_TAGS = ("Fee Rate", "Market", "One-Time", "Inherited", "New Accounts",
-              "Lost Accounts", "Transfers", "Referrals", "Period Length",
-              "Calendar", "Flows", "Mix", "Other")
+              "Lost Accounts", "New Billing", "Transfers", "Referrals",
+              "Period Length", "Calendar", "Flows", "Mix", "Other")
 
 
 def build_system_prompt() -> str:

@@ -187,9 +187,15 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
           isinstance(result, CompileError) and "made_up_field" in msg and "phx_dm_pce_" in msg,
           f"{msg[:110]}")
 
+    # Round F: v0 is exactly the five account-lifecycle rules the operator
+    # supplied (FEE_REDUCTION_SHARING is document-derived and comes from the
+    # extractor; PARTIAL_PERIOD could never fire — June is complete).
     codes = sorted(r["rule_code"] for r in v0_rules)
-    check("B3-13", "v0 seed present with 6 rules, all PUBLISHED, provenance OPERATOR_SPECIFIED",
-          v0["version_no"] == 0 and len(v0_rules) == 6
+    expected_codes = sorted(["NEW_ACCOUNT", "ACCOUNT_TRANSFERRED_IN",
+                             "ACCOUNT_TRANSFERRED_OUT", "NEW_BILLING", "LOST_ACCOUNT"])
+    check("B3-13", "v0 seed present with exactly the 5 lifecycle rules, all PUBLISHED, "
+                   "provenance OPERATOR_SPECIFIED",
+          v0["version_no"] == 0 and codes == expected_codes
           and all(r["status"] == "PUBLISHED" for r in v0_rules)
           and all(r["provenance"] == "OPERATOR_SPECIFIED" for r in v0_rules),
           f"version_no={v0['version_no']}, rules={codes}")
@@ -238,7 +244,9 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
           f"202604 matched={lost['202604']['matched_count']} "
           f"reason={str(lost['202604'].get('empty_reason'))[:50]!r}")
 
-    fee = next(r for r in v0_rules if r["rule_code"] == "FEE_REDUCTION_SHARING")
+    # Round F: FEE_REDUCTION_SHARING left the seed (document-derived), so the
+    # same-code conflict probe uses NEW_BILLING — any v0 rule works.
+    fee = next(r for r in v0_rules if r["rule_code"] == "NEW_BILLING")
     draft = {k: v for k, v in fee.items()
              if k not in ("rule_key", "version_id", "approved", "approved_by", "approved_at")}
     draft.update(status="DRAFT", provenance="DOCUMENT_DERIVED", confidence=0.9,
@@ -272,7 +280,7 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     v0_query = client.get(f"/api/rules?version={v0['version_id']}").json()
     check("B3-17", "publishing mints a new version; prior is SUPERSEDED and still queryable",
           v1["version_no"] == v0["version_no"] + 1 and v1["status"] == "PUBLISHED"
-          and v0_after["status"] == "SUPERSEDED" and len(v0_query["rules"]) == 6,
+          and v0_after["status"] == "SUPERSEDED" and len(v0_query["rules"]) == 5,
           f"v{v1['version_no']} PUBLISHED with {len(pub['rules'])} rules; "
           f"v0 status={v0_after['status']}, still returns {len(v0_query['rules'])} rules")
 

@@ -2,12 +2,23 @@
 
 A realistic advisor compensation plan written as PROSE AND TABLES — not a list
 of rules. The Rule Extractor has to FIND the provisions. Required content
-(task 3 table): the 10% fee-discount sharing rule as a rate table plus prose,
-the 115→100 bps worked example, rounding to the nearest whole percent, the
-$4MM net-new-money award, the six-month departed-advisor suspension, inherited
-transferred accounts, mid-period account openings, a referral cap whose
-threshold is deliberately NEVER stated (must extract as NEEDS_INPUT), and a
-rate table of at least 15 rows (table-integrity chunking on real content).
+(Round C task 3 table): the 10% fee-discount sharing rule as a rate table plus
+prose, a clearly-labelled illustrative worked example, rounding to the nearest
+whole percent, the $4MM net-new-money award, the six-month departed-advisor
+suspension, inherited transferred accounts, mid-period account openings, a
+referral cap whose threshold is deliberately NEVER stated (must extract as
+NEEDS_INPUT), and a rate table of at least 15 rows (table-integrity chunking on
+real content).
+
+Round F task 3 additions (docs/spec/PLAN_EXPECTATIONS_FINDINGS.md — NOT seeded;
+the extractor must find and cite them):
+- Equity credited revenue below $25.00 in a month → 0% payout rate (PCA p.3)
+- Mutual Fund credited revenue below $10.00 in a month → 0% payout rate (PCA p.3)
+- Select Anniversary Award requires ≥ $1,000,000 calendar-year credited
+  revenue (SAG p.6)
+- 145 bps is THE standard managed fee schedule (FAQ p.13, PCA p.3, SAG p.4);
+  115 bps appears ONLY inside the labelled illustrative worked example
+  (FAQ p.15). See DECISIONS.md 2026-08-12 Round F.
 
 Usage: python3 scripts/make_sample_plan_pdf.py [output_path]
 """
@@ -101,6 +112,16 @@ def build_pdf(output_path: Path = DEFAULT_OUT) -> Path:
           "the firm's deferral policy; the team uplift applies only to advisors on an active "
           "team agreement with an executed revenue-share schedule."),
         table_of(PAYOUT_SCHEDULE, [0.6 * inch, 2.5 * inch, 1.1 * inch, 1.2 * inch, 1.0 * inch]),
+        Paragraph("2.1  Product Minimums", h2),
+        p("Credited revenue participates in the payout schedule only once it clears the "
+          "product minimum for the month. Equity credited revenue below twenty-five dollars "
+          "($25.00) in a production month receives a payout rate of zero percent (0%) for "
+          "that month; mutual fund credited revenue below ten dollars ($10.00) in a "
+          "production month likewise receives a payout rate of zero percent (0%). Revenue "
+          "below a product minimum remains credited revenue for measurement and band "
+          "placement — the minimum suppresses the payout, not the credit. A payout recorded "
+          "against equity or mutual fund revenue that falls below its product minimum is an "
+          "administration error and must be reversed in the following production month."),
         p("Band placement is recalculated monthly. A month in which fewer trading days occur "
           "than in the preceding month — for example a mid-month data cutoff or an exchange "
           "holiday cluster — will show lower recurring revenue for reasons unrelated to the "
@@ -110,7 +131,9 @@ def build_pdf(output_path: Path = DEFAULT_OUT) -> Path:
         Paragraph("3  Client Fee Discounts and Grid Sharing", h1),
         Paragraph("3.1  The Sharing Threshold", h2),
         p("The firm expects most client relationships to price at or near the standard fee "
-          "schedule. When a client's effective fee falls more than ten percent (10%) below "
+          "schedule. The standard managed fee schedule is one hundred forty-five basis "
+          "points (145 bps) on managed assets, and discount sharing is measured against "
+          "that schedule. When a client's effective fee falls more than ten percent (10%) below "
           "the standard schedule for a managed account, the advisor shares in that discount "
           "through grid movement: the payout grid moves down one point for each full "
           "percentage point of reduction beyond the 10% threshold. The grid never moves "
@@ -122,12 +145,13 @@ def build_pdf(output_path: Path = DEFAULT_OUT) -> Path:
           "Re-papering an existing discount without changing its economics does not create "
           "a new pricing decision."),
         table_of(DISCOUNT_GRID, [2.6 * inch, 2.6 * inch]),
-        Paragraph("3.2  Worked Example", h2),
-        p("A managed account carries a standard schedule rate of 115 bps. The advisor "
-          "agrees with the client on an effective rate of 100 bps in May 2026. The "
-          "reduction is (115 − 100) / 115 = 13%. That is 3 full points beyond the 10% "
-          "threshold, so the advisor's grid moves down 3 points for that month's "
-          "production on the account."),
+        Paragraph("3.2  Worked Example (Illustrative Only)", h2),
+        p("The following example is illustrative only; the rates in it are assumed for "
+          "arithmetic and are not the standard schedule. Assume a managed account carries "
+          "a schedule rate of 115 bps. The advisor agrees with the client on an effective "
+          "rate of 100 bps in May 2026. The reduction is (115 − 100) / 115 = 13%. That is "
+          "3 full points beyond the 10% threshold, so the advisor's grid moves down 3 "
+          "points for that month's production on the account."),
         Paragraph("3.3  Rounding", h2),
         p("The effective reduction percentage is rounded to the nearest whole percent "
           "before the grid movement is applied. A computed reduction of 14.4% is treated "
@@ -175,7 +199,18 @@ def build_pdf(output_path: Path = DEFAULT_OUT) -> Path:
           "new money for award purposes."),
         Spacer(1, 6),
 
-        Paragraph("6  Referral Programs", h1),
+        Paragraph("6  Select Anniversary Award", h1),
+        p("The Select Anniversary Award recognises sustained production across a full plan "
+          "year. An advisor qualifies for the Select Anniversary Award only if calendar-year "
+          "credited revenue reaches at least one million dollars ($1,000,000). Calendar-year "
+          "credited revenue is the sum of the advisor's credited revenue across the twelve "
+          "production months of the plan year, measured after team splits. The award is "
+          "calculated and paid following the close of the plan year; an advisor whose "
+          "calendar-year credited revenue finishes below the one-million-dollar threshold "
+          "receives no anniversary award for that year, regardless of monthly run rate."),
+        Spacer(1, 6),
+
+        Paragraph("7  Referral Programs", h1),
         p("Referral-driven flows participate in the same credited-revenue measurement as "
           "all other business, subject to program terms. Note that a cap applies to "
           "referral-driven flows counted toward the net new money award in any plan year; "
@@ -184,7 +219,7 @@ def build_pdf(output_path: Path = DEFAULT_OUT) -> Path:
           "credit revenue normally but do not count toward award qualification."),
         Spacer(1, 6),
 
-        Paragraph("7  Administration", h1),
+        Paragraph("8  Administration", h1),
         p("The Compensation Committee administers this plan and resolves interpretive "
           "questions. Grid movements under Section 3 are recorded on each affected "
           "transaction as a grid reduction; advisors should review recorded reductions "

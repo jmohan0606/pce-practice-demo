@@ -70,8 +70,9 @@ def build_pdf(output_path: Path) -> Path:
         Paragraph("3.2 Discount Sharing", h2),
         Paragraph(DISCOUNT_PROSE * 4, body),
         Paragraph(
-            "Worked example: with a standard fee of 115 basis points and an actual fee of 100 "
-            "basis points, the reduction is 13 percent, so the grid moves down 3 points for the "
+            "Worked example (illustrative only — the standard managed fee schedule is 145 "
+            "basis points): assume a schedule rate of 115 basis points and an actual fee of 100 "
+            "basis points; the reduction is 13 percent, so the grid moves down 3 points for the "
             "affected accounts in that month.", body),
     ]
     output_path.parent.mkdir(parents=True, exist_ok=True)

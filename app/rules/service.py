@@ -8,6 +8,12 @@ so the same call path serves mock and, later, a live TigerGraph.
 and account keys matched by an earlier TRANSFER rule (driving vertex
 phx_dm_pce_account_transfer) are EXCLUDED from later account-grain populations —
 so a transferred account is never counted as lost.
+
+Round F: a rule may also carry ``exclude_matched_of: [rule_code, ...]`` —
+account keys matched by those earlier rules in the same evaluation pass are
+excluded from its population. NEW_BILLING uses it to exclude accounts already
+claimed by NEW_ACCOUNT (an account opened this month is new, not newly
+billing).
 """
 from __future__ import annotations
 
@@ -71,15 +77,23 @@ def evaluate_rule_set(version_id: str, month: str | None = None,
         raise ValueError(f"unknown rule-set version {version_id!r}")
     rules = store.version_rules(version["version_id"])
     transferred_keys: set[str] = set()
+    matched_by_code: dict[str, set[str]] = {}
     results = []
     for rule in rules:
-        exclude = sorted(transferred_keys) if rule.get("grain") == "account" else None
+        exclude: set[str] = set(transferred_keys) if rule.get("grain") == "account" else set()
+        # Round F: explicit claims — keys matched by the named earlier rules
+        # (e.g. NEW_BILLING excludes NEW_ACCOUNT's accounts).
+        for code in rule.get("exclude_matched_of") or []:
+            exclude |= matched_by_code.get(code, set())
         outcome = evaluate_rule(rule, month=month, advisor_sid=advisor_sid,
-                                exclude_keys=exclude)
+                                exclude_keys=sorted(exclude) if exclude else None)
         outcome["evaluation_order"] = rule.get("evaluation_order")
         results.append(outcome)
-        if outcome.get("evaluated") and outcome.get("vertex") == _TRANSFER_VERTEX:
-            # transfer rules match transfer rows; the excluded entity is the account.
-            transferred_keys |= {entry["key"] for entry in outcome.get("matched", [])}
+        if outcome.get("evaluated"):
+            matched_by_code.setdefault(rule["rule_code"], set()).update(
+                str(entry["key"]) for entry in outcome.get("matched", []))
+            if outcome.get("vertex") == _TRANSFER_VERTEX:
+                # transfer rules match transfer rows; the excluded entity is the account.
+                transferred_keys |= {entry["key"] for entry in outcome.get("matched", [])}
     return {"version_id": version["version_id"], "month": month,
             "advisor_sid": advisor_sid, "results": results}
