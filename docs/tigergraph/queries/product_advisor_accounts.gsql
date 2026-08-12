@@ -1,0 +1,24 @@
+// product_advisor_accounts — Round G drill-down query (docs/spec/ROUND_G_SPEC.md 3.2).
+// One advisor's accounts in one product group across a transition, with the
+// to-month end balance and transaction count.
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+// Local-tier equivalent: app/graph/queries/catalog.py::product_advisor_accounts
+CREATE QUERY product_advisor_accounts(STRING group_id, STRING advisor, STRING from_month, STRING to_month) FOR GRAPH phx_dm_pce_practice_demo {
+  SumAccum<DOUBLE> @from_amt; SumAccum<DOUBLE> @to_amt;
+  SumAccum<INT> @to_txns; SumAccum<DOUBLE> @end_balance;
+  acct = SELECT c FROM phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_of_product)- phx_dm_pce_product:p,
+                      phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_of_account)- phx_dm_pce_account:c
+         WHERE p.group_id == group_id
+           AND ((advisor == "all") OR x.advisor_sid == advisor)
+           AND (x.month_id == from_month OR x.month_id == to_month)
+         ACCUM CASE WHEN x.month_id == from_month THEN c.@from_amt += x.credited_amt
+               ELSE c.@to_amt += x.credited_amt, c.@to_txns += 1 END;
+  bal = SELECT c FROM acct:c -(phx_dm_pce_am_of_account)- phx_dm_pce_account_month:m
+        WHERE m.month_id == to_month
+        ACCUM c.@end_balance += m.end_balance;
+  PRINT acct[acct.acct_key AS acct_key,
+             acct.@from_amt AS from_amt, acct.@to_amt AS to_amt,
+             acct.@to_amt - acct.@from_amt AS change_amt,
+             acct.@end_balance AS end_balance,
+             acct.@to_txns AS txn_count];
+}

@@ -1,0 +1,22 @@
+// product_advisors — Round G drill-down query (docs/spec/ROUND_G_SPEC.md 3.2).
+// Every cohort advisor's contribution to one product group across a transition.
+// is_new_to_product = the advisor had NO revenue in this group in from_month.
+// Local-tier equivalent: app/graph/queries/catalog.py::product_advisors
+CREATE QUERY product_advisors(STRING group_id, STRING from_month, STRING to_month) FOR GRAPH phx_dm_pce_practice_demo {
+  SumAccum<DOUBLE> @from_amt; SumAccum<DOUBLE> @to_amt;
+  SumAccum<INT> @from_txns; SetAccum<STRING> @to_accts;
+  adv = SELECT a FROM phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_of_product)- phx_dm_pce_product:p,
+                     phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_by_advisor)- phx_dm_pce_advisor:a
+        WHERE p.group_id == group_id AND a.in_cohort
+          AND (x.month_id == from_month OR x.month_id == to_month)
+        ACCUM CASE WHEN x.month_id == from_month THEN
+                a.@from_amt += x.credited_amt, a.@from_txns += 1
+              ELSE
+                a.@to_amt += x.credited_amt, a.@to_accts += x.acct_key
+              END;
+  PRINT adv[adv.advisor_sid AS advisor_sid,
+            adv.@from_amt AS from_amt, adv.@to_amt AS to_amt,
+            adv.@to_amt - adv.@from_amt AS change_amt,
+            adv.@to_accts.size() AS account_count,
+            adv.@from_txns == 0 AS is_new_to_product];
+}

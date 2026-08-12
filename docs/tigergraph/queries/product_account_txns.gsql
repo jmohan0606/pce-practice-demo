@@ -1,0 +1,16 @@
+// product_account_txns — Round G drill-down query (docs/spec/ROUND_G_SPEC.md 3.2).
+// One account's transactions in one product group for one month — the
+// drill-down's deterministic floor. NO security identifier exists in the data,
+// so "why" runs out here (no LLM is ever called for this level).
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+// Local-tier equivalent: app/graph/queries/catalog.py::product_account_txns
+CREATE QUERY product_account_txns(STRING group_id, STRING advisor, STRING acct_key, STRING month_id) FOR GRAPH phx_dm_pce_practice_demo {
+  t = SELECT x FROM phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_of_product)- phx_dm_pce_product:p
+      WHERE p.group_id == group_id AND x.acct_key == acct_key
+        AND x.month_id == month_id
+        AND ((advisor == "all") OR x.advisor_sid == advisor)
+      ORDER BY x.trade_dt ASC;
+  PRINT t[t.trade_dt AS trade_dt, t.trade_description AS trade_description,
+          t.product_id AS product_id, t.client_rate_bps AS client_rate_bps,
+          t.credited_amt AS credited_amt];
+}

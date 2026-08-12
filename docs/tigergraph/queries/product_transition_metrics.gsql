@@ -1,0 +1,34 @@
+// product_transition_metrics — Round G drill-down query (docs/spec/ROUND_G_SPEC.md 3.2).
+// Practice-wide transition metrics for ONE product group: revenue from/to/change,
+// AUM of the group's revenue-bearing accounts (with prior), advisor and account
+// counts (with priors). Cohort advisors only (in_cohort = true).
+// Local-tier equivalent: app/graph/queries/catalog.py::product_transition_metrics
+CREATE QUERY product_transition_metrics(STRING group_id, STRING from_month, STRING to_month) FOR GRAPH phx_dm_pce_practice_demo {
+  SumAccum<DOUBLE> @@from_amt; SumAccum<DOUBLE> @@to_amt;
+  SetAccum<STRING> @@from_advisors; SetAccum<STRING> @@to_advisors;
+  SetAccum<STRING> @@from_accts; SetAccum<STRING> @@to_accts;
+  SumAccum<DOUBLE> @@aum; SumAccum<DOUBLE> @@prior_aum;
+  t = SELECT x FROM phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_of_product)- phx_dm_pce_product:p
+      WHERE p.group_id == group_id
+        AND (x.month_id == from_month OR x.month_id == to_month)
+      ACCUM CASE WHEN x.month_id == from_month THEN
+              @@from_amt += x.credited_amt,
+              @@from_advisors += x.advisor_sid, @@from_accts += x.acct_key
+            ELSE
+              @@to_amt += x.credited_amt,
+              @@to_advisors += x.advisor_sid, @@to_accts += x.acct_key
+            END;
+  // AUM = end balances of the group's revenue-bearing accounts in each month
+  am = SELECT a FROM phx_dm_pce_account_month:a
+       WHERE (a.month_id == to_month AND @@to_accts.contains(a.acct_key))
+          OR (a.month_id == from_month AND @@from_accts.contains(a.acct_key))
+       ACCUM CASE WHEN a.month_id == to_month THEN @@aum += a.end_balance
+             ELSE @@prior_aum += a.end_balance END;
+  PRINT @@from_amt AS from_amt, @@to_amt AS to_amt,
+        @@to_amt - @@from_amt AS change_amt,
+        @@aum AS aum, @@prior_aum AS prior_aum,
+        @@to_advisors.size() AS advisor_count,
+        @@from_advisors.size() AS prior_advisor_count,
+        @@to_accts.size() AS account_count,
+        @@from_accts.size() AS prior_account_count;
+}

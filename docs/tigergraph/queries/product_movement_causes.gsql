@@ -1,0 +1,46 @@
+// product_movement_causes — Round G drill-down query (docs/spec/ROUND_G_SPEC.md 3.2).
+// DESCRIPTIVE movement context for one product group: advisor-count,
+// account-count and revenue-per-existing-account deltas with revenue effects.
+// NOT a decomposition — the three effects need not sum to the change, and every
+// serialization carries note = "descriptive, not a decomposition". This is
+// deliberately NOT V2's attribution model.
+// Local-tier equivalent: app/graph/queries/catalog.py::product_movement_causes
+CREATE QUERY product_movement_causes(STRING group_id, STRING from_month, STRING to_month) FOR GRAPH phx_dm_pce_practice_demo {
+  MapAccum<STRING, SumAccum<DOUBLE>> @@adv_from; MapAccum<STRING, SumAccum<DOUBLE>> @@adv_to;
+  MapAccum<STRING, SumAccum<DOUBLE>> @@acct_from; MapAccum<STRING, SumAccum<DOUBLE>> @@acct_to;
+  SumAccum<DOUBLE> @@advisor_effect; SumAccum<DOUBLE> @@account_effect;
+  SumAccum<DOUBLE> @@rpe_from_sum; SumAccum<DOUBLE> @@rpe_to_sum; SumAccum<INT> @@existing;
+  t = SELECT x FROM phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_of_product)- phx_dm_pce_product:p
+      WHERE p.group_id == group_id
+        AND (x.month_id == from_month OR x.month_id == to_month)
+      ACCUM CASE WHEN x.month_id == from_month THEN
+              @@adv_from += (x.advisor_sid -> x.credited_amt),
+              @@acct_from += (x.acct_key -> x.credited_amt)
+            ELSE
+              @@adv_to += (x.advisor_sid -> x.credited_amt),
+              @@acct_to += (x.acct_key -> x.credited_amt)
+            END;
+  // advisor effect: revenue of entering advisors minus revenue of departed advisors
+  FOREACH (sid, amt) IN @@adv_to DO
+    IF NOT @@adv_from.containsKey(sid) THEN @@advisor_effect += amt; END;
+  END;
+  FOREACH (sid, amt) IN @@adv_from DO
+    IF NOT @@adv_to.containsKey(sid) THEN @@advisor_effect += -1 * amt; END;
+  END;
+  // account effect: revenue of new accounts minus revenue of departed accounts
+  FOREACH (ak, amt) IN @@acct_to DO
+    IF NOT @@acct_from.containsKey(ak) THEN @@account_effect += amt; END;
+  END;
+  FOREACH (ak, amt) IN @@acct_from DO
+    IF NOT @@acct_to.containsKey(ak) THEN @@account_effect += -1 * amt;
+    ELSE @@existing += 1, @@rpe_from_sum += amt, @@rpe_to_sum += @@acct_to.get(ak); END;
+  END;
+  PRINT @@adv_from.size() AS advisor_count_from, @@adv_to.size() AS advisor_count_to,
+        @@advisor_effect AS advisor_effect_amt,
+        @@acct_from.size() AS account_count_from, @@acct_to.size() AS account_count_to,
+        @@account_effect AS account_effect_amt,
+        @@rpe_from_sum / @@existing AS rev_per_existing_from,
+        @@rpe_to_sum / @@existing AS rev_per_existing_to,
+        (@@rpe_to_sum - @@rpe_from_sum) AS rev_per_existing_effect_amt,
+        "descriptive, not a decomposition" AS note;
+}

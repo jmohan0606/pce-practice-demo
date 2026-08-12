@@ -19,6 +19,11 @@ APP_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_ROOT))
 os.chdir(APP_ROOT)
 os.environ.setdefault("LLM_MODE", "mock")
+# Round G task 5: verification runs against a fresh throwaway runtime db, never
+# the durable data/runtime/ store (the checks assume seed-from-scratch state).
+import tempfile  # noqa: E402
+
+os.environ["PCE_RUNTIME_DB_DIR"] = tempfile.mkdtemp(prefix="pce-verify-runtime-")
 
 RESULTS: list[tuple[bool, str]] = []
 
@@ -58,6 +63,17 @@ SAMPLE_PARAMS = {
     "advisor_flows_summary": {"advisor": "all", "month_id": "202605"},
     "cohort_ranking": {"month_id": "202605", "metric": "aum", "advisor": "all"},
     "advisor_opportunities": {"advisor": "all"},
+    # Round G task 3 drill-down queries
+    "product_transition_metrics": {"group_id": "managed_accounts",
+                                   "from_month": "202604", "to_month": "202605"},
+    "product_advisors": {"group_id": "managed_accounts",
+                         "from_month": "202604", "to_month": "202605"},
+    "product_advisor_accounts": {"group_id": "managed_accounts", "advisor": "V000002",
+                                 "from_month": "202604", "to_month": "202605"},
+    "product_account_txns": {"group_id": "managed_accounts", "advisor": "V000002",
+                             "acct_key": "3060", "month_id": "202605"},
+    "product_movement_causes": {"group_id": "managed_accounts",
+                                "from_month": "202604", "to_month": "202605"},
 }
 
 
@@ -130,8 +146,8 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
         if not wanted <= cols:
             missing_cols.append(f"{name}: missing {sorted(wanted - cols)}")
     check(1, "every catalog query executes and returns the documented columns",
-          not errors and not missing_cols and len(CATALOG) == 28,
-          f"{len(CATALOG)} queries (24 Round C + 4 Round E position); "
+          not errors and not missing_cols and len(CATALOG) == 33,
+          f"{len(CATALOG)} queries (24 Round C + 4 Round E position + 5 Round G drill-down); "
           f"errors={errors or 'none'}; column gaps={missing_cols or 'none'}; "
           f"legitimately empty on mock data: {empty or 'none'}")
 

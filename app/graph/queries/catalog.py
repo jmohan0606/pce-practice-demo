@@ -394,6 +394,183 @@ def flows_for_advisor(store: FoundationGraphStore, params: dict) -> list[dict]:
     ]
 
 
+# --------------------------------------------------------------------------- drill-down (Round G task 3)
+# Product-scoped queries feeding the four drill-down levels (ROUND_G_SPEC 3.2 /
+# ROUND_G_INTERFACE §3). All are practice-wide over the cohort (in_cohort=true)
+# — the drill-down starts from the practice contribution table, so there is no
+# advisor parameter at the product level.
+
+MOVEMENT_CAUSES_NOTE = "descriptive, not a decomposition"
+
+
+def _group_txns(store: FoundationGraphStore, group_id: str,
+                month_id: str | None = None,
+                scope: set[str] | None = None) -> list[dict]:
+    products = _group_products(store, group_id)  # validates group_id
+    if scope is None:
+        scope = _advisor_scope(store, "all")
+    return [t for t in store.all_vertices(V_TXN).values()
+            if str(t.get("product_id")) in products
+            and str(t.get("advisor_sid")) in scope
+            and (month_id is None or str(t.get("month_id")) == str(month_id))]
+
+
+def _sum_credited(txns: list[dict]) -> float:
+    return round(sum(_num(t.get("credited_amt")) for t in txns), 2)
+
+
+def _balances(store: FoundationGraphStore, acct_keys: set[str], month_id: str) -> float:
+    """Summed end balances of the given accounts in one month (their AUM)."""
+    return round(sum(_num(r.get("end_balance"))
+                     for r in store.all_vertices(V_AM).values()
+                     if str(r.get("acct_key")) in acct_keys
+                     and str(r.get("month_id")) == str(month_id)), 2)
+
+
+@mock_query("product_transition_metrics")
+def product_transition_metrics(store: FoundationGraphStore, params: dict) -> list[dict]:
+    frm, to = str(params["from_month"]), str(params["to_month"])
+    _require_month(store, frm, "from_month")
+    _require_month(store, to, "to_month")
+    gid = str(params["group_id"])
+    frm_txns = _group_txns(store, gid, frm)
+    to_txns = _group_txns(store, gid, to)
+    frm_accts = {str(t.get("acct_key")) for t in frm_txns}
+    to_accts = {str(t.get("acct_key")) for t in to_txns}
+    from_amt, to_amt = _sum_credited(frm_txns), _sum_credited(to_txns)
+    return [{
+        "from_amt": from_amt, "to_amt": to_amt,
+        "change_amt": round(to_amt - from_amt, 2),
+        # AUM = end balances of the accounts producing this group's revenue
+        "aum": _balances(store, to_accts, to),
+        "prior_aum": _balances(store, frm_accts, frm),
+        "advisor_count": len({str(t.get("advisor_sid")) for t in to_txns}),
+        "prior_advisor_count": len({str(t.get("advisor_sid")) for t in frm_txns}),
+        "account_count": len(to_accts),
+        "prior_account_count": len(frm_accts),
+    }]
+
+
+@mock_query("product_advisors")
+def product_advisors(store: FoundationGraphStore, params: dict) -> list[dict]:
+    frm, to = str(params["from_month"]), str(params["to_month"])
+    _require_month(store, frm, "from_month")
+    _require_month(store, to, "to_month")
+    gid = str(params["group_id"])
+    sums: dict[str, dict] = {}
+    for month, slot in ((frm, "from_amt"), (to, "to_amt")):
+        for t in _group_txns(store, gid, month):
+            sid = str(t.get("advisor_sid"))
+            row = sums.setdefault(sid, {
+                "advisor_sid": sid, "from_amt": 0.0, "to_amt": 0.0,
+                "_from_txns": 0, "_to_accts": set()})
+            row[slot] = round(row[slot] + _num(t.get("credited_amt")), 2)
+            if month == frm:
+                row["_from_txns"] += 1
+            else:
+                row["_to_accts"].add(str(t.get("acct_key")))
+    rows = []
+    for row in sums.values():
+        rows.append({
+            "advisor_sid": row["advisor_sid"],
+            "from_amt": row["from_amt"], "to_amt": row["to_amt"],
+            "change_amt": round(row["to_amt"] - row["from_amt"], 2),
+            "account_count": len(row["_to_accts"]),
+            # new to the product = NO revenue rows in this group in from_month
+            "is_new_to_product": row["_from_txns"] == 0,
+        })
+    return sorted(rows, key=lambda r: -abs(r["change_amt"]))
+
+
+@mock_query("product_advisor_accounts")
+def product_advisor_accounts(store: FoundationGraphStore, params: dict) -> list[dict]:
+    scope = _advisor_scope(store, params["advisor"])
+    frm, to = str(params["from_month"]), str(params["to_month"])
+    _require_month(store, frm, "from_month")
+    _require_month(store, to, "to_month")
+    gid = str(params["group_id"])
+    sums: dict[str, dict] = {}
+    for month, slot in ((frm, "from_amt"), (to, "to_amt")):
+        for t in _group_txns(store, gid, month, scope):
+            key = str(t.get("acct_key"))
+            row = sums.setdefault(key, {"acct_key": key, "from_amt": 0.0,
+                                        "to_amt": 0.0, "_to_txns": 0})
+            row[slot] = round(row[slot] + _num(t.get("credited_amt")), 2)
+            if month == to:
+                row["_to_txns"] += 1
+    balances = {str(r.get("acct_key")): _num(r.get("end_balance"))
+                for r in store.all_vertices(V_AM).values()
+                if str(r.get("month_id")) == to}
+    rows = []
+    for row in sums.values():
+        rows.append({
+            "acct_key": row["acct_key"],
+            "from_amt": row["from_amt"], "to_amt": row["to_amt"],
+            "change_amt": round(row["to_amt"] - row["from_amt"], 2),
+            "end_balance": balances.get(row["acct_key"], 0.0),
+            "txn_count": row["_to_txns"],
+        })
+    return sorted(rows, key=lambda r: -abs(r["change_amt"]))
+
+
+@mock_query("product_account_txns")
+def product_account_txns(store: FoundationGraphStore, params: dict) -> list[dict]:
+    scope = _advisor_scope(store, params["advisor"])
+    _require_month(store, params["month_id"])
+    acct = str(params["acct_key"])
+    rows = [
+        {"trade_dt": str(t.get("trade_dt")),
+         "trade_description": str(t.get("trade_description") or ""),
+         "product_id": str(t.get("product_id")),
+         "client_rate_bps": _num(t.get("client_rate_bps")),
+         "credited_amt": _num(t.get("credited_amt"))}
+        for t in _group_txns(store, str(params["group_id"]),
+                             str(params["month_id"]), scope)
+        if str(t.get("acct_key")) == acct
+    ]
+    return sorted(rows, key=lambda r: r["trade_dt"])
+
+
+@mock_query("product_movement_causes")
+def product_movement_causes(store: FoundationGraphStore, params: dict) -> list[dict]:
+    """DESCRIPTIVE, not a decomposition — the three effects need not sum to the
+    change (ROUND_G_SPEC 3.2; deliberately not V2's attribution model)."""
+    frm, to = str(params["from_month"]), str(params["to_month"])
+    _require_month(store, frm, "from_month")
+    _require_month(store, to, "to_month")
+    gid = str(params["group_id"])
+    frm_txns = _group_txns(store, gid, frm)
+    to_txns = _group_txns(store, gid, to)
+
+    def _by(txns: list[dict], field: str) -> dict[str, float]:
+        out: dict[str, float] = {}
+        for t in txns:
+            key = str(t.get(field))
+            out[key] = out.get(key, 0.0) + _num(t.get("credited_amt"))
+        return out
+
+    adv_from, adv_to = _by(frm_txns, "advisor_sid"), _by(to_txns, "advisor_sid")
+    acct_from, acct_to = _by(frm_txns, "acct_key"), _by(to_txns, "acct_key")
+    advisor_effect = (sum(v for k, v in adv_to.items() if k not in adv_from)
+                      - sum(v for k, v in adv_from.items() if k not in adv_to))
+    account_effect = (sum(v for k, v in acct_to.items() if k not in acct_from)
+                      - sum(v for k, v in acct_from.items() if k not in acct_to))
+    existing = set(acct_from) & set(acct_to)
+    rpe_from = (round(sum(acct_from[k] for k in existing) / len(existing), 2)
+                if existing else 0.0)
+    rpe_to = (round(sum(acct_to[k] for k in existing) / len(existing), 2)
+              if existing else 0.0)
+    return [{
+        "advisor_count_from": len(adv_from), "advisor_count_to": len(adv_to),
+        "advisor_effect_amt": round(advisor_effect, 2),
+        "account_count_from": len(acct_from), "account_count_to": len(acct_to),
+        "account_effect_amt": round(account_effect, 2),
+        "rev_per_existing_from": rpe_from, "rev_per_existing_to": rpe_to,
+        "rev_per_existing_effect_amt": round((rpe_to - rpe_from) * len(existing), 2),
+        "note": MOVEMENT_CAUSES_NOTE,
+    }]
+
+
 # --------------------------------------------------------------------------- position (Round E task 4)
 # "Where do we stand", not only "what changed". NOTE: advisor_nnm_position was
 # DROPPED by operator decision (DECISIONS.md, Round E) — we hold three months of
@@ -782,6 +959,52 @@ CATALOG: dict[str, dict] = {
         "params": [_p("acct_key", "string")],
         "returns": ["account_class_cd", "managed_platform_cd", "is_managed",
                     "opened_in_scope", "primary_eci_id"],
+    },
+    # Round G task 3 — drill-down queries (practice-wide, cohort only)
+    "product_transition_metrics": {
+        "description": "Practice-wide transition metrics for ONE product group: revenue "
+                       "from/to/change, AUM of the group's revenue-bearing accounts with "
+                       "prior, advisor and account counts with priors.",
+        "params": [_p("group_id", "string"), _p("from_month", "YYYYMM"),
+                   _p("to_month", "YYYYMM")],
+        "returns": ["from_amt", "to_amt", "change_amt", "aum", "prior_aum",
+                    "advisor_count", "prior_advisor_count", "account_count",
+                    "prior_account_count"],
+    },
+    "product_advisors": {
+        "description": "Every cohort advisor's contribution to one product group across a "
+                       "transition; is_new_to_product = no revenue in the group in from_month.",
+        "params": [_p("group_id", "string"), _p("from_month", "YYYYMM"),
+                   _p("to_month", "YYYYMM")],
+        "returns": ["advisor_sid", "from_amt", "to_amt", "change_amt",
+                    "account_count", "is_new_to_product"],
+    },
+    "product_advisor_accounts": {
+        "description": "One advisor's accounts in one product group across a transition, "
+                       "with to-month end balance and transaction count.",
+        "params": [_p("group_id", "string"), ADVISOR, _p("from_month", "YYYYMM"),
+                   _p("to_month", "YYYYMM")],
+        "returns": ["acct_key", "from_amt", "to_amt", "change_amt",
+                    "end_balance", "txn_count"],
+    },
+    "product_account_txns": {
+        "description": "One account's transactions in one product group for one month "
+                       "(the drill-down's deterministic floor — no security identifier exists).",
+        "params": [_p("group_id", "string"), ADVISOR, _p("acct_key", "string"), MONTH],
+        "returns": ["trade_dt", "trade_description", "product_id",
+                    "client_rate_bps", "credited_amt"],
+    },
+    "product_movement_causes": {
+        "description": "DESCRIPTIVE movement context for one product group: advisor-count, "
+                       "account-count and revenue-per-existing-account deltas with their "
+                       "revenue effects. NOT a decomposition — effects need not sum to the "
+                       "change (the note column says so).",
+        "params": [_p("group_id", "string"), _p("from_month", "YYYYMM"),
+                   _p("to_month", "YYYYMM")],
+        "returns": ["advisor_count_from", "advisor_count_to", "advisor_effect_amt",
+                    "account_count_from", "account_count_to", "account_effect_amt",
+                    "rev_per_existing_from", "rev_per_existing_to",
+                    "rev_per_existing_effect_amt", "note"],
     },
 }
 
