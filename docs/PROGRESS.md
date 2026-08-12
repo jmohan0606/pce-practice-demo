@@ -39,6 +39,39 @@
       is unanchorable transcript replay + output). verify a/b 25/25, 19/19; new C6-13
       passes (committed with Tasks 4-5 — the file also carries B's C6-1 widening).
       Running LLM cost ~$1.67 of $15.
+- [x] Tasks 4+5 (Subagent B, verified in main thread): four position queries in the
+      catalog (24→28, C6-1 widened): advisor_aum (prior/change NULL on baseline
+      month, never 0 or a guess), advisor_flows_summary, cohort_ranking (4 metrics,
+      rank vs cohort median), advisor_opportunities (every row data_source='DUMMY');
+      matching GSQL files; smoke-tested 20/20/20/36 rows on mock data.
+      advisor_nnm_position NOT BUILT — operator override, DECISIONS.md: three months
+      of flows cannot proxy an annual NNM measure; only NNM references left in code
+      are the reporter's guard that BLOCKS NNM recommendations + rationale comments.
+      Recommendations Level 2: search_documents INJECTED into the reporter
+      (reporter_sources.py; module still imports only json/logging/re/typing — C6-9
+      unchanged); PLAN→thresholds, GUIDANCE→quoted practice, ≤4 searches, all logged;
+      verify_recommendations() drops any rec lacking source_query-or-citation, any
+      invented number, any NNM text; assert backs the gate; recs persist and
+      serialize on the run API. verify a/b/c 25/25, 19/19, 13/13 (incl. A's C6-13).
+      $0.00 LLM spent on these tasks.
+- [x] Tasks 6+7 (Subagent C, verified in main thread): 6.1 AI Insights owns a
+      transition selector (first header control, "Apr 2026 → May 2026 ▲ $62,456"),
+      zero Dashboard state, no duplicated bar chart; 6.2 practice view = KPI row
+      (Credited Revenue / AUM / Net Flows / Open Exceptions — NNM KPI removed per
+      override) + book-level narrative (bookLevel() strips account identifiers) +
+      exceptions worklist (advisor, issue, impact, rule citation, click-through);
+      new GET /api/insights/practice-summary + /exceptions; 6.3 rule detail shows
+      statement/worked example/citation/compiled plan + explanation, edit →
+      compile → approve → publish (new version, never mutates); 6.4 Documents &
+      Rules renders "N extracted · N compiled · N need a value · N need data we
+      don't have" from the extraction-summary API, each gap expandable with its
+      reason — nothing hardcoded. Task 7: Trace All Time card (cost, runs, input/
+      cache-read/cache-write/output tokens, LLM time) with cache read and WRITE as
+      separate tiles+columns (write>read renders red), total rows on runs and
+      per-turn tables; new GET /api/trace/alltime. npm run build passes (verified
+      in main thread); practice-summary returns real figures (AUM $268.6M, net
+      flows $13.6M for 202604→202605). Spec's per-subtask commits collapsed into
+      one — work arrived complete from the parallel dispatch.
 
 ## Cost & UI fix session (docs/spec/SESSION_PROMPT_COST_AND_UI_FIXES.md)
 - [x] Hard rule 2: ANTHROPIC_MODEL=claude-haiku-4-5-20251001 in .env; settings default

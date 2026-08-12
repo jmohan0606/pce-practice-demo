@@ -39,6 +39,39 @@ export function NarrativeBlock({ run }: { run: InsightRun }) {
   );
 }
 
+/** Round E task 5 — recommendations are facts + implications, each traceable
+ * to a query result or a document citation (asserted server-side). */
+export function RecommendationsBlock({ run }: { run: InsightRun }) {
+  const recs = run.recommendations ?? [];
+  if (!recs.length) return null;
+  return (
+    <div className="narr" style={{ marginTop: 0 }}>
+      <Chip variant="aigen">◆ Recommendations — every clause traceable</Chip>
+      <ul style={{ marginTop: 10 }}>
+        {recs.map((rec, i) => (
+          <li key={i}>
+            <Bold text={rec.text} />
+            <div style={{ marginTop: 4, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {rec.source_query ? (
+                <span style={{ fontSize: 12, color: "var(--slate)" }}>
+                  query: {rec.source_query.query_name}
+                </span>
+              ) : null}
+              {(rec.citations ?? []).map((c, j) => (
+                <SourceLink key={j}>
+                  {c.document_name || c.document_id || "document"}
+                  {c.page_no != null ? ` · p.${c.page_no}` : ""}
+                  {c.section_path ? ` · ${c.section_path}` : ""}
+                </SourceLink>
+              ))}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function cell(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
   if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(2);
@@ -46,7 +79,7 @@ function cell(value: unknown): string {
   return String(value);
 }
 
-function FindingRow({ finding, defaultOpen }: { finding: Finding; defaultOpen?: boolean }) {
+export function FindingRow({ finding, defaultOpen }: { finding: Finding; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(Boolean(defaultOpen));
   const impact = finding.impact_amt;
   const columns = finding.evidence_columns.length

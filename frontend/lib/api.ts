@@ -188,8 +188,14 @@ export interface Rule {
   provenance?: string; // DOCUMENT_DERIVED | OPERATOR_SPECIFIED
   confidence?: number;
   citations?: RuleCitation[];
-  status?: string; // DRAFT | PUBLISHED | SUPERSEDED | NEEDS_INPUT | REJECTED
+  status?: string; // DRAFT | COMPILED | PUBLISHED | SUPERSEDED | NEEDS_INPUT | NEEDS_DATA | REJECTED
   unclear_notes?: string | null;
+  // Round E rule object: plain-English statement + compiled plan explanation
+  statement?: string;
+  kind?: string;
+  explanation?: string | null;
+  missing?: string | null;
+  needs_data_reason?: string | null;
 }
 export interface RulesResponse {
   rules: Rule[];
@@ -232,6 +238,11 @@ export function getRulesDetailed(version: string): Promise<{ version: RuleVersio
 export function editRule(ruleKey: string, changes: Record<string, unknown>): Promise<{ rule: RuleDetail; note?: string }> {
   return post(`/api/rules/${encodeURIComponent(ruleKey)}/edit`, { changes });
 }
+// Round E 1.2: the Rule Compiler agent runs once per rule, at approval time.
+// Outcome is COMPILED / NEEDS_DATA / DRAFT-with-compile_error — all honest states.
+export function compileRule(ruleKey: string): Promise<{ rule: RuleDetail }> {
+  return post(`/api/rules/${encodeURIComponent(ruleKey)}/compile`, {});
+}
 export function approveRule(ruleKey: string, approvedBy: string = "operator"): Promise<{ rule: RuleDetail }> {
   return post(`/api/rules/${encodeURIComponent(ruleKey)}/approve`, { approved_by: approvedBy });
 }
@@ -263,6 +274,21 @@ export interface Finding {
     citation?: RuleCitation | null;
   } | null;
 }
+// Round E task 5 — Level-2 recommendations: every one carries a source_query
+// or a citation (asserted server-side); nothing invented reaches the UI.
+export interface Recommendation {
+  text: string;
+  source_query?: { query_name: string; params: Record<string, unknown> } | null;
+  citations?: {
+    document_id?: string | null;
+    document_name?: string | null;
+    document_type?: string | null;
+    chunk_id?: string | null;
+    page_no?: number | null;
+    section_path?: string | null;
+    excerpt?: string | null;
+  }[];
+}
 export interface InsightRun {
   run_id: string;
   advisor_sid: string;
@@ -272,6 +298,7 @@ export interface InsightRun {
   status: string; // RUNNING | COMPLETE | FAILED
   narrative: string;
   bullets: string[];
+  recommendations?: Recommendation[];
   findings: Finding[];
   generated_at: string;
   query_count: number;
@@ -319,6 +346,81 @@ export function getInsightStatus(jobId: string): Promise<JobStatus> {
 }
 export function getInsights(advisor: string, fromMonth: string, toMonth: string, version: string = "latest"): Promise<InsightRun> {
   return get(`/api/insights/${encodeURIComponent(advisor)}/${fromMonth}/${toMonth}?version=${encodeURIComponent(version)}`);
+}
+
+// ---------- Round E 6.2 — practice KPIs + exceptions worklist ----------
+
+export interface AmountChange {
+  from_amt: number;
+  to_amt: number;
+  change_amt: number;
+  change_pct: number | null;
+}
+export interface FlowTotals {
+  inflows: number;
+  outflows: number;
+  net_flows: number;
+}
+export interface PracticeSummary {
+  from_month_id: string;
+  to_month_id: string;
+  advisor_count: number;
+  credited: AmountChange;
+  aum: AmountChange;
+  flows: { from: FlowTotals; to: FlowTotals };
+}
+export function getPracticeSummary(fromMonth: string, toMonth: string): Promise<PracticeSummary> {
+  return get(`/api/insights/practice-summary?from_month=${fromMonth}&to_month=${toMonth}`);
+}
+
+export interface ExceptionRow {
+  advisor_sid: string;
+  advisor_name: string;
+  issue: string;
+  detail: string;
+  impact_amt: number | null;
+  rule_key: string;
+  citation: {
+    rule_key: string;
+    rule_code?: string;
+    rule_name?: string;
+    citation?: RuleCitation | null;
+  } | null;
+  run_id: string;
+}
+export interface ExceptionsResponse {
+  from_month_id: string;
+  to_month_id: string;
+  open_count: number;
+  advisor_count: number;
+  exceptions: ExceptionRow[];
+}
+export function getExceptions(
+  fromMonth: string,
+  toMonth: string,
+  version: string = "latest",
+): Promise<ExceptionsResponse> {
+  return get(
+    `/api/insights/exceptions?from_month=${fromMonth}&to_month=${toMonth}&version=${encodeURIComponent(version)}`,
+  );
+}
+
+// ---------- Round E 6.4 — extraction outcome counts ----------
+
+export interface ExtractionGap {
+  rule_key: string;
+  rule_code?: string;
+  reason: string | null;
+}
+export interface ExtractionSummary {
+  extracted: number;
+  compiled: number;
+  draft: number;
+  needs_input: ExtractionGap[];
+  needs_data: ExtractionGap[];
+}
+export function getExtractionSummary(): Promise<ExtractionSummary> {
+  return get("/api/rules/extraction-summary");
 }
 
 export interface PeerRank {
@@ -379,6 +481,14 @@ export interface TraceSummary {
   conflict_audit: TraceTotals;
   full_refresh: { run_count: number | null; est_cost_usd: number | null; est_minutes: number | null };
   projection: { history_runs: number; avg_run_cost_usd: number | null; avg_run_wall_ms: number | null };
+}
+export interface TraceAllTime extends TraceTotals {
+  total_runs: number;
+  total_llm_ms: number;
+  since: string | null;
+}
+export function getTraceAllTime(): Promise<TraceAllTime> {
+  return get("/api/trace/alltime");
 }
 export function getTraceRuns(): Promise<{ runs: TraceRun[] }> {
   return get("/api/trace/runs");

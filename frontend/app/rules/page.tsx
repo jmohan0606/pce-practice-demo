@@ -6,6 +6,7 @@ import {
   type RuleDetail,
   type RuleVersion,
   approveRule,
+  compileRule,
   editRule,
   getRuleVersions,
   getRulesDetailed,
@@ -63,6 +64,20 @@ export default function RuleVersionsPage() {
     setNotice(null);
     try {
       const { rule: draft } = await editRule(rule.rule_key ?? rule.rule_code, changes);
+      // Round E lifecycle: a changed statement invalidates the plan — the Rule
+      // Compiler agent recompiles the new draft before it can be approved.
+      setBusy("compiling the new draft (Rule Compiler agent)…");
+      const { rule: compiled } = await compileRule(draft.rule_key ?? draft.rule_code);
+      if ((compiled.status || "").toUpperCase() !== "COMPILED") {
+        setNotice(
+          `The edited draft did not compile (${compiled.status}): ` +
+            `${compiled.needs_data_reason || compiled.compile_error || "see the draft pool"}. ` +
+            "It stays in Documents & Rules until resolved — no version was published.",
+        );
+        setEditing(null);
+        setBusy(null);
+        return;
+      }
       setBusy("approving the new draft…");
       await approveRule(draft.rule_key ?? draft.rule_code);
       setBusy("publishing the next version…");
@@ -205,10 +220,8 @@ function RuleRow({
   const status = (rule.status || "").toUpperCase();
   const [form, setForm] = useState({
     rule_name: rule.rule_name ?? "",
-    plain_description: rule.plain_description ?? "",
-    population: rule.population ?? "",
-    compute: rule.compute ?? "",
-    trigger: rule.trigger ?? "",
+    statement: rule.statement ?? rule.plain_description ?? "",
+    worked_example: rule.worked_example ?? "",
   });
   return (
     <div className={`rule${status === "NEEDS_INPUT" ? " needs" : ""}`}>
@@ -219,17 +232,24 @@ function RuleRow({
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {rule.kind ? <Chip variant="tag">{rule.kind}</Chip> : null}
           <Chip variant={status === "PUBLISHED" ? "pos" : status === "NEEDS_INPUT" ? "derived" : "tag"}>
             {status || "?"}
           </Chip>
           {canEdit ? (
             <button className="btn" onClick={editing ? onCancel : onEdit} disabled={busy !== null}>
-              {editing ? "Cancel" : "Edit"}
+              {editing ? "Cancel" : "Edit → new version"}
             </button>
           ) : null}
         </div>
       </div>
-      <div className="rule-d">{rule.plain_description}</div>
+      {/* 6.3: the rule's plain-English statement */}
+      <div className="rule-d">{rule.statement || rule.plain_description}</div>
+      {rule.worked_example ? (
+        <div className="eg">
+          Example — <b>{rule.worked_example}</b>
+        </div>
+      ) : null}
       {citation ? (
         <div className="eg">
           <b>Source:</b> {citation.document_name || rule.document_id || "operator-specified"}
@@ -247,24 +267,43 @@ function RuleRow({
           <b>Source:</b> {rule.provenance === "OPERATOR_SPECIFIED" ? "operator-specified (no document)" : "no citation recorded"}
         </div>
       )}
+      {/* 6.3: the compiled query with its plain-English explanation */}
       <details className="tech">
-        <summary>Compiled query</summary>
+        <summary>Query this compiles to</summary>
+        {rule.explanation ? (
+          <div className="eg" style={{ marginTop: 8, marginBottom: 0 }}>
+            {rule.explanation}
+          </div>
+        ) : null}
         <pre>
-          {`population: ${rule.population || "—"}\ncompute:    ${rule.compute || "—"}\ntrigger:    ${rule.trigger || "—"}`}
-          {rule.attribute ? `\nattribute:  ${rule.attribute}` : ""}
+          {rule.plan
+            ? JSON.stringify(rule.plan, null, 2)
+            : rule.population || rule.compute || rule.trigger
+              ? `population: ${rule.population || "—"}\ncompute:    ${rule.compute || "—"}\ntrigger:    ${rule.trigger || "—"}` +
+                (rule.attribute ? `\nattribute:  ${rule.attribute}` : "")
+              : "no compiled plan"}
           {rule.compiled === false ? `\n\nDOES NOT COMPILE: ${rule.compile_error ?? "unknown"}` : ""}
-          {rule.plan ? `\n\nplan: ${JSON.stringify(rule.plan, null, 2)}` : ""}
         </pre>
       </details>
+      {rule.needs_data_reason ? (
+        <div className="eg">
+          <b>Needs data we don&rsquo;t have:</b> {rule.needs_data_reason}
+        </div>
+      ) : null}
+      {rule.missing ? (
+        <div className="eg">
+          <b>Needs a value:</b> {rule.missing}
+        </div>
+      ) : null}
       {editing ? (
         <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-          {(["rule_name", "plain_description", "population", "compute", "trigger"] as const).map((field) => (
+          {(["rule_name", "statement", "worked_example"] as const).map((field) => (
             <label key={field} style={{ fontSize: 12, color: "var(--slate)" }}>
-              {field}
+              {field === "statement" ? "statement (plain English — the Rule Compiler compiles this)" : field}
               <textarea
                 value={form[field]}
                 onChange={(e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))}
-                rows={field === "plain_description" ? 3 : 1}
+                rows={field === "statement" ? 4 : field === "worked_example" ? 2 : 1}
                 style={{
                   width: "100%",
                   font: "12px/1.5 ui-monospace,Menlo,Consolas,monospace",
@@ -283,19 +322,18 @@ function RuleRow({
               onClick={() => {
                 const changes: Record<string, unknown> = {};
                 if (form.rule_name !== (rule.rule_name ?? "")) changes.rule_name = form.rule_name;
-                if (form.plain_description !== (rule.plain_description ?? ""))
-                  changes.plain_description = form.plain_description;
-                if (form.population !== (rule.population ?? "")) changes.population_expr = form.population;
-                if (form.compute !== (rule.compute ?? "")) changes.compute_expr = form.compute;
-                if (form.trigger !== (rule.trigger ?? "")) changes.trigger_expr = form.trigger;
+                if (form.statement !== (rule.statement ?? rule.plain_description ?? ""))
+                  changes.statement = form.statement;
+                if (form.worked_example !== (rule.worked_example ?? ""))
+                  changes.worked_example = form.worked_example;
                 onSubmit(rule, changes);
               }}
             >
               {busy ?? "Save as new version"}
             </button>
             <span style={{ fontSize: 12, color: "var(--slate)" }}>
-              Saving creates a new draft, approves it, and publishes the next version — this
-              version is never mutated.
+              Saving creates a new draft, recompiles it with the Rule Compiler, approves it, and
+              publishes the next version — this version is never mutated.
             </span>
           </div>
         </div>

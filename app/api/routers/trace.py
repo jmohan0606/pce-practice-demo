@@ -78,6 +78,25 @@ def runs() -> dict:
     return {"runs": rows}
 
 
+@router.get("/alltime")
+def alltime() -> dict:
+    """All-time totals since inception (Round E task 7): every turn-logged
+    scope in the store. Cache READ and cache WRITE are reported separately —
+    one combined number hid a run that wrote 1.5x more than it read."""
+    store = get_insight_store()
+    turn_logs = store.all_turn_logs()
+    all_turns = [t for turns in turn_logs.values() for t in turns]
+    run_ids = set(turn_logs) | set(store.runs)
+    started = [r.get("started_at") for r in
+               (store.run(rid) for rid in store.runs) if r and r.get("started_at")]
+    return {
+        **_totals(all_turns),
+        "total_runs": len(run_ids),
+        "total_llm_ms": sum(t["latency_ms"] for t in all_turns),
+        "since": min(started) if started else None,
+    }
+
+
 @router.get("/summary")
 def summary() -> dict:
     store = get_insight_store()

@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  type TraceAllTime,
   type TraceRun,
   type TraceRunDetail,
   type TraceSummary,
+  getTraceAllTime,
   getTraceRunDetail,
   getTraceRuns,
   getTraceSummary,
@@ -16,18 +18,30 @@ const cost = (v: number | null | undefined) =>
   v === null || v === undefined ? "—" : `$${v.toFixed(4)}`;
 const tokens = (v: number) => v.toLocaleString("en-US");
 const wall = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
+const duration = (ms: number) => {
+  if (ms < 1000) return `${ms}ms`;
+  const totalSeconds = Math.round(ms / 1000);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${s}s`;
+  return `${s}s`;
+};
 
 /** Cost & Trace: what every run cost, per turn — a runaway turn must be
  * visible at a glance. All figures come from logged response.usage counts. */
 export default function TracePage() {
   const [runs, setRuns] = useState<TraceRun[]>([]);
   const [summary, setSummary] = useState<TraceSummary | null>(null);
+  const [allTime, setAllTime] = useState<TraceAllTime | null>(null);
   const [detail, setDetail] = useState<TraceRunDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     getTraceRuns().then((r) => setRuns(r.runs)).catch((e) => setError(String(e?.message || e)));
     getTraceSummary().then(setSummary).catch(() => setSummary(null));
+    getTraceAllTime().then(setAllTime).catch(() => setAllTime(null));
   }, []);
 
   useEffect(reload, [reload]);
@@ -43,6 +57,63 @@ export default function TracePage() {
   return (
     <section>
       <PageHeader title="Cost &amp; Trace" meta="Token spend per run and per turn · figures from provider usage counts, never estimated" />
+
+      {/* Round E task 7: All Time — every run since inception, the number to
+          watch. Cache read and cache write stay SEPARATE: a combined number
+          once hid a run writing 1.5x more than it read. */}
+      {allTime ? (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card-h">
+            <div>
+              <h2>All Time</h2>
+              <p>Every run since the project started — the number to watch.</p>
+            </div>
+          </div>
+          <div className="card-b">
+            <div className="kpi">
+              <div>
+                <div className="k">TOTAL COST</div>
+                <div className="v">{cost(allTime.est_cost_usd)}</div>
+                {allTime.since ? <div className="sub">since {allTime.since}</div> : null}
+              </div>
+              <div>
+                <div className="k">TOTAL RUNS</div>
+                <div className="v">{allTime.total_runs}</div>
+              </div>
+              <div>
+                <div className="k">INPUT TOKENS</div>
+                <div className="v">{tokens(allTime.input_tokens)}</div>
+              </div>
+              <div>
+                <div className="k">CACHE READ</div>
+                <div className="v">{tokens(allTime.cache_read_tokens)}</div>
+                <div className="sub">billed at ~10% of input</div>
+              </div>
+              <div>
+                <div className="k">CACHE WRITE</div>
+                <div
+                  className={`v${allTime.cache_write_tokens > allTime.cache_read_tokens ? " dn" : ""}`}
+                >
+                  {tokens(allTime.cache_write_tokens)}
+                </div>
+                <div className="sub">
+                  {allTime.cache_write_tokens > allTime.cache_read_tokens
+                    ? "writing more than reading — caching is failing"
+                    : "billed at 1.25x input"}
+                </div>
+              </div>
+              <div>
+                <div className="k">OUTPUT TOKENS</div>
+                <div className="v">{tokens(allTime.output_tokens)}</div>
+              </div>
+              <div>
+                <div className="k">TOTAL LLM TIME</div>
+                <div className="v">{duration(allTime.total_llm_ms)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {summary ? (
         <div className="card" style={{ marginBottom: 16 }}>
@@ -83,7 +154,7 @@ export default function TracePage() {
                 <thead>
                   <tr>
                     <th>Advisor</th><th>Turns</th><th>Input</th><th>Output</th>
-                    <th>Cache read</th><th>Cache hit %</th><th>Est cost</th>
+                    <th>Cache read</th><th>Cache write</th><th>Cache hit %</th><th>Est cost</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -94,6 +165,7 @@ export default function TracePage() {
                       <td>{tokens(a.input_tokens)}</td>
                       <td>{tokens(a.output_tokens)}</td>
                       <td>{tokens(a.cache_read_tokens)}</td>
+                      <td>{tokens(a.cache_write_tokens)}</td>
                       <td>{a.cache_hit_pct}%</td>
                       <td>{cost(a.est_cost_usd)}</td>
                     </tr>
@@ -121,7 +193,7 @@ export default function TracePage() {
                   <tr>
                     <th>Run</th><th>Advisor</th><th>Transition</th><th>Rule set</th>
                     <th>Turns</th><th>Queries</th><th>Input</th><th>Output</th>
-                    <th>Cache read</th><th>Cache hit %</th><th>Est cost</th>
+                    <th>Cache read</th><th>Cache write</th><th>Cache hit %</th><th>Est cost</th>
                     <th>Wall</th><th>Status</th>
                   </tr>
                 </thead>
@@ -139,6 +211,7 @@ export default function TracePage() {
                       <td>{tokens(r.input_tokens)}</td>
                       <td>{tokens(r.output_tokens)}</td>
                       <td>{tokens(r.cache_read_tokens)}</td>
+                      <td>{tokens(r.cache_write_tokens)}</td>
                       <td>{r.cache_hit_pct}%</td>
                       <td>{cost(r.est_cost_usd)}</td>
                       <td>{wall(r.wall_ms)}</td>
@@ -149,6 +222,20 @@ export default function TracePage() {
                       </td>
                     </tr>
                   ))}
+                  {/* Round E task 7: total row over every listed run */}
+                  <tr className="tot">
+                    <td colSpan={4}>Total — {runs.length} runs</td>
+                    <td>{runs.reduce((n, r) => n + r.turns, 0)}</td>
+                    <td>{runs.reduce((n, r) => n + r.query_count, 0)}</td>
+                    <td>{tokens(runs.reduce((n, r) => n + r.input_tokens, 0))}</td>
+                    <td>{tokens(runs.reduce((n, r) => n + r.output_tokens, 0))}</td>
+                    <td>{tokens(runs.reduce((n, r) => n + r.cache_read_tokens, 0))}</td>
+                    <td>{tokens(runs.reduce((n, r) => n + r.cache_write_tokens, 0))}</td>
+                    <td>—</td>
+                    <td>{cost(runs.reduce((n, r) => n + r.est_cost_usd, 0))}</td>
+                    <td>{duration(runs.reduce((n, r) => n + r.wall_ms, 0))}</td>
+                    <td>—</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -216,8 +303,25 @@ export default function TracePage() {
                     </tr>
                   );
                 })}
+                {/* Round E task 7: total row over every turn */}
+                <tr className="tot">
+                  <td>{detail.turn_rows.length}</td>
+                  <td colSpan={3}>Total</td>
+                  <td>{tokens(detail.turn_rows.reduce((n, t) => n + t.input_tokens, 0))}</td>
+                  <td>{tokens(detail.turn_rows.reduce((n, t) => n + t.output_tokens, 0))}</td>
+                  <td>{tokens(detail.turn_rows.reduce((n, t) => n + t.cache_read_tokens, 0))}</td>
+                  <td>{tokens(detail.turn_rows.reduce((n, t) => n + t.cache_write_tokens, 0))}</td>
+                  <td>{duration(detail.turn_rows.reduce((n, t) => n + t.latency_ms, 0))}</td>
+                  <td>{cost(detail.turn_rows.reduce((n, t) => n + t.est_cost_usd, 0))}</td>
+                  <td>—</td>
+                </tr>
               </tbody>
             </table>
+            <div className="note" style={{ border: "1px solid var(--rule)", borderRadius: 4, marginTop: 10 }}>
+              Cache reads bill at roughly a tenth of the input rate; cache writes at 1.25x. A run
+              where the write column outweighs the read column is not caching — that is the first
+              thing to check.
+            </div>
           </div>
         </div>
       ) : null}

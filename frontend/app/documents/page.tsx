@@ -4,8 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   type DocumentInfo,
+  type ExtractionGap,
+  type ExtractionSummary,
   type Rule,
   getDocuments,
+  getExtractionSummary,
   getRules,
   uploadDocuments,
 } from "@/lib/api";
@@ -32,10 +35,14 @@ function statusChip(status?: string): { variant: ChipVariant; label: string } {
 
 function ruleCard(rule: Rule) {
   const status = (rule.status || "DRAFT").toUpperCase();
-  const cls = status === "NEEDS_INPUT" ? "needs" : "draft";
+  const cls = status === "NEEDS_INPUT" || status === "NEEDS_DATA" ? "needs" : "draft";
   const chip =
     status === "NEEDS_INPUT" ? (
-      <Chip variant="tag">Needs Input</Chip>
+      <Chip variant="tag">Needs a Value</Chip>
+    ) : status === "NEEDS_DATA" ? (
+      <Chip variant="tag">Needs Data</Chip>
+    ) : status === "COMPILED" ? (
+      <Chip variant="pos">Compiled</Chip>
     ) : (
       <Chip variant="derived">Draft</Chip>
     );
@@ -46,13 +53,24 @@ function ruleCard(rule: Rule) {
         <div className="rule-t">{rule.rule_name || rule.rule_code}</div>
         {chip}
       </div>
-      {rule.plain_description ? <div className="rule-d">{rule.plain_description}</div> : null}
+      {rule.statement || rule.plain_description ? (
+        <div className="rule-d">{rule.statement || rule.plain_description}</div>
+      ) : null}
       {rule.worked_example ? (
         <div className="eg">
           Example — <b>{rule.worked_example}</b>
         </div>
       ) : null}
-      {rule.unclear_notes ? <div className="eg">{rule.unclear_notes}</div> : null}
+      {rule.missing || rule.unclear_notes ? (
+        <div className="eg">
+          <b>Needs a value:</b> {rule.missing || rule.unclear_notes} <b>No value has been assumed.</b>
+        </div>
+      ) : null}
+      {rule.needs_data_reason ? (
+        <div className="eg">
+          <b>Needs data we don&rsquo;t have:</b> {rule.needs_data_reason}
+        </div>
+      ) : null}
       {rule.population || rule.compute || rule.trigger || rule.attribute ? (
         <details className="tech">
           <summary>Technical Detail</summary>
@@ -81,6 +99,41 @@ function ruleCard(rule: Rule) {
   );
 }
 
+/** 6.4 — the extraction outcome, gaps included. Silent gaps are how the
+ * client environment fails without anyone noticing: every NEEDS_INPUT /
+ * NEEDS_DATA rule is countable here and expandable to its stated reason. */
+function ExtractionSummaryBlock({ summary }: { summary: ExtractionSummary }) {
+  const gapList = (title: string, gaps: ExtractionGap[]) => (
+    <details className="tech" style={{ marginTop: 6 }}>
+      <summary>
+        {gaps.length} {title}
+      </summary>
+      <div style={{ marginTop: 6 }}>
+        {gaps.map((g) => (
+          <div key={g.rule_key} className="eg" style={{ marginBottom: 6 }}>
+            <b>{g.rule_code || g.rule_key}</b> — {g.reason || "no reason recorded"}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+  return (
+    <div
+      className="note"
+      style={{ border: "1px solid var(--rule)", borderRadius: 5, marginBottom: 14 }}
+    >
+      <b>
+        {summary.extracted} extracted · {summary.compiled} compiled ·{" "}
+        {summary.needs_input.length} need a value · {summary.needs_data.length} need data we
+        don&rsquo;t have
+        {summary.draft ? ` · ${summary.draft} not yet compiled` : ""}
+      </b>
+      {summary.needs_input.length ? gapList("need a value the document does not state", summary.needs_input) : null}
+      {summary.needs_data.length ? gapList("need data the schema cannot express", summary.needs_data) : null}
+    </div>
+  );
+}
+
 /** Documents & Rules — no filters on this page. B2/B3 endpoints are built in
  * parallel; a 404 renders as a graceful pending state, never a crash. */
 export default function DocumentsPage() {
@@ -88,6 +141,7 @@ export default function DocumentsPage() {
   const [documentsError, setDocumentsError] = useState<string | null>(null);
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [rulesError, setRulesError] = useState<string | null>(null);
+  const [extraction, setExtraction] = useState<ExtractionSummary | null>(null);
   const [uploading, setUploading] = useState(false);
   // 5.2: PLAN documents go to the Rule Extractor; GUIDANCE is chunked +
   // embedded for search only. Chosen at upload, defaulting to PLAN.
@@ -112,9 +166,11 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     refreshDocuments();
-    getRules("latest")
+    // 6.4: the counts come from the API — never hardcoded
+    getExtractionSummary().then(setExtraction).catch(() => setExtraction(null));
+    getRules("drafts")
       .then((res) => {
-        setRules((res.rules ?? []).filter((r) => (r.status || "").toUpperCase() !== "PUBLISHED"));
+        setRules(res.rules ?? []);
         setRulesError(null);
       })
       .catch((e) => {
@@ -224,10 +280,11 @@ export default function DocumentsPage() {
             <div className="card-h">
               <div>
                 <h2>Rules Awaiting Review</h2>
-                <p>Draft rules read from uploaded documents.</p>
+                <p>Rules read from uploaded documents — the gaps are shown, never hidden.</p>
               </div>
             </div>
             <div className="card-b">
+              {extraction ? <ExtractionSummaryBlock summary={extraction} /> : null}
               {rules && rules.length ? (
                 rules.map(ruleCard)
               ) : (
