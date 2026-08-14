@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.middleware.correlation import CorrelationIdMiddleware
 from app.api.middleware.error_handlers import register_exception_handlers
 from app.api.routers.advisor import router as advisor_router
+from app.api.routers.chat import router as chat_router
 from app.api.routers.dashboard import router as dashboard_router
 from app.api.routers.flags import router as flags_router
 from app.api.routers.documents import router as documents_router
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(advisor_router)
+    app.include_router(chat_router)
     app.include_router(dashboard_router)
     app.include_router(flags_router)
     app.include_router(documents_router)

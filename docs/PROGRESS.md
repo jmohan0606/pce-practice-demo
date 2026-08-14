@@ -22,7 +22,20 @@
       refusal. Live-proven on Haiku: 7/7 correct incl. the V2 story-wrapped
       case (BLOCKED_PARTIAL, legit='Show revenue for V000014') and broad
       data questions staying CLEAN.
-- [ ] Task 3 (main thread): conversation agent
+- [x] Task 3 (main thread): conversation agent — app/chat/agent.py JSON-action
+      loop on Opus (query/search/get_insight/generate_insights/note/confirm/
+      answer), sentence-first answers, note-action reference resolution stated
+      in the steps, page context as a default not a constraint, confirm only
+      when genuinely ambiguous, tool failures said never hidden, budget binds
+      surfaced; in-code verification (regenerate once naming figures →
+      deterministic what-was-found fallback) + literal system-prompt-leak
+      replacement; service.py streams guardrail→step*→answer→done (SSE),
+      every LLM call turn-logged under chat|<conversation_id>; store.py
+      working in-memory baseline behind the Task-4 interface; router behind
+      global.chat (OFF = endpoints 409). LIVE-proven on real Opus: reference
+      resolution ('her'→V000013 stated as a step), rule citation link, the V2
+      partial-block case (injection blocked + revenue answered, tools 2),
+      full block (tools 0, no agent call), ~$0.04/message.
 - [ ] Tasks 4-5 (Subagent A): conversation store + history
 - [ ] Task 6 (Subagent B): chat panel UI
 - [ ] Task 7 (Subagent C): guardrail trace screen

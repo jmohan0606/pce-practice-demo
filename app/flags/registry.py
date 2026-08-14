@@ -144,9 +144,9 @@ FLAGS: dict[str, dict] = {
     },
     "global.chat": {
         "name": "Chat",
-        "description": "Ask questions about the loaded data. Not built yet — "
-                       "arrives in a later round; the flag exists so the demo scope "
-                       "is settable ahead of it.",
+        "description": "Ask iPerform — conversational questions over the loaded "
+                       "data with guardrails. OFF stops the chat endpoints, not "
+                       "just the button.",
         "group": "global", "parent": None, "always_on": False, "dep": None,
         "cost": "chat_static",
     },
