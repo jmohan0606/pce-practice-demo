@@ -30,7 +30,7 @@
  * (description / note) — nothing invented.
  */
 
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import type { NoncreditedDetail, NoncreditedRow } from "@/lib/api";
 import AdvisorLink from "@/components/AdvisorLink";
 import Chip from "@/components/Chip";
@@ -145,6 +145,13 @@ function bps(v: unknown): string {
 
 export default function CauseDetailModal({ detail, summaryRow, monthLabel, onClose }: CauseDetailModalProps) {
   const term = useTerm(`noncredited.${detail.reason_cd}`);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
   const columns = CAUSE_COLUMNS[detail.cause];
   const sub = [
     monthLabel,

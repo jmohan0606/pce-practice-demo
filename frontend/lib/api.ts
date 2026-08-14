@@ -720,9 +720,20 @@ export interface DashboardChart {
   months: ChartMonth[];
   transitions: ChartTransition[];
 }
-export function getDashboardChart(view: ChartView, advisor?: string): Promise<DashboardChart> {
+/** The backend's view names differ from the UI's: rec → recurring,
+ * nrec → non_recurring (found by browser verification — the server 400s on
+ * the short forms). The response's view field is mapped back. */
+const API_VIEW: Record<ChartView, string> = {
+  all: "all",
+  split: "split",
+  rec: "recurring",
+  nrec: "non_recurring",
+};
+
+export async function getDashboardChart(view: ChartView, advisor?: string): Promise<DashboardChart> {
   const adv = advisor && advisor !== "all" ? `&advisor=${encodeURIComponent(advisor)}` : "";
-  return get(`/api/dashboard/chart?view=${view}${adv}`);
+  const data = await get<DashboardChart>(`/api/dashboard/chart?view=${API_VIEW[view]}${adv}`);
+  return { ...data, view };
 }
 
 export interface DashboardTableRow {
@@ -755,8 +766,11 @@ export interface DashboardTable {
   /** Column definitions from the glossary — the export footnote source. */
   definitions: Record<string, string>;
 }
-export function getDashboardTable(fromMonth: string, toMonth: string, view: ChartView): Promise<DashboardTable> {
-  return get(`/api/dashboard/table?from=${fromMonth}&to=${toMonth}&view=${view}`);
+export async function getDashboardTable(fromMonth: string, toMonth: string, view: ChartView): Promise<DashboardTable> {
+  const data = await get<DashboardTable>(
+    `/api/dashboard/table?from=${fromMonth}&to=${toMonth}&view=${API_VIEW[view]}`,
+  );
+  return { ...data, view };
 }
 
 export interface RankingAdvisor {
