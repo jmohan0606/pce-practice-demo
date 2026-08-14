@@ -12,7 +12,16 @@
       chat budgets in settings with env aliases (CHAT_QUERY_BUDGET=6,
       CHAT_MAX_TURNS=10, CHAT_MAX_SEARCHES=4, block threshold 0.8). Two-layer
       design + do-not-tighten warning recorded in DECISIONS.md.
-- [ ] Task 2 (main thread): Layer 1 detection/tagging
+- [x] Task 2 (main thread): Layer 1 — app/chat/guardrail.py classifies every
+      message into CLEAN/PROMPT_INJECTION/JAILBREAK/SQL_INJECTION/
+      SOCIAL_ENGINEERING/DATA_EXFILTRATION/OFF_TOPIC with confidence; blocks
+      ONLY attack tags at >=0.8; OFF_TOPIC never blocks (redirect, not
+      refusal); mixed messages get BLOCKED_PARTIAL with the legitimate half
+      extracted and answered; classifier unavailability degrades LENIENT
+      (proceed untagged — Layer 2 contains), the opposite of V2's fail-safe
+      refusal. Live-proven on Haiku: 7/7 correct incl. the V2 story-wrapped
+      case (BLOCKED_PARTIAL, legit='Show revenue for V000014') and broad
+      data questions staying CLEAN.
 - [ ] Task 3 (main thread): conversation agent
 - [ ] Tasks 4-5 (Subagent A): conversation store + history
 - [ ] Task 6 (Subagent B): chat panel UI
