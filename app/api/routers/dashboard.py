@@ -64,3 +64,102 @@ def get_product_contribution(
         "pce_dashboard_product_contribution",
         {"from": from_month, "to": to_month, "advisor": advisor, "class": class_id},
     )
+
+
+# ---------------------------------------------------------------- Round A1 task 3.2
+# The expanded table and chart. All figures come from catalog queries
+# (app/graph/queries/catalog.py — product_month_metrics, product_transition_table,
+# month_aum, advisor_count_by_product); the router composes and shapes only.
+# Metric definitions are served from app/shared/glossary.METRIC_DEFINITIONS —
+# the ONE source, never restated here.
+
+from app.graph.queries.catalog import (  # noqa: E402
+    PRODUCT_VIEWS,
+    TOTAL_ROW_ID,
+    CatalogError,
+    run_catalog_query,
+)
+from app.shared.glossary import METRIC_DEFINITIONS  # noqa: E402
+
+
+def _catalog(query_name: str, params: dict) -> list[dict]:
+    try:
+        return run_catalog_query(query_name, params)["rows"]
+    except CatalogError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _check_view(view: str) -> str:
+    if view not in PRODUCT_VIEWS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown view '{view}' (expected {'|'.join(PRODUCT_VIEWS)})")
+    return view
+
+
+@router.get("/dashboard/definitions")
+def get_dashboard_definitions() -> dict:
+    """The dashboard's metric definitions — the same METRIC_DEFINITIONS the
+    glossary serves (one source, never restated)."""
+    return {"definitions": METRIC_DEFINITIONS}
+
+
+@router.get("/dashboard/table")
+def get_dashboard_table(
+    from_month: str = Query(..., alias="from"),
+    to_month: str = Query(..., alias="to"),
+    view: str = Query("all"),
+) -> dict:
+    _check_view(view)
+    rows = _catalog("product_transition_table",
+                    {"from_month": from_month, "to_month": to_month,
+                     "product_view": view})
+    total = next(r for r in rows if r["group_id"] == TOTAL_ROW_ID)
+    body = [r for r in rows if r["group_id"] != TOTAL_ROW_ID]
+    for row in body:  # the mockup's per-row Advisors column
+        row["advisor_count"] = _catalog(
+            "advisor_count_by_product",
+            {"month_id": to_month, "group_id": row["group_id"]})[0]["advisor_count"]
+    total["advisor_count"] = _catalog(
+        "advisor_count_by_product",
+        {"month_id": to_month, "group_id": "all"})[0]["advisor_count"]
+    return {"from": from_month, "to": to_month, "view": view,
+            "rows": body, "total": total, "definitions": METRIC_DEFINITIONS}
+
+
+@router.get("/dashboard/chart")
+def get_dashboard_chart(view: str = Query("all")) -> dict:
+    _check_view(view)
+    month_ids = [m["month_id"]
+                 for m in _run("pce_dashboard_months", {"advisor": "all"})["months"]]
+    months = []
+    for month_id in month_ids:
+        # split rows carry class_id, so one call yields both class amounts;
+        # a filtered view simply reads its own class only.
+        rows = _catalog("product_month_metrics",
+                        {"month_id": month_id, "product_view": view})
+        recurring = round(sum(r["credited_amt"] for r in rows
+                              if r["class_id"] == "RECURRING"), 2)
+        non_recurring = round(sum(r["credited_amt"] for r in rows
+                                  if r["class_id"] == "NON_RECURRING"), 2)
+        aum = _catalog("month_aum",
+                       {"month_id": month_id, "product_view": view})[0]["aum"]
+        months.append({
+            "month_id": month_id,
+            "credited_amt": round(recurring + non_recurring, 2),
+            "recurring_amt": recurring,
+            "non_recurring_amt": non_recurring,
+            "aum": aum,
+        })
+    transitions = []
+    for prev, curr in zip(months, months[1:]):
+        change = round(curr["credited_amt"] - prev["credited_amt"], 2)
+        transitions.append({
+            "from": prev["month_id"], "to": curr["month_id"],
+            "change_amt": change,
+            # existing decision: change_pct is null when the from amount is 0
+            "change_pct": (round(change / prev["credited_amt"] * 100, 2)
+                           if prev["credited_amt"] else None),
+            "direction": "up" if change >= 0 else "down",
+        })
+    return {"view": view, "months": months, "transitions": transitions}

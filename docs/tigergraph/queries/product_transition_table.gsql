@@ -1,0 +1,56 @@
+// product_transition_table — Round A1 dashboard query (docs/ROUND_A1_SPEC.md 3.1).
+// Per product group: accounts/trades/revenue in both months of a transition,
+// deltas, and share_pct of the FILTERED to-month total (recurring /
+// non_recurring views share against their own class total, so the column
+// always sums to 100). change_pct is null when from_amt is 0. A final row
+// with group_id '__TOTAL__' carries revenue/trade sums and DISTINCT account
+// counts across the view. Groups with any activity in either month are
+// returned — 'unmapped' included, never dropped. Cohort only (in_cohort=true).
+// Local-tier equivalent: app/graph/queries/catalog.py::product_transition_table
+CREATE QUERY product_transition_table(STRING from_month, STRING to_month, STRING product_view) FOR GRAPH phx_dm_pce_practice_demo {
+  MapAccum<STRING, SetAccum<STRING>> @@from_accts, @@to_accts;
+  MapAccum<STRING, INT> @@from_trades, @@to_trades;
+  MapAccum<STRING, DOUBLE> @@from_amt, @@to_amt;
+  SetAccum<STRING> @@all_from_accts, @@all_to_accts;
+  SumAccum<DOUBLE> @@total_to;
+  STRING want_class = CASE WHEN product_view == "recurring" THEN "RECURRING"
+                           WHEN product_view == "non_recurring" THEN "NON_RECURRING"
+                           ELSE "" END;
+  t = SELECT x FROM phx_dm_pce_revenue_transaction:x
+        -(phx_dm_pce_txn_of_product)- phx_dm_pce_product:p
+        -(phx_dm_pce_product_in_group)- phx_dm_pce_product_group:g
+      WHERE (x.month_id == from_month OR x.month_id == to_month)
+        AND x.reason_cd == "__NONE__"
+        AND (want_class == "" OR g.class_id == want_class)
+      ACCUM CASE WHEN x.month_id == from_month THEN
+              @@from_accts += (g.group_id -> x.acct_key),
+              @@from_trades += (g.group_id -> 1),
+              @@from_amt += (g.group_id -> x.credited_amt),
+              @@all_from_accts += x.acct_key
+            ELSE
+              @@to_accts += (g.group_id -> x.acct_key),
+              @@to_trades += (g.group_id -> 1),
+              @@to_amt += (g.group_id -> x.credited_amt),
+              @@all_to_accts += x.acct_key,
+              @@total_to += x.credited_amt
+            END;
+  gs = SELECT g FROM phx_dm_pce_product_group:g
+       WHERE @@from_amt.containsKey(g.group_id) OR @@to_amt.containsKey(g.group_id)
+       POST-ACCUM
+         DOUBLE f = @@from_amt.get(g.group_id), t2 = @@to_amt.get(g.group_id),
+         PRINT g.group_id, g.group_name, g.display_prefix, g.class_id,
+               @@from_accts.get(g.group_id).size() AS from_account_count,
+               @@from_trades.get(g.group_id) AS from_trade_count, f AS from_amt,
+               @@to_accts.get(g.group_id).size() AS to_account_count,
+               @@to_trades.get(g.group_id) AS to_trade_count, t2 AS to_amt,
+               @@to_accts.get(g.group_id).size() - @@from_accts.get(g.group_id).size() AS account_delta,
+               @@to_trades.get(g.group_id) - @@from_trades.get(g.group_id) AS trade_delta,
+               t2 - f AS change_amt,
+               CASE WHEN f == 0 THEN NULL ELSE (t2 - f) / f * 100 END AS change_pct,
+               CASE WHEN @@total_to == 0 THEN 0 ELSE t2 / @@total_to * 100 END AS share_pct,
+               CASE WHEN t2 - f >= 0 THEN "up" ELSE "down" END AS direction;
+  // Total row: distinct accounts across the view, trade/revenue sums.
+  PRINT "__TOTAL__" AS group_id, "Total" AS group_name, "" AS display_prefix,
+        "" AS class_id, @@all_from_accts.size() AS from_account_count,
+        @@all_to_accts.size() AS to_account_count, @@total_to AS to_amt;
+}

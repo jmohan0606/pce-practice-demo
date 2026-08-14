@@ -74,6 +74,14 @@ SAMPLE_PARAMS = {
                              "acct_key": "3060", "month_id": "202605"},
     "product_movement_causes": {"group_id": "managed_accounts",
                                 "from_month": "202604", "to_month": "202605"},
+    # Round A1 task 3 dashboard metric queries
+    "product_month_metrics": {"month_id": "202605", "product_view": "all"},
+    "product_transition_table": {"from_month": "202604", "to_month": "202605",
+                                 "product_view": "all"},
+    "month_aum": {"month_id": "202605", "product_view": "all"},
+    "advisor_count_by_product": {"month_id": "202605", "group_id": "managed_accounts"},
+    "account_lifecycle_counts": {"from_month": "202604", "to_month": "202605",
+                                 "scope": "all"},
 }
 
 
@@ -146,8 +154,9 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
         if not wanted <= cols:
             missing_cols.append(f"{name}: missing {sorted(wanted - cols)}")
     check(1, "every catalog query executes and returns the documented columns",
-          not errors and not missing_cols and len(CATALOG) == 33,
-          f"{len(CATALOG)} queries (24 Round C + 4 Round E position + 5 Round G drill-down); "
+          not errors and not missing_cols and len(CATALOG) == 38,
+          f"{len(CATALOG)} queries (24 Round C + 4 Round E position + 5 Round G drill-down "
+          f"+ 5 Round A1 dashboard); "
           f"errors={errors or 'none'}; column gaps={missing_cols or 'none'}; "
           f"legitimately empty on mock data: {empty or 'none'}")
 

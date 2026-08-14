@@ -571,6 +571,279 @@ def product_movement_causes(store: FoundationGraphStore, params: dict) -> list[d
     }]
 
 
+# --------------------------------------------------------------------------- dashboard metrics (Round A1 task 3)
+# The expanded dashboard table (accounts / trades / revenue per product per
+# month with deltas and share) and the chart (AUM per month per product view).
+# Metric definitions are app/shared/glossary.METRIC_DEFINITIONS — ONE source,
+# served by GET /api/dashboard/definitions, never restated here:
+#   accounts = distinct acct_key with credited revenue in the month for that product
+#   trades   = count of credited transactions
+#   revenue  = sum(credited_amt) where reason_cd = '__NONE__'
+#   AUM      = sum(end_balance) from account_month for accounts holding that product
+
+PRODUCT_VIEWS = ("all", "split", "recurring", "non_recurring")
+_VIEW_CLASS = {"recurring": "RECURRING", "non_recurring": "NON_RECURRING"}
+TOTAL_ROW_ID = "__TOTAL__"
+
+
+def _view_groups(store: FoundationGraphStore, product_view: str) -> dict[str, dict]:
+    """The product groups visible in a view. 'all' and 'split' see every group
+    (split differs only in presentation); a class view is filtered to its class."""
+    view = str(product_view)
+    if view not in PRODUCT_VIEWS:
+        raise CatalogError(
+            f"unknown product_view '{view}' (expected {'|'.join(PRODUCT_VIEWS)})")
+    cls = _VIEW_CLASS.get(view)
+    return {gid: g for gid, g in store.all_vertices(V_GROUP).items()
+            if cls is None or str(g.get("class_id")) == cls}
+
+
+def _product_group_map(store: FoundationGraphStore) -> dict[str, str]:
+    """product_id -> group_id; a product with no group falls to 'unmapped',
+    which is shown whenever it has any amount and is never dropped."""
+    return {pid: str(p.get("group_id") or "unmapped")
+            for pid, p in store.all_vertices("phx_dm_pce_product").items()}
+
+
+def _credited_txns(store: FoundationGraphStore, month_id: str) -> list[dict]:
+    """Credited transactions = reason_cd '__NONE__' (the revenue definition),
+    cohort advisors only."""
+    scope = _advisor_scope(store, "all")
+    return [t for t in _txn_rows(store, scope, month_id)
+            if str(t.get("reason_cd")) == "__NONE__"]
+
+
+def _group_month_metrics(store: FoundationGraphStore, month_id: str,
+                         groups: dict[str, dict]) -> dict[str, dict]:
+    """gid -> {'accts': set, 'trades': int, 'amt': float, 'advisors': set}
+    over the month's credited transactions, restricted to the view's groups."""
+    pg = _product_group_map(store)
+    out: dict[str, dict] = {}
+    for t in _credited_txns(store, month_id):
+        gid = pg.get(str(t.get("product_id")), "unmapped")
+        if gid not in groups:
+            continue
+        row = out.setdefault(gid, {"accts": set(), "trades": 0, "amt": 0.0,
+                                   "advisors": set()})
+        row["accts"].add(str(t.get("acct_key")))
+        row["advisors"].add(str(t.get("advisor_sid")))
+        row["trades"] += 1
+        row["amt"] += _num(t.get("credited_amt"))
+    return out
+
+
+def _group_sort_key(groups: dict[str, dict]):
+    def key(gid: str):
+        return (int(_num(groups.get(gid, {}).get("sort_order")) or 999), gid)
+    return key
+
+
+@mock_query("product_month_metrics")
+def product_month_metrics(store: FoundationGraphStore, params: dict) -> list[dict]:
+    month = str(params["month_id"])
+    _require_month(store, month)
+    groups = _view_groups(store, params["product_view"])
+    metrics = _group_month_metrics(store, month, groups)
+    rows = []
+    for gid in sorted(metrics, key=_group_sort_key(groups)):
+        g, m = groups[gid], metrics[gid]
+        rows.append({
+            "group_id": gid,
+            "group_name": str(g.get("group_name") or gid),
+            "display_prefix": str(g.get("display_prefix") or ""),
+            "class_id": str(g.get("class_id") or ""),
+            "account_count": len(m["accts"]),
+            "trade_count": m["trades"],
+            "credited_amt": round(m["amt"], 2),
+        })
+    return rows
+
+
+@mock_query("product_transition_table")
+def product_transition_table(store: FoundationGraphStore, params: dict) -> list[dict]:
+    frm, to = str(params["from_month"]), str(params["to_month"])
+    _require_month(store, frm, "from_month")
+    _require_month(store, to, "to_month")
+    groups = _view_groups(store, params["product_view"])
+    m_from = _group_month_metrics(store, frm, groups)
+    m_to = _group_month_metrics(store, to, groups)
+    active = set(m_from) | set(m_to)  # any activity in either month -> shown, never dropped
+    # share_pct is of the FILTERED total (the view's groups only) so the column
+    # sums to 100 in every view, including recurring / non_recurring.
+    total_to = sum(m["amt"] for m in m_to.values())
+    empty = {"accts": set(), "trades": 0, "amt": 0.0}
+
+    def _row(gid: str, f: dict, t: dict, name: str, prefix: str, cls: str) -> dict:
+        from_amt, to_amt = round(f["amt"], 2), round(t["amt"], 2)
+        change = round(to_amt - from_amt, 2)
+        return {
+            "group_id": gid, "group_name": name, "display_prefix": prefix,
+            "class_id": cls,
+            "from_account_count": len(f["accts"]), "from_trade_count": f["trades"],
+            "from_amt": from_amt,
+            "to_account_count": len(t["accts"]), "to_trade_count": t["trades"],
+            "to_amt": to_amt,
+            "account_delta": len(t["accts"]) - len(f["accts"]),
+            "trade_delta": t["trades"] - f["trades"],
+            "change_amt": change,
+            # existing decision: change_pct is null when from_amt is 0
+            "change_pct": round(change / from_amt * 100, 2) if from_amt else None,
+            "share_pct": round(to_amt / total_to * 100, 2) if total_to else 0.0,
+            "direction": "up" if change >= 0 else "down",
+        }
+
+    rows = [
+        _row(gid, m_from.get(gid, empty), m_to.get(gid, empty),
+             str(groups[gid].get("group_name") or gid),
+             str(groups[gid].get("display_prefix") or ""),
+             str(groups[gid].get("class_id") or ""))
+        for gid in sorted(active, key=_group_sort_key(groups))
+    ]
+    # Total row (group_id '__TOTAL__'): revenue/trade totals are sums; account
+    # totals are DISTINCT accounts across the view (an account active in two
+    # groups counts once here, once per group above).
+    all_from = {"accts": set().union(*(m["accts"] for m in m_from.values())) if m_from else set(),
+                "trades": sum(m["trades"] for m in m_from.values()),
+                "amt": sum(m["amt"] for m in m_from.values())}
+    all_to = {"accts": set().union(*(m["accts"] for m in m_to.values())) if m_to else set(),
+              "trades": sum(m["trades"] for m in m_to.values()),
+              "amt": total_to}
+    total = _row(TOTAL_ROW_ID, all_from, all_to, "Total", "", "")
+    total["share_pct"] = 100.0 if total_to else 0.0
+    rows.append(total)
+    return rows
+
+
+@mock_query("month_aum")
+def month_aum(store: FoundationGraphStore, params: dict) -> list[dict]:
+    month = str(params["month_id"])
+    _require_month(store, month)
+    groups = _view_groups(store, params["product_view"])
+    metrics = _group_month_metrics(store, month, groups)
+    accts: set[str] = set()
+    for m in metrics.values():
+        accts |= m["accts"]
+    # AUM = end balances of the accounts holding the view's products this month
+    return [{"month_id": month, "product_view": str(params["product_view"]),
+             "aum": _balances(store, accts, month),
+             "account_count": len(accts)}]
+
+
+@mock_query("advisor_count_by_product")
+def advisor_count_by_product(store: FoundationGraphStore, params: dict) -> list[dict]:
+    month = str(params["month_id"])
+    _require_month(store, month)
+    gid = str(params["group_id"])
+    groups = store.all_vertices(V_GROUP)
+    if gid != "all" and gid not in groups:
+        raise CatalogError(f"unknown group_id '{gid}'")
+    wanted = groups if gid == "all" else {gid: groups[gid]}
+    metrics = _group_month_metrics(store, month, wanted)
+    advisors: set[str] = set()
+    for m in metrics.values():
+        advisors |= m["advisors"]
+    return [{"group_id": gid, "month_id": month, "advisor_count": len(advisors)}]
+
+
+LIFECYCLE_RULE_FIELDS = {
+    "NEW_ACCOUNT": "new_count",
+    "LOST_ACCOUNT": "lost_count",
+    "RETAINED_ACCOUNT": "retained_count",
+    "ACCOUNT_TRANSFERRED_IN": "transferred_in_count",
+    "ACCOUNT_TRANSFERRED_OUT": "transferred_out_count",
+}
+
+
+@mock_query("account_lifecycle_counts")
+def account_lifecycle_counts(store: FoundationGraphStore, params: dict) -> list[dict]:
+    """New / lost / retained / transferred counts from RULE EVALUATION OUTCOMES
+    (evaluate_rule_set — deterministic, honours exclude_matched_of ordering, so
+    an account claimed by an earlier rule is never double-counted) plus net
+    flows from phx_dm_pce_advisor_flow_month. scope: an advisor_sid, a
+    group_id, or 'all' (cohort/practice)."""
+    from app.rules.seed import ensure_v0_seed
+    from app.rules.service import evaluate_rule_set
+    from app.rules.store import get_rule_store
+
+    frm, to = str(params["from_month"]), str(params["to_month"])
+    _require_month(store, frm, "from_month")
+    _require_month(store, to, "to_month")
+    # Lifecycle rules compare to_month against ITS OWN prior month — the query
+    # is only honest over consecutive months (or the baseline against itself).
+    prior = _prior_month(store, to)
+    if prior is None:
+        if frm != to:
+            raise CatalogError(
+                f"to_month {to} is the baseline month — no prior month exists; "
+                f"call with from_month == to_month for the baseline position")
+    elif frm != prior:
+        raise CatalogError(
+            f"lifecycle counts are defined over consecutive months: "
+            f"from_month must be {prior} for to_month {to}, got '{frm}'")
+
+    scope_id = str(params["scope"])
+    advisors = store.all_vertices(V_ADVISOR)
+    groups = store.all_vertices(V_GROUP)
+    if scope_id in ("", "all"):
+        kind, scope_id = "all", "all"
+    elif scope_id in advisors:
+        kind = "advisor"
+    elif scope_id in groups:
+        kind = "group"
+    else:
+        raise CatalogError(
+            f"unknown scope '{scope_id}' — expected an advisor_sid, a group_id, or 'all'")
+
+    ensure_v0_seed()
+    version = get_rule_store().latest_version("PUBLISHED")
+    if version is None:
+        raise CatalogError("no PUBLISHED rule-set version exists — seed the rules first")
+    outcome = evaluate_rule_set(
+        version["version_id"], month=to,
+        advisor_sid=scope_id if kind == "advisor" else None)
+
+    group_accts: set[str] | None = None
+    if kind == "group":
+        wanted = {scope_id: groups[scope_id]}
+        group_accts = set()
+        for month in (frm, to):
+            for m in _group_month_metrics(store, month, wanted).values():
+                group_accts |= m["accts"]
+
+    counts = {field: 0 for field in LIFECYCLE_RULE_FIELDS.values()}
+    notes: list[str] = []
+    for result in outcome["results"]:
+        field = LIFECYCLE_RULE_FIELDS.get(str(result.get("rule_code")))
+        if field is None:
+            continue
+        if result.get("empty_reason"):
+            notes.append(f"{result['rule_code']}: {result['empty_reason']}")
+        keys = {str(entry["key"]) for entry in result.get("matched", [])}
+        if group_accts is not None:
+            keys &= group_accts
+        counts[field] = len(keys)
+
+    # Net flows come from phx_dm_pce_advisor_flow_month — advisor-attributed
+    # figures, NOT attributable to a product group; group scope returns null
+    # rather than a made-up allocation.
+    if kind == "group":
+        net_flows = None
+        notes.append("net_flows: flow records are advisor-attributed, not "
+                     "product-group-attributed — null at group scope")
+    else:
+        flow_scope = {scope_id} if kind == "advisor" else _advisor_scope(store, "all")
+        net_flows = round(sum(_num(r.get("total_net_flows"))
+                              for r in store.all_vertices(V_FLOW).values()
+                              if str(r.get("advisor_sid")) in flow_scope
+                              and str(r.get("month_id")) == to), 2)
+
+    return [{"scope": scope_id, "scope_kind": kind,
+             "from_month": frm, "to_month": to,
+             **counts, "net_flows": net_flows,
+             "rule_set_version": version["version_id"],
+             "notes": "; ".join(notes)}]
+
+
 # --------------------------------------------------------------------------- position (Round E task 4)
 # "Where do we stand", not only "what changed". NOTE: advisor_nnm_position was
 # DROPPED by operator decision (DECISIONS.md, Round E) — we hold three months of
@@ -1005,6 +1278,52 @@ CATALOG: dict[str, dict] = {
                     "account_count_from", "account_count_to", "account_effect_amt",
                     "rev_per_existing_from", "rev_per_existing_to",
                     "rev_per_existing_effect_amt", "note"],
+    },
+    # Round A1 task 3 — dashboard metric queries
+    "product_month_metrics": {
+        "description": "Accounts, trades and credited revenue per product group for one "
+                       "month, filtered to the product view (all|split|recurring|"
+                       "non_recurring). Metric definitions: GET /api/dashboard/definitions.",
+        "params": [MONTH, _p("product_view", "all|split|recurring|non_recurring")],
+        "returns": ["group_id", "group_name", "display_prefix", "class_id",
+                    "account_count", "trade_count", "credited_amt"],
+    },
+    "product_transition_table": {
+        "description": "Per-group accounts/trades/revenue for both months of a transition "
+                       "with deltas and share_pct of the FILTERED to-month total (sums to "
+                       "100 in every view). Final row group_id '__TOTAL__': revenue/trade "
+                       "sums with DISTINCT account counts across the view.",
+        "params": [_p("from_month", "YYYYMM"), _p("to_month", "YYYYMM"),
+                   _p("product_view", "all|split|recurring|non_recurring")],
+        "returns": ["group_id", "group_name", "display_prefix", "class_id",
+                    "from_account_count", "from_trade_count", "from_amt",
+                    "to_account_count", "to_trade_count", "to_amt",
+                    "account_delta", "trade_delta", "change_amt", "change_pct",
+                    "share_pct", "direction"],
+    },
+    "month_aum": {
+        "description": "Total AUM at month end for a product view: summed end balances of "
+                       "the accounts with credited revenue in the view's products.",
+        "params": [MONTH, _p("product_view", "all|split|recurring|non_recurring")],
+        "returns": ["month_id", "product_view", "aum", "account_count"],
+    },
+    "advisor_count_by_product": {
+        "description": "Distinct advisors with credited revenue in one product group "
+                       "(group_id 'all' = any group) for one month.",
+        "params": [MONTH, _p("group_id", "string")],
+        "returns": ["group_id", "month_id", "advisor_count"],
+    },
+    "account_lifecycle_counts": {
+        "description": "New/lost/retained/transferred-in/transferred-out account counts "
+                       "from rule evaluation outcomes (deterministic, honours "
+                       "exclude_matched_of — no double counting) plus net flows, for an "
+                       "advisor_sid, a group_id, or 'all'. Consecutive months only; the "
+                       "baseline month reports empty-with-reason rules in notes.",
+        "params": [_p("from_month", "YYYYMM"), _p("to_month", "YYYYMM"),
+                   _p("scope", "advisor_sid | group_id | 'all'")],
+        "returns": ["scope", "scope_kind", "from_month", "to_month", "new_count",
+                    "lost_count", "retained_count", "transferred_in_count",
+                    "transferred_out_count", "net_flows", "rule_set_version", "notes"],
     },
 }
 

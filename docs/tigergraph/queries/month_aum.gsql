@@ -1,0 +1,22 @@
+// month_aum — Round A1 dashboard query (docs/ROUND_A1_SPEC.md 3.1).
+// Total AUM at month end for a product view: sum of end_balance from
+// account_month for the accounts with credited revenue in the view's
+// products this month. Cohort advisors only (in_cohort = true).
+// Local-tier equivalent: app/graph/queries/catalog.py::month_aum
+CREATE QUERY month_aum(STRING month_id, STRING product_view) FOR GRAPH phx_dm_pce_practice_demo {
+  SetAccum<STRING> @@accts;
+  SumAccum<DOUBLE> @@aum;
+  STRING want_class = CASE WHEN product_view == "recurring" THEN "RECURRING"
+                           WHEN product_view == "non_recurring" THEN "NON_RECURRING"
+                           ELSE "" END;
+  t = SELECT x FROM phx_dm_pce_revenue_transaction:x
+        -(phx_dm_pce_txn_of_product)- phx_dm_pce_product:p
+        -(phx_dm_pce_product_in_group)- phx_dm_pce_product_group:g
+      WHERE x.month_id == month_id AND x.reason_cd == "__NONE__"
+        AND (want_class == "" OR g.class_id == want_class)
+      ACCUM @@accts += x.acct_key;
+  am = SELECT a FROM phx_dm_pce_account_month:a
+       WHERE a.month_id == month_id AND @@accts.contains(a.acct_key)
+       ACCUM @@aum += a.end_balance;
+  PRINT month_id, product_view, @@aum AS aum, @@accts.size() AS account_count;
+}

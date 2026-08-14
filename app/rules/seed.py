@@ -16,6 +16,11 @@ distinct dates, so the rule could never fire). NEW_BILLING was added at order
 (``exclude_matched_of`` — an account opened this month is new, not newly
 billing).
 
+Round A1 task 3.3: RETAINED_ACCOUNT joins as a SIXTH rule at order 35,
+provenance TECH_TEAM_WRITTEN (tech-team authored for the lifecycle counts; not
+operator-dictated, not document-derived), excluding accounts already claimed by
+NEW_ACCOUNT, NEW_BILLING or ACCOUNT_TRANSFERRED_IN.
+
 ``ensure_v0_seed()`` is idempotent: it does nothing when any rule-set version
 already exists.
 """
@@ -227,6 +232,51 @@ V0_RULES: list[dict] = [
             "unsupported": None,
         },
     },
+    {
+        # Round A1 task 3.3 — the sixth v0 rule. TECH TEAM WRITTEN (not
+        # operator-specified): the tech team added it so the drill-down strip
+        # and lifecycle counts have a retained category; no plan document
+        # states it and the operator did not dictate it.
+        "rule_code": "RETAINED_ACCOUNT",
+        "provenance": "TECH_TEAM_WRITTEN",
+        "severity": "INFO",
+        "severity_reason": "The expected steady state; counts context, nothing to act on",
+        "rule_name": "Retained Account",
+        "statement": "An account with credited revenue in both the prior month and this "
+                     "month. Neither new, nor newly billing, nor lost.",
+        "worked_example": "An account with $500 of April revenue and $520 of May revenue, "
+                          "not opened, newly billing or transferred in during May, is "
+                          "retained in May.",
+        "kind": "TRIGGER",
+        "grain": "account",
+        "driver_tag": "Retained Accounts",
+        "driver_code": "RETAINED_ACCOUNT",
+        "driver_label": "Retained Accounts",
+        "driver_definition": "An account with credited revenue in both the prior month and "
+                             "this month — neither new, newly billing, transferred in, nor "
+                             "lost.",
+        "evaluation_order": 35,
+        # Runs AFTER the claiming rules: an account that is new, newly billing
+        # or transferred in this month is already claimed by a more specific
+        # driver and must not also count as retained.
+        "exclude_matched_of": ["NEW_ACCOUNT", "NEW_BILLING", "ACCOUNT_TRANSFERRED_IN"],
+        "plan": {
+            "vertex": "phx_dm_pce_account_month",
+            # present_prior_month carries the baseline guard: on 202604 no prior
+            # month exists, so the rule returns empty-with-reason, never a fake 0.
+            "filters": [{"field": "present_prior_month", "op": "=", "value": True},
+                        {"field": "prior_credited_amt", "op": ">", "value": 0},
+                        {"field": "credited_amt", "op": ">", "value": 0}],
+            "compute": {"agg": "sum", "expr": "credited_amt"},
+            "trigger": {"op": ">", "value": 0},
+            "attribute": None,
+            "params": [],
+            "explanation": "Reads account-months with credited revenue in both the prior "
+                           "month and this month, sums this month's credited revenue, and "
+                           "flags accounts retained across the transition.",
+            "unsupported": None,
+        },
+    },
 ]
 
 
@@ -260,7 +310,10 @@ def ensure_v0_seed() -> dict:
                 {
                     **rule,
                     "explanation": rule["plan"].get("explanation"),
-                    "provenance": "OPERATOR_SPECIFIED",
+                    # Round A1: RETAINED_ACCOUNT carries its own provenance
+                    # (TECH_TEAM_WRITTEN); the operator-dictated five stay
+                    # OPERATOR_SPECIFIED.
+                    "provenance": rule.get("provenance", "OPERATOR_SPECIFIED"),
                     "status": "PUBLISHED",
                     "confidence": 1.0,
                     "citations": [],

@@ -1,0 +1,14 @@
+// advisor_count_by_product — Round A1 dashboard query (docs/ROUND_A1_SPEC.md 3.1).
+// Distinct advisors with credited revenue in one product group (group_id
+// "all" = any group) for one month. Cohort advisors only (in_cohort = true).
+// Local-tier equivalent: app/graph/queries/catalog.py::advisor_count_by_product
+CREATE QUERY advisor_count_by_product(STRING month_id, STRING group_id) FOR GRAPH phx_dm_pce_practice_demo {
+  SetAccum<STRING> @@advisors;
+  t = SELECT x FROM phx_dm_pce_revenue_transaction:x
+        -(phx_dm_pce_txn_of_product)- phx_dm_pce_product:p
+        -(phx_dm_pce_product_in_group)- phx_dm_pce_product_group:g
+      WHERE x.month_id == month_id AND x.reason_cd == "__NONE__"
+        AND (group_id == "all" OR g.group_id == group_id)
+      ACCUM @@advisors += x.advisor_sid;
+  PRINT group_id, month_id, @@advisors.size() AS advisor_count;
+}

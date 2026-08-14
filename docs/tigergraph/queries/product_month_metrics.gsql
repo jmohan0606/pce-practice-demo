@@ -1,0 +1,33 @@
+// product_month_metrics — Round A1 dashboard query (docs/ROUND_A1_SPEC.md 3.1).
+// Accounts, trades and credited revenue per product group for one month,
+// filtered to the product view (all|split|recurring|non_recurring; all and
+// split see every group — split differs only in presentation). Cohort
+// advisors only (in_cohort = true). Credited = reason_cd '__NONE__'.
+// Metric definitions: app/shared/glossary.METRIC_DEFINITIONS (one source).
+// Local-tier equivalent: app/graph/queries/catalog.py::product_month_metrics
+CREATE QUERY product_month_metrics(STRING month_id, STRING product_view) FOR GRAPH phx_dm_pce_practice_demo {
+  TYPEDEF TUPLE<STRING group_id, STRING group_name, STRING display_prefix,
+                STRING class_id, INT account_count, INT trade_count,
+                DOUBLE credited_amt> GroupRow;
+  MapAccum<STRING, SetAccum<STRING>> @@accts;
+  MapAccum<STRING, INT> @@trades;
+  MapAccum<STRING, DOUBLE> @@amt;
+  HeapAccum<GroupRow>(100, group_id ASC) @@rows;
+  STRING want_class = CASE WHEN product_view == "recurring" THEN "RECURRING"
+                           WHEN product_view == "non_recurring" THEN "NON_RECURRING"
+                           ELSE "" END;
+  t = SELECT x FROM phx_dm_pce_revenue_transaction:x
+        -(phx_dm_pce_txn_of_product)- phx_dm_pce_product:p
+        -(phx_dm_pce_product_in_group)- phx_dm_pce_product_group:g
+      WHERE x.month_id == month_id AND x.reason_cd == "__NONE__"
+        AND (want_class == "" OR g.class_id == want_class)
+      ACCUM @@accts += (g.group_id -> x.acct_key),
+            @@trades += (g.group_id -> 1),
+            @@amt += (g.group_id -> x.credited_amt);
+  gs = SELECT g FROM phx_dm_pce_product_group:g
+       WHERE @@amt.containsKey(g.group_id)
+       ACCUM @@rows += GroupRow(g.group_id, g.group_name, g.display_prefix,
+                                g.class_id, @@accts.get(g.group_id).size(),
+                                @@trades.get(g.group_id), @@amt.get(g.group_id));
+  PRINT @@rows AS rows;
+}

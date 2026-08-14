@@ -253,7 +253,7 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
           [r["rule_code"] for r in base_report["never_fired"]] == []
           and probe_codes == ["H8_NEVER_FIRES"] and probe_row.get("scopes"),
           f"seed version never_fired={[r['rule_code'] for r in base_report['never_fired']]} "
-          f"(all 5 rules fire); probe version flags {probe_codes} with scopes "
+          f"(all 6 rules fire); probe version flags {probe_codes} with scopes "
           f"{probe_row.get('scopes')}")
 
     # 13 — logs rotate at midnight with a dated archive name; size safety net;

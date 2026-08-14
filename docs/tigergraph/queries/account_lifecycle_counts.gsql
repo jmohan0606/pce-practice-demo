@@ -1,0 +1,53 @@
+// account_lifecycle_counts — Round A1 dashboard query (docs/ROUND_A1_SPEC.md 3.3).
+// New / lost / retained / transferred-in / transferred-out counts and net
+// flows for a scope (an advisor_sid, a group_id, or "all" = the cohort).
+//
+// IMPORTANT: the counts are defined by RULE EVALUATION OUTCOMES — the local
+// tier runs evaluate_rule_set over the published rule set (NEW_ACCOUNT,
+// LOST_ACCOUNT, RETAINED_ACCOUNT, ACCOUNT_TRANSFERRED_IN/OUT), which honours
+// evaluation_order and exclude_matched_of so no account lands in two
+// categories. This GSQL restates the SAME population logic the v0 seed plans
+// declare; if the rules change, this query must change with them (the rule
+// store is the source of truth). Consecutive months only; when to_month is the
+// baseline month the prior-month rules return empty-with-reason, not zero.
+// Net flows come from phx_dm_pce_advisor_flow_month — advisor-attributed, so
+// a group_id scope returns net_flows NULL rather than a made-up allocation.
+// Local-tier equivalent: app/graph/queries/catalog.py::account_lifecycle_counts
+CREATE QUERY account_lifecycle_counts(STRING from_month, STRING to_month, STRING scope) FOR GRAPH phx_dm_pce_practice_demo {
+  SetAccum<STRING> @@new_accts, @@lost_accts, @@retained_accts;
+  SetAccum<STRING> @@tin_accts, @@tout_accts;
+  SumAccum<DOUBLE> @@net_flows;
+  // NEW_ACCOUNT: opened_in_scope with credited revenue this month.
+  am = SELECT a FROM phx_dm_pce_account_month:a
+       WHERE a.month_id == to_month
+         AND (scope == "all" OR a.advisor_sid == scope)
+       ACCUM CASE WHEN a.opened_in_scope AND a.credited_amt > 0 THEN
+               @@new_accts += a.acct_key END,
+             // LOST_ACCOUNT: zero balance now, present prior, prior revenue.
+             CASE WHEN a.is_zero_balance AND a.present_prior_month
+                       AND a.prior_credited_amt > 0 THEN
+               @@lost_accts += a.acct_key END,
+             // RETAINED_ACCOUNT: revenue in both months.
+             CASE WHEN a.present_prior_month AND a.prior_credited_amt > 0
+                       AND a.credited_amt > 0 THEN
+               @@retained_accts += a.acct_key END;
+  tr = SELECT x FROM phx_dm_pce_account_transfer:x
+       ACCUM CASE WHEN scope == "all" OR x.to_advisor_sid == scope THEN
+               @@tin_accts += x.acct_key END,
+             CASE WHEN scope == "all" OR x.from_advisor_sid == scope THEN
+               @@tout_accts += x.acct_key END;
+  // exclude_matched_of ordering: retained excludes new / newly billing /
+  // transferred-in claims; lost excludes transfers (as the seed plans declare).
+  @@retained_accts = @@retained_accts MINUS (@@new_accts UNION @@tin_accts);
+  @@lost_accts = @@lost_accts MINUS (@@tin_accts UNION @@tout_accts);
+  fl = SELECT f FROM phx_dm_pce_advisor_flow_month:f
+       WHERE f.month_id == to_month
+         AND (scope == "all" OR f.advisor_sid == scope)
+       ACCUM @@net_flows += f.total_net_flows;
+  PRINT scope, from_month, to_month,
+        @@new_accts.size() AS new_count, @@lost_accts.size() AS lost_count,
+        @@retained_accts.size() AS retained_count,
+        @@tin_accts.size() AS transferred_in_count,
+        @@tout_accts.size() AS transferred_out_count,
+        @@net_flows AS net_flows;
+}
