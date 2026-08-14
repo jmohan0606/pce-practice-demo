@@ -10,4 +10,12 @@
   --tag-bg:#EDF1F5; --tag-tx:#4A5B6D;
   --ai:#4C4EA3; --ai-bg:#EEEEF8; --ai-br:#C9CAE8;
   --tot-bg:#EAF0F7;
+  /* Round A2B (docs/ui/MOCKUP_ROUND_A_DASHBOARD.html :root additions) */
+  --all:#4E7CA1;
+  --dum-bg:#F0EDF8; --dum-tx:#5B4A9E;
+  --sev-crit:#7A1710; --sev-crit-bg:#F7DDDA;
+  --sev-high:#B3261E; --sev-high-bg:#FBECEA;
+  --sev-mod:#8A5A00;  --sev-mod-bg:#FBF0DC;
+  --sev-low:#1E4675;  --sev-low-bg:#E8EFF7;
+  --sev-info:#4A5B6D; --sev-info-bg:#EDF1F5;
 }
