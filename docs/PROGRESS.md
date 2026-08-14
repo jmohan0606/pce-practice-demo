@@ -1,5 +1,51 @@
 # Build Progress
 
+## Round A2B (docs/spec/ROUND_A2B_SPEC.md) — dashboard UI + advisor page + coaching + flags
+- [x] Task 1 (main thread, fb08b3d): shared foundations — useGlossary/<Term>
+      (session-cached, ONE tooltip source, no hardcoded explanatory strings),
+      <Money>/<Pct>/<Delta> + NarrativeText prose parser, <DriverChip>
+      read-time labels, <AdvisorLink> Name (SID) → /advisor?sid=,
+      <RuleCitation> with the tech-written fallback; all A2B CSS + tokens;
+      shared api.ts clients so subagents never touched api.ts/globals.css.
+- [x] Tasks 2+3 (Subagent A, verified in main thread, 4da4384+bc3f83c):
+      TransitionChart (shared prop contract with the advisor page, four views
+      each with own colour+legend, AUM bold navy, tint-never-solid pills) and
+      page.tsx (advisor dropdown REMOVED, chart fetches on view change only);
+      ProductChangeTable (th.grp column groups, 12px headers, drill buttons,
+      __TOTAL__ distinct-account row, no roll-up), TopBottomModal (≤10/side,
+      null dominant driver → "AI Insights not generated yet"), ExportMenu.
+- [x] Task 4 (Subagent B, verified in main thread, 9260399): InsightsSection
+      (every ruled bullet links rule + citation, per-transition Generate with
+      honest projection), DriversSection (By Driver/By Product client-side
+      pivot), NoncreditedSection + CauseDetailModal (four cause-specific
+      shapes; eligibility grouped by product, no advisor column),
+      ExceptionsSection (server-side severity filter) — self-contained
+      components with a common {fromMonth, toMonth, monthName} contract.
+- [x] Task 5 (main thread, 7aa6f78): assembly chart → table → insights →
+      drivers → non-credited → exceptions, one transition drives all,
+      sections fetch independently; <Gated> flag wiring throughout.
+- [x] Tasks 6+7 (Subagent C, verified in main thread, f4a971e+01302da):
+      /advisor "iPerform Advisor AI Insights" (search name/SID/rep code,
+      Team/Individual chip, lifecycle+AUM+NCF+NNM-both-ways metrics — NB/YI/
+      EC/FS absent from feed, stated; ASSUMED chip on $4MM), Single/Compare
+      drivers, peer ranking (discount rank prominent), coaching agent
+      (Haiku coach role, GUIDANCE-only retrieval, citation-gated; real run
+      V000002 2 points $0.0024) + authored guidance PDF uploaded as GUIDANCE,
+      CRM opportunities with Dummy chips; feature flags — 26 flags,
+      phx_dm_pce_feature_flag (27 vertices), durable FlagStore, OFF = not
+      rendered AND queries do not run (require_feature 409 before any query),
+      reason-required history, presets, guardrail Always On; check_flags 8/8.
+- [x] Task 8 (main thread, 959295a + this doc): npm build passes; ALL 24
+      checks OBSERVED in headless chromium against the live servers — actual
+      output in docs/ROUND_A2B_COMPLETE.md. FOUND+FIXED by observation:
+      rec/nrec view names 400'd the chart/table clients; NarrativeText signed
+      "(3.99%)" and "lost $54,977" wrongly; 9X modal ignored Escape. The
+      21-run insight batch ($1.52) populated exceptions (20 rows) and advisor
+      runs; verify a/b/c/e/h/a1 re-run green + check_exports 43/43.
+Note: subagents reported, the MAIN THREAD re-verified by execution then
+      committed each task (subagents never ran git or touched this file).
+      Session LLM cost ≈ $1.52 of the $12 ceiling.
+
 ## Round A1 (docs/ROUND_A1_SPEC.md) — backend + data layer only, no UI
 - [x] Task 1 (main thread, 8e00dd8): driver identity split from label —
       driver_code (stable slug) STORED on findings (phx_dm_pce_finding
@@ -394,12 +440,24 @@ Note: per Round E/G/H precedent, subagents reported and the MAIN THREAD
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: A1 (docs/ROUND_A1_SPEC.md) — COMPLETE. All 7 tasks done;
-      docs/ROUND_A1_COMPLETE.md has the actual output of all 17 checks.
+Round: A2B (docs/spec/ROUND_A2B_SPEC.md) — COMPLETE. All 8 tasks done;
+      docs/ROUND_A2B_COMPLETE.md has the observed output of all 24 checks.
       verify a/b/c/e/h/a1 green (25/25, 19/19, 13/13, 8/8, 9/9, 17/17),
-      check_exports 43/43. Next: Round A2 (frontend against
-      docs/ui/MOCKUP_ROUND_A_DASHBOARD.html) — remember: bullet-lead driver
-      names must render from driver_code, not prose (Task 1 decision).
+      check_flags 8/8, check_exports 43/43, npm build passes (9 routes).
+      Servers up on :8002/:3002 (forwarded-URL build; Ports panel still
+      needed for public visibility).
+Round A2B carried observations: (1) no bullet on the dashboard shows a
+      document citation yet because the served rule set has no
+      document-derived rules — the path is proven by coaching's citations;
+      re-check after a real document extraction publishes rules; (2) the
+      NarrativeText direction heuristics (paren-pct inheritance, decline
+      verbs) are pragmatic — if the Reporter ever emits structured spans,
+      prefer those; (3) 21 stored insight runs + coaching survive restarts
+      (proven twice); coach turn-log rows are process-local like doc_extract;
+      (4) exceptions data currently has no CRITICAL rows (severity seed maps
+      LOST_ACCOUNT→HIGH, RETAINED→INFO) — the filter is proven on High.
+
+Previous round: A1 — COMPLETE (all 17 checks in docs/ROUND_A1_COMPLETE.md).
 Round A1 carried observations: (1) the ranking's dominant-driver nulls are
       common on this small data (many advisors have no qualifying rule impact
       in a group) — expected, the UI copy handles it; (2) exports cap PPTX at
@@ -430,7 +488,8 @@ SPEC CHANGE (operator, 2026-08-12): advisor_nnm_position DROPPED and every NNM
       recommendations — three months of net flows cannot stand in for an
       annually-measured NNM figure; even labelled, it presents a proxy as a fact.
       AUM and net flows ship; NNM waits for real data.
-Cost: running LLM total ≈ $4.66 project-wide. This session ≈ $0.92 of its $10
+Cost: running LLM total ≈ $6.18 project-wide (A2B session ≈ $1.52: 21-run
+      insight batch $1.516 + coach $0.0024). Previous H session ≈ $0.92 of its $10
       ceiling (cache support $0.01 + cache health $0.14 + forced-limit runs
       ~$0.10 + scale insight run ×2 $0.36 + scale drill-down $0.12 + small
       re-runs in verify sweeps ~$0.19).
