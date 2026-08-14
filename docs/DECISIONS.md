@@ -273,6 +273,35 @@ Context: Spec 2.1/2.2 — active independent of status, deactivating mints a ver
 Decision: `RuleStore.set_active` does edit→approve→publish in one call (severity-PATCH precedent) with `active`/`active_reason`/`active_changed_by`/`active_changed_at` on the new rule row; the reason is required for BOTH directions (reactivation equally changes what the next generation produces). The compiled plan is preserved (active is in the display-only/plan-preserving set). An inactive rule feeds NOTHING into a new run: `evaluate_rule_set` skips it with "rule is inactive — <reason>" AND the miner's rule-context list filters it; it stays queryable in its version and prior insights citing it stay valid. `delete_rules` is all-or-nothing — the whole selection is validated before anything is removed, so a mixed selection deletes nothing; approved = has version_id OR approved flag OR status PUBLISHED/SUPERSEDED. Deletion removes the durable SQLite row and issues a graph delete_vertices (best-effort, logged).
 Reversible: yes
 
+## 2026-08-14 · Round C (docs/rules) task 3 · Six categories are the same document_type axis; extraction gated at the one extraction route
+Context: Spec 3.1 — six categories, only PLAN and FAQ feed the Rule Extractor; category editable after upload.
+Decision (Subagent A, verified in main thread): categories live on the existing `document_type` field (legacy V1 enum values kept parseable, case-insensitive `_missing_`); `EXTRACTING_CATEGORIES=(PLAN, FAQ)` in app/knowledge/models.py, enforced at POST /{id}/extract-rules (grep-confirmed the only extraction trigger) with an honest per-category refusal; unknown category = 400 naming the valid set everywhere (upload's previous 422 included — no pin existed on it). PATCH /api/documents/{id}/category updates the SQLite catalog (authoritative) and mirrors the graph vertex best-effort; `extraction_offered=true` iff the new category is PLAN or FAQ. Chroma chunk metadata untouched — its `document_category` is the legacy V1 field; all type filtering reads `list_documents()`.
+Reversible: yes
+
+## 2026-08-14 · Round C (docs/rules) task 3.2 · .txt headings are single-line colon- or title-cased; .csv is one table chunk
+Decision (Subagent A): .txt — blank-line blocks are paragraphs; a line ending ':' or in title case (minor words may stay lowercase; sentence-punctuated or 80+-char lines never headings) is a heading; page_no=1; section_path from the nearest heading via the existing chunker trail. .csv — the whole file renders via table_to_markdown into ONE has_table=true chunk (the chunker's never-split-a-table rule). Proven by upload: the 145→125 sample chunks with section_path "Fee Schedule Change 2026".
+Reversible: yes
+
+## 2026-08-14 · Round C (docs/rules) task 4 · Approved rules are selectable so a mixed selection is honestly disabled
+Decision (Subagent A): RuleListManager shows checkboxes on published rows too — that is the only way a mixed selection can exist, and Delete Selected then disables with a note naming the store rule, mirroring the store's all-or-nothing refusal rather than hiding it. Filter option sets derive from the data, never hardcoded lists.
+Reversible: yes
+
+## 2026-08-14 · Round C (docs/rules) task 5.2 · NL rules approve without a compile; the two kinds never blur
+Decision (Subagent B, verified in main thread): the compile gate protects computed figures; a `natural_language_only` rule has no plan BY DESIGN, so approve() takes that one documented exception (gate fully intact otherwise), publish() carries it plan-less, and the evaluator skips it with "guidance only — no plan by design…" (skip order: active → NL → applies_to → scopes). PUBLISHED+active NL rules ride the miner opening as a labelled MANUAL GUIDANCE block, separate from the computed-rule list, with an explicit never-cite-as-computed instruction. Promote/demote are version-minting with required reason and promoted/demoted who/when recorded (set_active pattern; draft-pool rules update fields).
+Reversible: yes
+
+## 2026-08-14 · Round C (docs/rules) task 5.3 · Seed example compile outcomes are the honest ones; no grammar invented
+Decision (Subagent B): the three MANUALLY_WRITTEN_TECH examples seed as draft-pool DRAFTs (statements only, idempotent by rule_code, no LLM at seed time). Real Sonnet compiles: BILLABLE_DAYS → COMPILED with an honestly simplified plan (opened_in_scope ∧ not present_prior_month; no day_of_month() — the grammar has none and none was invented); QUARTERLY_BILLING_CYCLE → COMPILED; FEE_SCHEDULE_VARIANCE → NEEDS_DATA naming the exact gap (no ratio-of-aggregates in the plan grammar — sum/sum book-wide average is inexpressible). A ratio_of_sums grammar extension was considered and deliberately not built this round; the named gap is the client conversation.
+Reversible: yes
+
+## 2026-08-14 · Round C (docs/rules) task 6 · Compile attempts are append-only; the plan is whatever was picked
+Decision (Subagent B): every compile (first included) records a compile_attempt (COMPILED|NEEDS_DATA|FAILED, never overwritten); a retry on an already-compiled draft leaves the current plan untouched until the user picks; pick re-validates the attempt's plan through all five checks (execution included) and resets approval; recompile refuses version-bound rules (400 — edit to mint a draft first). Retries turn-log under rule_compile|<key> so they appear in the cost trace.
+Reversible: yes
+
+## 2026-08-14 · Round C (docs/rules) task 7 · Version diff is client-side, code-matched, meaningful-fields-only; edit everywhere, active-toggle current-version-only
+Decision (Subagent C, verified in main thread): comparison computes from two GET /api/rules?version= responses, rules matched by rule_code (rule_key is per-mint churn); compared fields = statement, rule_name, worked_example, severity(+reason), applies_to(+key), active(+reason), driver_label, driver_definition, plan (deep, key-order-insensitive), provenance, scopes, evaluation_order, exclude_matched_of; bookkeeping deliberately ignored. Editing is offered on EVERY version's rules (v0 and superseded included — store.edit clones any row; this closes the client's "cannot see/edit v0" complaint) and mints the next version; deactivate/reactivate targets only the current version's row, since active governs the next generation and minting from a stale row would resurrect superseded content. The edit dialog's statement-change recompile is a real choice — unticked leaves an uncompiled draft in the pool and publishes nothing, stated in the UI.
+Reversible: yes
+
 ## 2026-08-14 · Round A2B · Per-subtask commits collapsed for parallel-dispatched work
 Context: The spec asks for commits after 6.2/6.4/6.7; Subagent C's work arrived complete from the parallel dispatch (Round E tasks 6+7 precedent).
 Decision: One verified commit per task (6 and 7). Batch insight generation (advisor="all", 21 runs, $1.52) was run by the main thread during the round so exceptions/insights/advisor views verify against real stored runs.
