@@ -32,6 +32,8 @@ _seed_lock = threading.Lock()
 V0_RULES: list[dict] = [
     {
         "rule_code": "NEW_ACCOUNT",
+        "severity": "LOW",
+        "severity_reason": "Positive event, informational",
         "rule_name": "New Account",
         "statement": "An account opened during the period counts as new for the month "
                      "its first revenue appears.",
@@ -58,6 +60,8 @@ V0_RULES: list[dict] = [
     },
     {
         "rule_code": "ACCOUNT_TRANSFERRED_IN",
+        "severity": "LOW",
+        "severity_reason": "Positive event, informational",
         "rule_name": "Account Transferred In",
         "statement": "An account moved to this advisor from another. Checked before "
                      "lost, so a transfer is never counted as a loss.",
@@ -102,6 +106,8 @@ V0_RULES: list[dict] = [
     },
     {
         "rule_code": "ACCOUNT_TRANSFERRED_OUT",
+        "severity": "MODERATE",
+        "severity_reason": "Expected business event, but material",
         "rule_name": "Account Transferred Out",
         "statement": "An account that moved from this advisor to another. Not a lost "
                      "account.",
@@ -145,6 +151,8 @@ V0_RULES: list[dict] = [
     },
     {
         "rule_code": "NEW_BILLING",
+        "severity": "INFO",
+        "severity_reason": "Explains a movement; nothing to act on",
         "rule_name": "New Billing",
         "statement": "An account that held a balance in the prior month but produced no "
                      "credited revenue, and produced credited revenue this month. Distinct "
@@ -183,6 +191,8 @@ V0_RULES: list[dict] = [
     },
     {
         "rule_code": "LOST_ACCOUNT",
+        "severity": "HIGH",
+        "severity_reason": "Revenue already lost; the advisor may not know",
         "rule_name": "Lost Account",
         "statement": "An account whose balance fell to zero, or which had revenue in "
                      "the prior month and none now — and which did not transfer.",

@@ -10,6 +10,7 @@ from app.api.routers.documents import router as documents_router
 from app.api.routers.drilldown import router as drilldown_router
 from app.api.routers.glossary import router as glossary_router
 from app.api.routers.health import router as health_router
+from app.api.routers.insights import alias_router as exceptions_alias_router
 from app.api.routers.insights import router as insights_router
 from app.api.routers.rules import router as rules_router
 from app.api.routers.trace import router as trace_router
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(glossary_router)
     app.include_router(rules_router)
     app.include_router(insights_router)
+    app.include_router(exceptions_alias_router)
     app.include_router(trace_router)
 
     # B3.7: seed rule-set v0 at first startup if no version exists (idempotent).

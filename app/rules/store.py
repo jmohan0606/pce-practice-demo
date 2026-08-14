@@ -56,6 +56,17 @@ _VERSION_GRAPH_ATTRS = (
 RULE_STATUSES = ("DRAFT", "COMPILED", "PUBLISHED", "SUPERSEDED",
                  "NEEDS_INPUT", "NEEDS_DATA", "REJECTED")
 
+# Round A1 task 2 — rule severity, most severe first (sort order everywhere).
+SEVERITIES = ("CRITICAL", "HIGH", "MODERATE", "LOW", "INFO")
+
+# Rule fields whose edit does NOT invalidate the compiled plan: they change
+# what is DISPLAYED or how urgently it is triaged, never what the query
+# computes. A severity-only edit therefore keeps COMPILED status and can be
+# approved and published without a recompile (DECISIONS.md, Round A1 task 2).
+_DISPLAY_ONLY_FIELDS = frozenset(
+    {"severity", "severity_reason", "driver_label", "driver_definition",
+     "driver_tag", "rule_name"})
+
 
 class RuleStoreError(RuntimeError):
     pass
@@ -354,16 +365,28 @@ class RuleStore:
                 changes.setdefault("plain_description", changes["statement"])
             elif "plain_description" in changes:
                 changes.setdefault("statement", changes["plain_description"])
-            draft = {k: v for k, v in original.items()
-                     if k not in ("rule_key", "version_id", "status", "approved",
-                                  "approved_by", "approved_at", "created_at", "published_as",
-                                  # a changed statement invalidates the compiled plan —
-                                  # the new draft recompiles from scratch
-                                  "plan", "plan_by_scope", "explanation", "compile_error",
-                                  "needs_data_reason", "compiled_evaluated_rows",
-                                  "compiled_matched_count", "compiled_at")}
+            if "severity" in changes:
+                level = str(changes["severity"] or "").upper()
+                if level not in SEVERITIES:
+                    raise RuleStoreError(
+                        f"unknown severity {changes['severity']!r} — expected one of "
+                        f"{', '.join(SEVERITIES)}")
+                changes["severity"] = level
+            # Round A1 task 2: a display/severity-only edit keeps the compiled
+            # plan — nothing the query computes changed.
+            display_only = (set(changes) <= _DISPLAY_ONLY_FIELDS
+                            and original.get("plan") is not None)
+            dropped = ("rule_key", "version_id", "status", "approved",
+                       "approved_by", "approved_at", "created_at", "published_as")
+            if not display_only:
+                # a changed statement invalidates the compiled plan —
+                # the new draft recompiles from scratch
+                dropped += ("plan", "plan_by_scope", "explanation", "compile_error",
+                            "needs_data_reason", "compiled_evaluated_rows",
+                            "compiled_matched_count", "compiled_at")
+            draft = {k: v for k, v in original.items() if k not in dropped}
             draft.update(changes)
-            draft["status"] = "DRAFT"
+            draft["status"] = "COMPILED" if display_only else "DRAFT"
             draft["supersedes_rule_key"] = rule_key
             return self.add_rule(draft, version_id=None)
 

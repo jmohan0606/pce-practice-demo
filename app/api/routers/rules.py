@@ -35,6 +35,9 @@ def _serialize(rule: dict) -> dict:
     out.setdefault("explanation", None)
     out.setdefault("missing", rule.get("unclear_notes") or None)
     out.setdefault("needs_data_reason", None)
+    # Round A1 task 2: severity + its one-line reason always serialize
+    out.setdefault("severity", None)
+    out.setdefault("severity_reason", None)
     # Round H task 1: exclusion is declared ON the rule — always serialized so
     # the rule detail UI can show it (empty list = no exclusions).
     out.setdefault("exclude_matched_of", [])
@@ -195,6 +198,53 @@ def never_fired_report(version: str = "latest") -> dict:
     if v is None:
         raise HTTPException(status_code=404, detail=f"unknown version {version!r}")
     return never_fired(v["version_id"])
+
+
+class SeverityRequest(BaseModel):
+    severity: str
+    severity_reason: str = ""
+    approved_by: str = "OPERATOR"
+
+
+@router.patch("/{rule_key}/severity")
+def set_severity(rule_key: str, body: SeverityRequest) -> dict:
+    """Round A1 2.1 — change a rule's severity. It changes what shows as
+    Critical on a comp team's screen, so it MINTS A NEW RULE SET VERSION like
+    any other edit (full audit trail). The compiled plan is preserved — a
+    severity edit changes triage, not what the query computes — so the edited
+    draft publishes in one call. A draft-pool rule (no version) just gets the
+    fields updated; there is no version to mint."""
+    store = get_rule_store()
+    rule = store.get(rule_key)
+    if rule is None:
+        raise HTTPException(status_code=404, detail=f"unknown rule_key {rule_key!r}")
+    changes = {"severity": body.severity,
+               "severity_reason": body.severity_reason
+               or f"severity set to {body.severity.upper()} by {body.approved_by}"}
+    try:
+        if not rule.get("version_id"):
+            from app.rules.store import SEVERITIES
+
+            level = str(body.severity).upper()
+            if level not in SEVERITIES:
+                raise RuleStoreError(f"unknown severity {body.severity!r} — expected "
+                                     f"one of {', '.join(SEVERITIES)}")
+            updated = store._update_rule_fields(  # noqa: SLF001 — draft-pool fast path
+                rule_key, severity=level, severity_reason=changes["severity_reason"])
+            return {"rule": _serialize(updated), "version": None,
+                    "note": "draft rule — fields updated; a version mints at publish"}
+        draft = store.edit(rule_key, changes)
+        store.approve(draft["rule_key"], approved_by=body.approved_by)
+        version = store.publish(
+            approved_by=body.approved_by,
+            notes=f"severity change: {rule.get('rule_code')} -> "
+                  f"{str(body.severity).upper()}")
+    except RuleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    published = [r for r in store.version_rules(version["version_id"])
+                 if r["rule_code"] == rule.get("rule_code")]
+    return {"rule": _serialize(published[0]) if published else _serialize(draft),
+            "version": version}
 
 
 class DriverLabelRequest(BaseModel):

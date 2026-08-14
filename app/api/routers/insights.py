@@ -12,7 +12,7 @@ Evidence rows are capped at 20 in responses (50 stored).
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.insights.store import get_insight_store
@@ -50,6 +50,8 @@ def _serialize_finding(finding: dict) -> dict:
         # every historical finding with no regeneration).
         "driver_code": finding.get("driver_code"),
         "driver_tag": _driver_label(finding),
+        # Round A1 task 2: inherited from the producing rule; INFO when no rule
+        "severity": finding.get("severity") or "INFO",
         "group_id": finding.get("group_id"),
         "rule_key": finding.get("rule_key"), "provenance": finding.get("provenance"),
         "confidence": finding.get("confidence"),
@@ -212,14 +214,25 @@ def practice_summary(from_month: str, to_month: str) -> dict:
 
 
 @router.get("/exceptions")
-def exceptions(from_month: str, to_month: str, version: str = "latest") -> dict:
-    """The practice team's worklist (Round E 6.2c): rule-cited findings from
-    each advisor's latest run on this transition — where the plan expects
-    something the data does not show. Every row cites its rule."""
+def exceptions(from_month: str, to_month: str, version: str = "latest",
+               severity: str | None = None) -> dict:
+    """The practice team's worklist (Round E 6.2c, Round A1 task 2): findings
+    from each advisor's latest run on this transition. Rule-cited rows carry
+    the rule's severity; rows with no rule are observations at INFO (mockup's
+    'Pattern — no rule matched' / 'Observation' rows). Filterable by severity
+    (comma-separated levels), sorted Critical → Info then by absolute impact."""
     from app.graph.foundation_store import get_foundation_store
+    from app.rules.store import SEVERITIES
 
     store = get_insight_store()
     version_id = None if version in ("", "latest") else version
+    wanted: set[str] | None = None
+    if severity:
+        wanted = {s.strip().upper() for s in severity.split(",") if s.strip()}
+        unknown = wanted - set(SEVERITIES)
+        if unknown:
+            raise HTTPException(400, f"unknown severity level(s) {sorted(unknown)} — "
+                                     f"expected {', '.join(SEVERITIES)}")
     advisors = store.runs_for_transition(from_month, to_month)
     advisor_names = {sid: (a.get("advisor_name") or "")
                      for sid, a in get_foundation_store()
@@ -231,24 +244,40 @@ def exceptions(from_month: str, to_month: str, version: str = "latest") -> dict:
             continue
         for finding in store.run_findings(run["run_id"]):
             rule_key = finding.get("rule_key")
-            if not rule_key:
-                continue  # exceptions are plan-vs-data mismatches — rule-cited only
+            level = finding.get("severity") or "INFO"
+            if wanted is not None and level not in wanted:
+                continue
             rows.append({
                 "advisor_sid": sid,
                 "advisor_name": advisor_names.get(sid, ""),
+                "severity": level,
                 "issue": finding.get("title"),
                 "detail": finding.get("summary"),
                 "impact_amt": finding.get("impact_amt"),
                 "rule_key": rule_key,
                 "citation": _rule_citation(rule_key),
+                "source_kind": "rule" if rule_key else "observation",
                 "run_id": run["run_id"],
             })
-    rows.sort(key=lambda r: (r["impact_amt"] is None,
+    rank = {level: i for i, level in enumerate(SEVERITIES)}
+    rows.sort(key=lambda r: (rank.get(r["severity"], len(rank)),
+                             r["impact_amt"] is None,
                              -(abs(r["impact_amt"]) if r["impact_amt"] is not None else 0)))
     return {"from_month_id": from_month, "to_month_id": to_month,
             "open_count": len(rows),
             "advisor_count": len({r["advisor_sid"] for r in rows}),
             "exceptions": rows}
+
+
+# Round A1 task 2 — spec path: GET /api/exceptions?from=&to=&severity=
+alias_router = APIRouter(tags=["insights"])
+
+
+@alias_router.get("/api/exceptions")
+def exceptions_alias(from_: str = Query(alias="from"), to: str = Query(...),
+                     severity: str | None = None, version: str = "latest") -> dict:
+    return exceptions(from_month=from_, to_month=to, version=version,
+                      severity=severity)
 
 
 @router.get("/runs")

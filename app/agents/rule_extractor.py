@@ -29,7 +29,7 @@ from typing import Callable
 
 from app.llm.roles import build_role_llm
 from app.rules.compiler import GRAINS
-from app.rules.store import get_rule_store
+from app.rules.store import SEVERITIES, get_rule_store
 from app.shared.logging import get_logger
 
 _log = get_logger("app.agents.rule_extractor")
@@ -95,10 +95,15 @@ def build_system_prompt() -> str:
         "number. If nothing is missing, use null.\n"
         "- Every rule must cite the chunk it came from: \"citations\": "
         "[{\"chunk_id\": ..., \"page_no\": ..., \"section_path\": ..., \"excerpt\": ...}].\n"
+        "- `severity`: one of CRITICAL | HIGH | MODERATE | LOW | INFO, judged "
+        "from the provision's OWN language — a mandatory adjustment or a floor "
+        "being breached is higher than an informational note. Also emit "
+        "`severity_reason`: ONE line explaining why you chose that level, so a "
+        "human reviewing it can judge rather than guess.\n"
         "- Each rule object: rule_code (UPPER_SNAKE), rule_name, statement, "
         "worked_example (or null), kind, grain, driver_tag (short business label "
-        "like \"Fee Rate\", \"Transfers\", \"Referrals\"), confidence (0..1), "
-        "missing (sentence or null), citations.\n"
+        "like \"Fee Rate\", \"Transfers\", \"Referrals\"), severity, "
+        "severity_reason, confidence (0..1), missing (sentence or null), citations.\n"
         "- Return a JSON array only. No prose, no markdown fences. STRICT JSON: "
         "escape every newline inside strings. Keep each citation excerpt under "
         "160 characters."
@@ -168,6 +173,9 @@ def _needs_input_stub(document_id: str, reason: str, window_index: int,
         "kind": "CALCULATION",
         "grain": "account",
         "driver_tag": "Extraction",
+        "severity": "INFO",
+        "severity_reason": "unparseable extractor output — placeholder for review, "
+                           "not a plan provision",
         "provenance": "DOCUMENT_DERIVED",
         "confidence": 0.0,
         "citations": [{"chunk_id": first.get("chunk_id", ""),
@@ -244,6 +252,19 @@ def extract_rules_for_document(document_id: str, chunks: list[dict],
             rule["kind"] = kind if kind in KINDS else "CALCULATION"
             rule.setdefault("rule_name", rule["rule_code"].replace("_", " ").title())
             rule.setdefault("driver_tag", "Other")
+            # Round A1 task 2: severity is extractor-assigned; an absent or
+            # invalid level lands honestly at INFO with a reason saying so —
+            # never silently promoted.
+            severity = str(rule.get("severity") or "").upper()
+            if severity in SEVERITIES:
+                rule["severity"] = severity
+                rule["severity_reason"] = (str(rule.get("severity_reason") or "").strip()
+                                           or "extractor assigned no reason")
+            else:
+                rule["severity"] = "INFO"
+                rule["severity_reason"] = (
+                    "extractor did not assign a valid severity — defaulted to INFO"
+                    + (f" (got {rule.get('severity')!r})" if rule.get("severity") else ""))
             rule["provenance"] = "DOCUMENT_DERIVED"
             rule["document_id"] = document_id
             rule.setdefault("worked_example", None)

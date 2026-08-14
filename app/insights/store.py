@@ -84,6 +84,19 @@ def _normalize_finding_driver(finding: dict) -> dict:
     if not finding.get("driver_code"):
         finding["driver_code"] = slug_driver_code(finding.get("driver_tag"))
     finding.pop("driver_tag", None)
+    # Round A1 task 2: a finding carries the severity of the rule that produced
+    # it; a finding with no rule is an observation — INFO, never guessed higher.
+    if not finding.get("severity"):
+        severity = None
+        if finding.get("rule_key"):
+            from app.rules.store import get_rule_store
+
+            rule = get_rule_store().get(finding["rule_key"])
+            if rule is not None:
+                severity = rule.get("severity")
+        finding["severity"] = severity or "INFO"
+        if finding.get("rule_key") is None:
+            finding.setdefault("severity_basis", "no rule — observation")
     return finding
 
 

@@ -212,6 +212,11 @@ Decision: The display label lives in a durable driver-label registry keyed by th
 Known limit (spec-acknowledged): a driver name embedded in narrative PROSE is frozen text — prose written before a rename keeps the old word. The UI must render bullet-lead driver names from driver_code (served per finding), not from prose. Recorded for Round A2.
 Reversible: yes
 
+## 2026-08-14 · Round A1 task 2 · Severity edits keep the compiled plan; PATCH publishes in one call
+Context: Spec 2.1 — a severity change mints a new rule-set version like any other edit. But edit() invalidates the compiled plan on ANY edit (Round H carried observation #4), which would force a recompile+approve for a triage-level change.
+Decision: edit() special-cases DISPLAY-ONLY changes (severity, severity_reason, driver_label, driver_definition, driver_tag, rule_name): the compiled plan/scopes/plan_by_scope carry to the new draft, which lands COMPILED and can be approved+published immediately. PATCH /api/rules/{key}/severity does edit→approve→publish in one call; note publish() also publishes any OTHER already-approved drafts sitting in the pool (documented publish behaviour, not a severity special case). A draft-pool rule with no version just gets its fields updated — there is no version to mint. The stale data/runtime/rule_store.db was cleared (Round H task 1 precedent) so the severity+driver seed reapplies; identical R_*_RSV_v0 keys re-mint.
+Reversible: yes
+
 ## 2026-08-12 · Round H task 5 · FOUND: the mock generator was never cross-process deterministic
 Context: 5.1's S=1 byte-identity check exposed that build_transactions selects each advisor's product subset with builtin hash(), which is salted per process (PYTHONHASHSEED). Regenerating on ANY machine produces different transaction subsets than the committed CSVs — the "seed 42 deterministic" claim only ever covered the random module. Pre-existing since Round A; the committed data/ CSVs are canonical and verify pins depend on them.
 Decision: NOT fixed this round — replacing hash() with a stable hash would change every data-derived pin mid-round. Recorded here so nobody regenerates data/ expecting a no-op diff. Scale measurements were run under PYTHONHASHSEED=0 so they are reproducible. Fix candidate for a future round: zlib.crc32, then re-commit data/ and re-pin.
