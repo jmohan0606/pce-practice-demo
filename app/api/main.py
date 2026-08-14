@@ -8,7 +8,10 @@ from app.api.middleware.error_handlers import register_exception_handlers
 from app.api.routers.dashboard import router as dashboard_router
 from app.api.routers.documents import router as documents_router
 from app.api.routers.drilldown import router as drilldown_router
+from app.api.routers.export import router as export_router
 from app.api.routers.glossary import router as glossary_router
+from app.api.routers.noncredited import router as noncredited_router
+from app.api.routers.ranking import router as ranking_router
 from app.api.routers.health import router as health_router
 from app.api.routers.insights import alias_router as exceptions_alias_router
 from app.api.routers.insights import router as insights_router
@@ -54,6 +57,9 @@ def create_app() -> FastAPI:
     app.include_router(documents_router)
     app.include_router(drilldown_router)
     app.include_router(glossary_router)
+    app.include_router(noncredited_router)
+    app.include_router(ranking_router)
+    app.include_router(export_router)
     app.include_router(rules_router)
     app.include_router(insights_router)
     app.include_router(exceptions_alias_router)
