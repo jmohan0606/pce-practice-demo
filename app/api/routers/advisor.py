@@ -1,0 +1,338 @@
+"""Round A2B task 6 — the iPerform Advisor AI Insights page's API.
+
+GET  /api/advisor/list                       sid, name, rep_code, in_cohort
+GET  /api/advisor/{sid}/summary?from=&to=    team chip, per-month AUM, metrics
+                                             strip (lifecycle, AUM, NCF, NNM
+                                             both ways, trades)
+GET  /api/advisor/{sid}/peer-ranking?from=&to=  revenue / growth / discount-rate
+POST /api/advisor/{sid}/coaching/generate    runs the Coach (stored durably)
+GET  /api/advisor/{sid}/coaching             the stored result — no regeneration
+GET  /api/advisor/{sid}/opportunities        CRM pipeline (every row DUMMY)
+
+Every figure is a catalog-query result or a straight vertex read; the router
+composes, it computes no business numbers of its own. Missing data serializes
+as null with a note — never a guess (NNM categories NB/YI/EC/FS do not exist
+in the feed; the response says so).
+"""
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.flags.registry import require_feature
+from app.graph.queries.catalog import CatalogError, run_catalog_query
+from app.shared.logging import get_logger
+
+_log = get_logger("app.api.advisor")
+
+router = APIRouter(prefix="/api/advisor", tags=["advisor"])
+
+NNM_CATEGORIES_NOTE = ("NB / YI / EC / FS categories are not present in the "
+                       "current data feed")
+
+
+def _catalog(name: str, params: dict) -> list[dict]:
+    try:
+        return run_catalog_query(name, params)["rows"]
+    except CatalogError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+def _store():
+    from app.graph.foundation_store import get_foundation_store
+
+    return get_foundation_store()
+
+
+def _advisor_row(sid: str) -> dict:
+    row = _store().all_vertices("phx_dm_pce_advisor").get(sid)
+    if row is None:
+        raise HTTPException(404, f"unknown advisor '{sid}'")
+    return row
+
+
+def _month_ids() -> list[str]:
+    return sorted(_store().all_vertices("phx_dm_pce_month"))
+
+
+def _num(v) -> float:
+    try:
+        return float(v or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+@router.get("/list")
+def advisor_list() -> dict:
+    advisors = [
+        {"advisor_sid": sid,
+         "advisor_name": str(a.get("advisor_name") or ""),
+         "rep_code": str(a.get("rep_code") or ""),
+         "in_cohort": a.get("in_cohort") is True}
+        for sid, a in sorted(_store().all_vertices("phx_dm_pce_advisor").items())
+    ]
+    return {"advisors": advisors,
+            "cohort_count": sum(1 for a in advisors if a["in_cohort"])}
+
+
+# ------------------------------------------------------------------ summary
+
+def _team_status(sid: str) -> dict:
+    """Team / Individual from phx_dm_pce_team_agreement: the advisor appears
+    in an ACTIVE agreement => Team, with the agreement's team rep code."""
+    agreements = _catalog("team_members", {"advisor": sid})
+    active = [a for a in agreements if a.get("status") == "ACTIVE"]
+    team_rep = None
+    if active:
+        # team_rep_cd lives on the agreement vertex, not the catalog row
+        vertices = _store().all_vertices("phx_dm_pce_team_agreement")
+        ids = {a["agreement_id"] for a in active}
+        for v in vertices.values():
+            if str(v.get("agreement_id")) in ids:
+                team_rep = str(v.get("team_rep_cd") or "") or None
+                break
+    return {"is_team": bool(active), "team_rep_cd": team_rep,
+            "agreements": agreements}
+
+
+def _flows_by_month(sid: str) -> dict[str, list[dict]]:
+    out: dict[str, list[dict]] = {}
+    for r in _store().all_vertices("phx_dm_pce_advisor_flow_month").values():
+        if str(r.get("advisor_sid")) == sid:
+            out.setdefault(str(r.get("month_id")), []).append(r)
+    return out
+
+
+@router.get("/{sid}/summary")
+def advisor_summary(sid: str,
+                    from_month: str = Query(..., alias="from"),
+                    to_month: str = Query(..., alias="to")) -> dict:
+    adv = _advisor_row(sid)
+    months = _month_ids()
+    for label, mid in (("from", from_month), ("to", to_month)):
+        if mid not in months:
+            raise HTTPException(404, f"unknown {label} month '{mid}'")
+
+    # per-month AUM for the chart — null when the advisor holds no account
+    # rows that month (honest, never 0-as-a-guess)
+    aum_by_month: dict[str, float | None] = {}
+    for mid in months:
+        rows = _catalog("advisor_aum", {"advisor": sid, "month_id": mid})
+        row = rows[0] if rows else None
+        has_rows = any(str(r.get("advisor_sid")) == sid
+                       and str(r.get("month_id")) == mid
+                       for r in _store().all_vertices("phx_dm_pce_account_month").values())
+        aum_by_month[mid] = row["total_balance"] if (row and has_rows) else None
+
+    # lifecycle counts (Round A1 rule outcomes — includes Retained)
+    life = _catalog("account_lifecycle_counts",
+                    {"scope": sid, "from_month": from_month,
+                     "to_month": to_month})[0]
+
+    # AUM with prior-month delta
+    aum_rows = _catalog("advisor_aum", {"advisor": sid, "month_id": to_month})
+    aum = aum_rows[0] if aum_rows else None
+
+    # NCF — net credited flows for the to-month
+    flows_rows = _catalog("advisor_flows_summary",
+                          {"advisor": sid, "month_id": to_month})
+    ncf = flows_rows[0] if flows_rows else None
+
+    # NNM — BOTH figures, clearly labelled. Data reality (verified):
+    # comp_group_type='NNM' only, flow products BRKF/MGDF; the four NNM
+    # categories do not exist in the feed and are never invented.
+    by_month = _flows_by_month(sid)
+    ytd_amount = round(sum(_num(r.get("total_net_flows"))
+                           for rows in by_month.values() for r in rows), 2)
+    in_scope_rows = by_month.get(to_month, [])
+    in_scope = round(sum(_num(r.get("total_net_flows")) for r in in_scope_rows), 2)
+    by_product = sorted(
+        ({"flow_product_cd": str(r.get("flow_product_cd")),
+          "flow_product_desc": str(r.get("flow_product_desc") or ""),
+          "net_flows": round(_num(r.get("total_net_flows")), 2)}
+         for r in in_scope_rows),
+        key=lambda r: r["flow_product_cd"])
+    first_month = months[0] if months else None
+
+    # trades per month for this advisor (the months query's txn_count)
+    from app.graph.client import get_graph_client
+
+    month_rows = (get_graph_client()
+                  .run_query("pce_dashboard_months", {"advisor": sid})
+                  .get("results") or [{}])[0].get("months", [])
+    trades = {m["month_id"]: m.get("txn_count", 0) for m in month_rows}
+
+    return {
+        "advisor": {"advisor_sid": sid,
+                    "advisor_name": str(adv.get("advisor_name") or ""),
+                    "rep_code": str(adv.get("rep_code") or ""),
+                    "in_cohort": adv.get("in_cohort") is True},
+        "team": _team_status(sid),
+        "from": from_month, "to": to_month,
+        "aum_by_month": aum_by_month,
+        "metrics": {
+            "lifecycle": {"new_count": life["new_count"],
+                          "lost_count": life["lost_count"],
+                          "retained_count": life["retained_count"],
+                          "notes": life.get("notes") or ""},
+            "aum": ({"total_balance": aum["total_balance"],
+                     "prior_balance": aum["prior_balance"],
+                     "change_amt": aum["change_amt"]} if aum else None),
+            "ncf": ({"net_flows": ncf["net_flows"], "inflows": ncf["inflows"],
+                     "outflows": ncf["outflows"],
+                     "credited_flows": ncf["credited_flows"]} if ncf else None),
+            "nnm": {
+                "ytd": {"amount": ytd_amount, "first_month": first_month,
+                        "label": f"NNM YTD (from {first_month} — first loaded month)"},
+                "in_scope": {"amount": in_scope, "from": from_month,
+                             "to": to_month,
+                             "label": f"NNM in scope ({from_month}→{to_month})"},
+                "by_product": by_product,
+                "categories_note": NNM_CATEGORIES_NOTE,
+                # the $4MM qualification is UNCONFIRMED — the UI chips it ASSUMED
+                "qualification_note": "Qualification threshold ($4MM) is an "
+                                      "unconfirmed assumption",
+            },
+            "trades": {"from_count": trades.get(from_month, 0),
+                       "to_count": trades.get(to_month, 0),
+                       "delta": trades.get(to_month, 0) - trades.get(from_month, 0)},
+        },
+    }
+
+
+# ------------------------------------------------------------- peer ranking
+
+def _rank_block(sid: str, values: dict[str, float | None]) -> dict:
+    """Rank descending over non-null values; median over the ranked set."""
+    from statistics import median
+
+    ranked = sorted(((s, v) for s, v in values.items() if v is not None),
+                    key=lambda kv: -kv[1])
+    med = round(median(v for _s, v in ranked), 2) if ranked else None
+    rank = next((i + 1 for i, (s, _v) in enumerate(ranked) if s == sid), None)
+    return {"rank": rank, "cohort_size": len(ranked),
+            "value": values.get(sid), "cohort_median": med}
+
+
+def _peer_ranking(sid: str, from_month: str, to_month: str) -> dict:
+    _advisor_row(sid)
+    cohort = {s for s, a in _store().all_vertices("phx_dm_pce_advisor").items()
+              if a.get("in_cohort") is True}
+
+    rev_to = {r["advisor_sid"]: r["value"] for r in _catalog(
+        "cohort_ranking", {"advisor": "all", "month_id": to_month,
+                           "metric": "credited_amt"})}
+    rev_from = {r["advisor_sid"]: r["value"] for r in _catalog(
+        "cohort_ranking", {"advisor": "all", "month_id": from_month,
+                           "metric": "credited_amt"})}
+    growth = {s: round(rev_to.get(s, 0.0) - rev_from.get(s, 0.0), 2)
+              for s in cohort}
+
+    # discount rate: mean fee reduction across the advisor's rate-bearing
+    # accounts in the to-month (threshold -1 => every rate-bearing account);
+    # advisors with no rate-bearing accounts are null, excluded from the rank
+    discount: dict[str, float | None] = {}
+    for s in cohort:
+        accounts = _catalog("fee_reduction_accounts",
+                            {"advisor": s, "month_id": to_month,
+                             "threshold_pct": -1})
+        discount[s] = (round(sum(a["reduction_pct"] for a in accounts)
+                             / len(accounts), 2) if accounts else None)
+
+    return {
+        "advisor_sid": sid, "from": from_month, "to": to_month,
+        "revenue": _rank_block(sid, {s: rev_to.get(s, 0.0) for s in cohort}),
+        "growth": _rank_block(sid, growth),
+        "discount_rate": {
+            **_rank_block(sid, discount),
+            "note": ("mean fee reduction %% across rate-bearing accounts in "
+                     f"{to_month}; advisors with no rate-bearing accounts are "
+                     "excluded"),
+        },
+    }
+
+
+@router.get("/{sid}/peer-ranking",
+            dependencies=[Depends(require_feature("advisor.peer_ranking"))])
+def peer_ranking(sid: str, from_month: str = Query(..., alias="from"),
+                 to_month: str = Query(..., alias="to")) -> dict:
+    return _peer_ranking(sid, from_month, to_month)
+
+
+# ----------------------------------------------------------------- coaching
+
+def _coach_facts(sid: str, from_month: str, to_month: str) -> dict:
+    """The deterministic facts the Coach may cite — peer ranks, discount rate,
+    lifecycle counts, flows. Computed here, passed into the prompt."""
+    ranking = _peer_ranking(sid, from_month, to_month)
+    life = _catalog("account_lifecycle_counts",
+                    {"scope": sid, "from_month": from_month,
+                     "to_month": to_month})[0]
+    return {
+        "advisor_sid": sid, "transition": f"{from_month}->{to_month}",
+        "peer_ranks": {
+            "revenue": ranking["revenue"],
+            "growth": ranking["growth"],
+            "discount_rate": {k: ranking["discount_rate"][k]
+                              for k in ("rank", "cohort_size", "value",
+                                        "cohort_median")},
+        },
+        "lifecycle": {"new_accounts": life["new_count"],
+                      "lost_accounts": life["lost_count"],
+                      "retained_accounts": life["retained_count"]},
+        "net_flows": life.get("net_flows"),
+    }
+
+
+@router.post("/{sid}/coaching/generate",
+             dependencies=[Depends(require_feature("advisor.coaching"))])
+def coaching_generate(sid: str, from_month: str = Query(..., alias="from"),
+                      to_month: str = Query(..., alias="to")) -> dict:
+    from app.agents.coach import generate_coaching
+
+    _advisor_row(sid)
+    facts = _coach_facts(sid, from_month, to_month)
+    return generate_coaching(sid, from_month, to_month, facts)
+
+
+@router.get("/{sid}/coaching",
+            dependencies=[Depends(require_feature("advisor.coaching"))])
+def coaching_get(sid: str, from_month: str = Query(..., alias="from"),
+                 to_month: str = Query(..., alias="to")) -> dict:
+    from app.agents.coach import get_coach_store
+
+    _advisor_row(sid)
+    stored = get_coach_store().get(sid, from_month, to_month)
+    if stored is None:
+        return {"generated": False, "advisor_sid": sid,
+                "from_month": from_month, "to_month": to_month,
+                "points": [], "note": "no coaching generated yet"}
+    return {"generated": True, **stored}
+
+
+# ------------------------------------------------------------ opportunities
+
+@router.get("/{sid}/opportunities",
+            dependencies=[Depends(require_feature("advisor.crm_opportunities"))])
+def opportunities(sid: str,
+                  from_month: str | None = Query(None, alias="from"),
+                  to_month: str | None = Query(None, alias="to")) -> dict:
+    from app.agents.coach import get_coach_store
+
+    _advisor_row(sid)
+    rows = _catalog("advisor_opportunities", {"advisor": sid})
+    by_status: dict[str, list[dict]] = {"Won": [], "Lost": [], "Pending": []}
+    other: list[dict] = []
+    for r in rows:
+        status = str(r.get("status") or "").capitalize()
+        (by_status.get(status) if status in by_status else other).append(r)
+    guidance = None
+    if from_month and to_month:
+        stored = get_coach_store().get(sid, from_month, to_month)
+        if stored:
+            guidance = stored.get("opportunities_guidance")
+    return {"advisor_sid": sid,
+            "by_status": by_status, "other": other,
+            "total_count": sum(int(r.get("opportunity_count") or 0) for r in rows),
+            # every row is synthetic until the CRM feed arrives
+            "data_source": "DUMMY",
+            "guidance": guidance}

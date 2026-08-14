@@ -170,6 +170,14 @@ class Settings(BaseSettings):
     insights_reporter_deployment: str = Field(default="", alias="INSIGHTS_REPORTER_DEPLOYMENT")
     insights_reporter_api_version: str = Field(default="", alias="INSIGHTS_REPORTER_API_VERSION")
     insights_reporter_temperature: float = Field(default=1.0, alias="INSIGHTS_REPORTER_TEMPERATURE")
+    # Round A2B 6.7 — the Coach agent (Haiku by default; its own role config).
+    # The non-empty model default deliberately makes the role "configured", so
+    # the coach always runs on Haiku unless the operator overrides COACH_*.
+    coach_mode: str = Field(default="", alias="COACH_MODE")
+    coach_model: str = Field(default="claude-haiku-4-5-20251001", alias="COACH_MODEL")
+    coach_deployment: str = Field(default="", alias="COACH_DEPLOYMENT")
+    coach_api_version: str = Field(default="", alias="COACH_API_VERSION")
+    coach_temperature: float = Field(default=1.0, alias="COACH_TEMPERATURE")
 
     # --- Agent loop budgets & limits (Round H task 2: EVERY limit lives here
     # with an env alias — no limit is a module constant, no limit binds
@@ -208,6 +216,10 @@ class Settings(BaseSettings):
     drilldown_sub_turn_cap: int = Field(default=10, alias="DRILLDOWN_SUB_TURN_CAP")
     # Reporter document searches per run; Rule Compiler lookups/repair rounds.
     reporter_max_searches: int = Field(default=4, alias="REPORTER_MAX_SEARCHES")
+    # Round A2B 6.7: the Coach's own token budget — prompt tokens (input +
+    # cache) one coaching generation may consume; recorded when it binds.
+    coach_max_input_tokens: int = Field(default=30_000, alias="COACH_MAX_INPUT_TOKENS")
+    coach_max_searches: int = Field(default=4, alias="COACH_MAX_SEARCHES")
     rule_compiler_max_searches: int = Field(default=2, alias="RULE_COMPILER_MAX_SEARCHES")
     rule_compiler_max_repairs: int = Field(default=2, alias="RULE_COMPILER_MAX_REPAIRS")
     # Runaway-loop backstop on ingestion batch calls per entity. Not resized in

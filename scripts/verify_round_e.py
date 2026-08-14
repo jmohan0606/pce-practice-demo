@@ -204,13 +204,24 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     in_catalog = ("advisor_nnm_position" in CATALOG
                   or any(nnm_re.search(name + " " + str(spec.get("description", "")))
                          for name, spec in CATALOG.items()))
+    # Round A2B task 6 (2026-08-14) SUPERSEDES the Round E drop for the ADVISOR
+    # PAGE ONLY: the spec explicitly asks for labelled NNM figures ("NNM YTD
+    # (from first loaded month)" + "NNM in scope") built from total_net_flows —
+    # clearly labelled, never annualised, never a proxy shipped as fact. The
+    # pin is widened to allow exactly those surfaces; the catalog, GSQL and the
+    # reporter's NNM-blocking guard stay pinned as before.
+    allowed_fe = {"frontend/app/advisor/page.tsx", "frontend/lib/advisorApi.ts"}
     fe_hits = [str(p) for p in list(Path("frontend/app").rglob("*.ts*"))
                + list(Path("frontend/components").rglob("*.ts*"))
                + list(Path("frontend/lib").rglob("*.ts*"))
-               if nnm_re.search(p.read_text(encoding="utf-8"))]
+               if nnm_re.search(p.read_text(encoding="utf-8"))
+               and str(p) not in allowed_fe]
     gsql_hits = [str(p) for p in Path("docs/tigergraph/queries").glob("*.gsql")
                  if nnm_re.search(p.read_text(encoding="utf-8"))]
-    allowed_guard = {"app/agents/insights_reporter.py", "app/graph/queries/catalog.py"}
+    allowed_guard = {"app/agents/insights_reporter.py", "app/graph/queries/catalog.py",
+                     # Round A2B: the advisor summary endpoint serves the two
+                     # labelled NNM figures; the flag registry names the section
+                     "app/api/routers/advisor.py", "app/flags/registry.py"}
     app_hits = {str(p) for p in Path("app").rglob("*.py")
                 if nnm_re.search(p.read_text(encoding="utf-8"))}
     stray = sorted(app_hits - allowed_guard)
@@ -223,24 +234,34 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
           f"gsql hits={gsql_hits or 'none'}, app hits outside the guard="
           f"{stray or 'none'} (guard files: {sorted(app_hits & allowed_guard)})")
 
-    # 8 — AI Insights renders from its own transition selector with no
-    # Dashboard state: the page fetches months+transitions itself, renders a
-    # selector, and shares no state channel with the Dashboard page
-    src = (APP_ROOT / "frontend/app/insights/page.tsx").read_text(encoding="utf-8")
+    # 8 — AMENDED (Round A2B task 6, 2026-08-14): the AI Insights page moved to
+    # /advisor ("iPerform Advisor AI Insights"); /insights is now a client
+    # redirect preserving ?sid= (AdvisorLink deep-links). The invariant keeps
+    # its meaning on the new page: it fetches its own months+transitions and
+    # shares no state channel with the Dashboard page. Transition selection is
+    # the CHART'S ARROWS by spec (no transition dropdown), and ?sid= via
+    # useSearchParams is the spec-required deep-link — both deliberate, so the
+    # selector assertion becomes "chart-driven selection" and useSearchParams
+    # is no longer counted as a shared-state channel.
+    src = (APP_ROOT / "frontend/app/advisor/page.tsx").read_text(encoding="utf-8")
     own_fetch = "getTransitions(" in src and "getMonths(" in src
-    has_selector = "<select" in src
+    has_selector = "TransitionChart" in src and "onSelect" in src
+    redirect_src = (APP_ROOT / "frontend/app/insights/page.tsx").read_text(encoding="utf-8")
+    redirects = "/advisor" in redirect_src and "sid" in redirect_src
     dash_src = (APP_ROOT / "frontend/app/page.tsx").read_text(encoding="utf-8")
     shared_state = any(tok in src or tok in dash_src
                        for tok in ("localStorage", "sessionStorage",
-                                   "useSearchParams", "createContext"))
+                                   "createContext"))
     imports_dash = bool(re.search(r'from\s+["\'](\.\./)?page["\']|from\s+["\']@/app/page',
                                   src))
-    check(8, "AI Insights renders from its own transition selector with no "
-             "Dashboard state",
-          own_fetch and has_selector and not shared_state and not imports_dash,
-          f"own months+transitions fetch={own_fetch}, selector rendered="
-          f"{has_selector}, shared state channel={shared_state}, imports "
-          f"dashboard page={imports_dash}")
+    check(8, "advisor page renders from its own chart-driven transition "
+             "selection with no Dashboard state (amended: page moved to "
+             "/advisor; /insights redirects)",
+          own_fetch and has_selector and redirects and not shared_state
+          and not imports_dash,
+          f"own months+transitions fetch={own_fetch}, chart-driven selection="
+          f"{has_selector}, /insights redirects with sid={redirects}, shared "
+          f"state channel={shared_state}, imports dashboard page={imports_dash}")
 
     passed = sum(RESULTS)
     print(f"\n{passed}/{len(RESULTS)} checks passed")

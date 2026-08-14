@@ -36,7 +36,9 @@ from app.shared.logging import get_logger
 _log = get_logger("app.llm.roles")
 
 ROLES = ("rule_extractor", "rule_compiler", "rule_conflict_auditor",
-         "insights_miner", "insights_reporter")
+         "insights_miner", "insights_reporter",
+         # Round A2B 6.7 — the Coach (Haiku by default; COACH_* env keys)
+         "coach")
 
 _FIELDS = ("mode", "model", "deployment", "api_version")
 

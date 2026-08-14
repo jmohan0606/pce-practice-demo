@@ -7,10 +7,13 @@ import { getHealth } from "@/lib/api";
 
 const TABS = [
   { href: "/", label: "Dashboard" },
-  { href: "/insights", label: "AI Insights" },
+  // Round A2B task 6: the advisor page. /insights redirects here (AdvisorLink
+  // deep-links target /advisor?sid=).
+  { href: "/advisor", label: "iPerform Advisor AI Insights" },
   { href: "/documents", label: "Documents & Rules" },
   { href: "/rules", label: "Rule Versions" },
   { href: "/trace", label: "Trace" },
+  { href: "/settings", label: "Settings" },
 ];
 
 /** Top bar (brand + TigerGraph pill) and the five-tab navigation. */
