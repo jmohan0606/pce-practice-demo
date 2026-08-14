@@ -6,13 +6,17 @@ renderers live in app/export/ — this router only validates and dispatches.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.flags.registry import require_feature
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from app.export.service import FORMATS, SECTIONS, ExportParamError, export_file
 
-router = APIRouter(prefix="/api/export", tags=["export"])
+router = APIRouter(prefix="/api/export", tags=["export"],
+                   # Round A2B task 7: OFF means these queries do not run
+                   dependencies=[Depends(require_feature("global.export"))])
 
 
 class ExportRequest(BaseModel):

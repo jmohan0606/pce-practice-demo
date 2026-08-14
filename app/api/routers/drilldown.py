@@ -17,7 +17,9 @@ report for the main thread's review.
 Findings serialize exactly as /api/insights runs do (same helpers)."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.flags.registry import require_feature
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.routers.insights import _rule_citation, _serialize_finding
@@ -26,7 +28,9 @@ from app.insights.drilldown import (DRILLDOWN_SCOPES, DrilldownError,
                                     generate_drilldown, get_drilldown,
                                     make_scope_key, txn_level)
 
-router = APIRouter(prefix="/api/drilldown", tags=["drilldown"])
+router = APIRouter(prefix="/api/drilldown", tags=["drilldown"],
+                   # Round A2B task 7: OFF means these queries do not run
+                   dependencies=[Depends(require_feature("global.drilldown"))])
 
 
 class GenerateRequest(BaseModel):

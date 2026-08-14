@@ -12,9 +12,10 @@ Evidence rows are capped at 20 in responses (50 stored).
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.flags.registry import require_feature
 from app.insights.store import get_insight_store
 from app.insights.service import get_job_manager
 from app.rules.store import get_rule_store
@@ -113,7 +114,9 @@ def _serialize_run(run: dict, findings: list[dict]) -> dict:
     }
 
 
-@router.post("/generate")
+@router.post("/generate",
+             # Round A2B task 7: OFF means the generation queries do not run
+             dependencies=[Depends(require_feature("dashboard.insights"))])
 def generate(body: GenerateRequest) -> dict:
     if body.version_id:
         version = get_rule_store().version(body.version_id)
@@ -292,7 +295,9 @@ def runs(from_month: str, to_month: str) -> dict:
     return {"runs": sorted(rows, key=lambda r: r["advisor_sid"])}
 
 
-@router.get("/{advisor}/{from_month}/{to_month}")
+@router.get("/{advisor}/{from_month}/{to_month}",
+            # Round A2B task 7: stored-run reads are gated with generation
+            dependencies=[Depends(require_feature("dashboard.insights"))])
 def get_insights(advisor: str, from_month: str, to_month: str,
                  version: str = "latest") -> dict:
     store = get_insight_store()

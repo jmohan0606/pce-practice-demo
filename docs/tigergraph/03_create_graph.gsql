@@ -32,6 +32,7 @@ CREATE GRAPH phx_dm_pce_practice_demo (
   phx_dm_pce_evidence_row,
   phx_dm_pce_agent_query_log,
   phx_dm_pce_agent_turn_log,
+  phx_dm_pce_feature_flag,
   // edges — product chain
   phx_dm_pce_product_in_group,
   phx_dm_pce_group_in_class,

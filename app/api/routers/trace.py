@@ -12,11 +12,14 @@ never estimated); the projection is an average of previous completed runs.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.flags.registry import require_feature
 from app.insights.store import get_insight_store
 
-router = APIRouter(prefix="/api/trace", tags=["trace"])
+router = APIRouter(prefix="/api/trace", tags=["trace"],
+                   # Round A2B task 7: OFF means these queries do not run
+                   dependencies=[Depends(require_feature("global.trace"))])
 
 
 def _totals(turns: list[dict]) -> dict:

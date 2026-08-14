@@ -153,3 +153,10 @@ CREATE VERTEX phx_dm_pce_agent_turn_log (PRIMARY_ID turn_id STRING, run_id STRIN
   seq_no INT, agent_name STRING, model STRING, input_tokens INT, output_tokens INT,
   cache_read_tokens INT, cache_write_tokens INT, latency_ms INT, action_kind STRING,
   query_name STRING, est_cost_usd DOUBLE) WITH primary_id_as_attribute="true";
+
+// Round A2B task 7 — feature-flag state (app-written; the FlagStore's runtime
+// upsert is its loading job — precedent: phx_dm_pce_agent_turn_log). History
+// lives in the app's durable SQLite; the vertex carries the current state.
+CREATE VERTEX phx_dm_pce_feature_flag (PRIMARY_ID flag_key STRING, enabled BOOL,
+  updated_at STRING, updated_by STRING, note_reason STRING, note_at STRING)
+  WITH primary_id_as_attribute="true";

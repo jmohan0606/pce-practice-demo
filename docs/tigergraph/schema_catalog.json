@@ -1,575 +1,586 @@
 {
-  "graph": "phx_dm_pce_practice_demo",
-  "vertices": {
-    "phx_dm_pce_month": {
-      "primary_id": "month_id",
-      "attributes": {
-        "month_id": "STRING",
-        "month_name": "STRING",
-        "start_dt": "DATETIME",
-        "end_dt": "DATETIME",
-        "trading_days": "INT",
-        "is_baseline": "BOOL",
-        "is_partial": "BOOL"
-      }
-    },
-    "phx_dm_pce_revenue_class": {
-      "primary_id": "class_id",
-      "attributes": {
-        "class_id": "STRING",
-        "class_name": "STRING"
-      }
-    },
-    "phx_dm_pce_product_group": {
-      "primary_id": "group_id",
-      "attributes": {
-        "group_id": "STRING",
-        "group_name": "STRING",
-        "display_prefix": "STRING",
-        "class_id": "STRING",
-        "sort_order": "INT",
-        "is_aggregated": "BOOL"
-      }
-    },
-    "phx_dm_pce_product": {
-      "primary_id": "product_id",
-      "attributes": {
-        "product_id": "STRING",
-        "product_cd": "STRING",
-        "product_sub_cd": "STRING",
-        "product_name": "STRING",
-        "sor": "STRING",
-        "file_key": "STRING",
-        "group_id": "STRING",
-        "grid_type": "STRING"
-      }
-    },
-    "phx_dm_pce_advisor": {
-      "primary_id": "advisor_sid",
-      "attributes": {
-        "advisor_sid": "STRING",
-        "rep_code": "STRING",
-        "advisor_name": "STRING",
-        "branch_cd": "STRING",
-        "employee_id": "STRING",
-        "in_cohort": "BOOL"
-      }
-    },
-    "phx_dm_pce_account": {
-      "primary_id": "acct_key",
-      "attributes": {
-        "acct_key": "STRING",
-        "account_no_raw": "STRING",
-        "account_class_cd": "STRING",
-        "account_class_nm": "STRING",
-        "account_lob_cd": "STRING",
-        "account_purpose_cd": "STRING",
-        "managed_platform_cd": "STRING",
-        "service_channel_cd": "STRING",
-        "account_open_dt": "DATETIME",
-        "is_managed": "BOOL",
-        "opened_in_scope": "BOOL",
-        "primary_eci_id": "STRING"
-      }
-    },
-    "phx_dm_pce_household": {
-      "primary_id": "eci_id",
-      "attributes": {
-        "eci_id": "STRING",
-        "account_count": "INT"
-      }
-    },
-    "phx_dm_pce_account_eci_rel": {
-      "primary_id": "rel_id",
-      "attributes": {
-        "rel_id": "STRING",
-        "acct_key": "STRING",
-        "eci_id": "STRING",
-        "enterprise_relationship_code": "STRING",
-        "party_role_name": "STRING",
-        "client_employee_ind": "STRING",
-        "is_owner_role": "BOOL"
-      }
-    },
-    "phx_dm_pce_account_eci_map": {
-      "primary_id": "map_id",
-      "attributes": {
-        "map_id": "STRING",
-        "acct_src_key": "STRING",
-        "acct_src_raw": "STRING",
-        "wm_src_sys_cd": "STRING",
-        "eci_id": "STRING",
-        "bus_dt": "DATETIME",
-        "new_exst_adv_clnt_in": "STRING"
-      }
-    },
-    "phx_dm_pce_rpg": {
-      "primary_id": "rpg_id",
-      "attributes": {
-        "rpg_id": "STRING",
-        "account_count": "INT"
-      }
-    },
-    "phx_dm_pce_team_agreement": {
-      "primary_id": "agreement_key",
-      "attributes": {
-        "agreement_key": "STRING",
-        "agreement_id": "INT",
-        "team_rep_cd": "STRING",
-        "agreement_type": "STRING",
-        "status_cd": "STRING",
-        "prm_advisor_sid": "STRING",
-        "prm_share_pct": "DOUBLE",
-        "sec_advisor_sid": "STRING",
-        "sec_share_pct": "DOUBLE",
-        "start_ts": "DATETIME",
-        "end_ts": "DATETIME"
-      }
-    },
-    "phx_dm_pce_revenue_transaction": {
-      "primary_id": "txn_id",
-      "attributes": {
-        "txn_id": "STRING",
-        "trade_ref_no": "STRING",
-        "split_seq_no": "STRING",
-        "advisor_sid": "STRING",
-        "acct_key": "STRING",
-        "product_id": "STRING",
-        "month_id": "STRING",
-        "trade_dt": "DATETIME",
-        "proc_dt": "DATETIME",
-        "days_to_process": "INT",
-        "credited_amt": "DOUBLE",
-        "non_credited_amt": "DOUBLE",
-        "pre_split_amt": "DOUBLE",
-        "split_pct": "DOUBLE",
-        "reason_cd": "STRING",
-        "is_credited": "BOOL",
-        "standard_rate_bps": "DOUBLE",
-        "client_rate_bps": "DOUBLE",
-        "discount_amt": "DOUBLE",
-        "eff_disc_pct": "DOUBLE",
-        "grid_reduction": "DOUBLE",
-        "rpg": "STRING",
-        "concession_type": "STRING",
-        "file_key": "STRING",
-        "trade_description": "STRING"
-      }
-    },
-    "phx_dm_pce_monthly_revenue": {
-      "primary_id": "mr_id",
-      "attributes": {
-        "mr_id": "STRING",
-        "advisor_sid": "STRING",
-        "month_id": "STRING",
-        "product_id": "STRING",
-        "group_id": "STRING",
-        "class_id": "STRING",
-        "credited_amt": "DOUBLE",
-        "non_credited_amt": "DOUBLE",
-        "txn_count": "INT",
-        "distinct_accounts": "INT"
-      }
-    },
-    "phx_dm_pce_account_month": {
-      "primary_id": "am_id",
-      "attributes": {
-        "am_id": "STRING",
-        "acct_key": "STRING",
-        "advisor_sid": "STRING",
-        "month_id": "STRING",
-        "end_balance": "DOUBLE",
-        "credited_amt": "DOUBLE",
-        "txn_count": "INT",
-        "is_zero_balance": "BOOL",
-        "present_prior_month": "BOOL",
-        "prior_end_balance": "DOUBLE",
-        "prior_credited_amt": "DOUBLE"
-      }
-    },
-    "phx_dm_pce_account_transfer": {
-      "primary_id": "transfer_id",
-      "attributes": {
-        "transfer_id": "STRING",
-        "acct_key": "STRING",
-        "from_advisor_sid": "STRING",
-        "to_advisor_sid": "STRING",
-        "from_rr": "STRING",
-        "to_rr": "STRING",
-        "transfer_ts": "DATETIME",
-        "month_id": "STRING",
-        "is_intra_team": "BOOL",
-        "occd_cd": "STRING"
-      }
-    },
-    "phx_dm_pce_advisor_flow_month": {
-      "primary_id": "afm_id",
-      "attributes": {
-        "afm_id": "STRING",
-        "advisor_sid": "STRING",
-        "month_id": "STRING",
-        "flow_product_cd": "STRING",
-        "flow_product_desc": "STRING",
-        "comp_group_type": "STRING",
-        "total_inflows": "DOUBLE",
-        "total_outflows": "DOUBLE",
-        "total_net_flows": "DOUBLE",
-        "credited_flows": "DOUBLE",
-        "departed_advisor_sid": "STRING",
-        "departed_advisor_excl_am": "DOUBLE",
-        "lob_trfr_excl_am": "DOUBLE",
-        "oi_pa_referral_cap_adj_am": "DOUBLE",
-        "large_flow_cap_adj_am": "DOUBLE",
-        "forced_closure_excl_am": "DOUBLE"
-      }
-    },
-    "phx_dm_pce_opportunity": {
-      "primary_id": "opportunity_id",
-      "attributes": {
-        "opportunity_id": "STRING",
-        "eci_id": "STRING",
-        "advisor_sid": "STRING",
-        "stage": "STRING",
-        "status": "STRING",
-        "amount": "DOUBLE",
-        "product_group": "STRING",
-        "open_dt": "DATETIME",
-        "expected_close_dt": "DATETIME",
-        "close_dt": "DATETIME",
-        "source": "STRING",
-        "data_source": "STRING"
-      }
-    },
-    "phx_dm_pce_document": {
-      "primary_id": "document_id",
-      "attributes": {
-        "document_id": "STRING",
-        "document_name": "STRING",
-        "document_type": "STRING",
-        "page_count": "INT",
-        "content_hash": "STRING",
-        "status": "STRING",
-        "uploaded_at": "DATETIME"
-      }
-    },
-    "phx_dm_pce_document_chunk": {
-      "primary_id": "chunk_id",
-      "attributes": {
-        "chunk_id": "STRING",
-        "document_id": "STRING",
-        "chunk_index": "INT",
-        "page_no": "INT",
-        "section_path": "STRING",
-        "chunk_text": "STRING",
-        "has_table": "BOOL",
-        "chroma_collection": "STRING"
-      }
-    },
-    "phx_dm_pce_rule_set_version": {
-      "primary_id": "version_id",
-      "attributes": {
-        "version_id": "STRING",
-        "version_no": "INT",
-        "status": "STRING",
-        "rule_count": "INT",
-        "approved_by": "STRING",
-        "approved_at": "DATETIME",
-        "notes": "STRING"
-      }
-    },
-    "phx_dm_pce_rule": {
-      "primary_id": "rule_key",
-      "attributes": {
-        "rule_key": "STRING",
-        "version_id": "STRING",
-        "rule_code": "STRING",
-        "rule_name": "STRING",
-        "statement": "STRING",
-        "worked_example": "STRING",
-        "kind": "STRING",
-        "plan_json": "STRING",
-        "explanation": "STRING",
-        "missing_note": "STRING",
-        "grain": "STRING",
-        "provenance": "STRING",
-        "confidence": "DOUBLE",
-        "status": "STRING"
-      }
-    },
-    "phx_dm_pce_insight_run": {
-      "primary_id": "run_id",
-      "attributes": {
-        "run_id": "STRING",
-        "advisor_sid": "STRING",
-        "from_month_id": "STRING",
-        "to_month_id": "STRING",
-        "version_id": "STRING",
-        "status": "STRING",
-        "query_count": "INT",
-        "budget_hit": "BOOL",
-        "budget_hit_tokens": "BOOL",
-        "started_at": "DATETIME",
-        "completed_at": "DATETIME",
-        "narrative": "STRING",
-        "bullets_json": "STRING",
-        "total_input_tokens": "INT",
-        "total_output_tokens": "INT",
-        "total_cache_read_tokens": "INT",
-        "est_cost_usd": "DOUBLE",
-        "wall_ms": "INT"
-      }
-    },
-    "phx_dm_pce_finding": {
-      "primary_id": "finding_id",
-      "attributes": {
-        "finding_id": "STRING",
-        "run_id": "STRING",
-        "title": "STRING",
-        "summary": "STRING",
-        "impact_amt": "DOUBLE",
-        "driver_code": "STRING",
-        "product_id": "STRING",
-        "provenance": "STRING",
-        "rule_key": "STRING",
-        "rank_order": "INT"
-      }
-    },
-    "phx_dm_pce_evidence_row": {
-      "primary_id": "evidence_id",
-      "attributes": {
-        "evidence_id": "STRING",
-        "finding_id": "STRING",
-        "row_index": "INT",
-        "row_json": "STRING"
-      }
-    },
-    "phx_dm_pce_agent_query_log": {
-      "primary_id": "query_id",
-      "attributes": {
-        "query_id": "STRING",
-        "run_id": "STRING",
-        "seq_no": "INT",
-        "agent_name": "STRING",
-        "query_name": "STRING",
-        "params_json": "STRING",
-        "row_count": "INT",
-        "latency_ms": "INT"
-      }
-    },
-    "phx_dm_pce_agent_turn_log": {
-      "primary_id": "turn_id",
-      "attributes": {
-        "turn_id": "STRING",
-        "run_id": "STRING",
-        "seq_no": "INT",
-        "agent_name": "STRING",
-        "model": "STRING",
-        "input_tokens": "INT",
-        "output_tokens": "INT",
-        "cache_read_tokens": "INT",
-        "cache_write_tokens": "INT",
-        "latency_ms": "INT",
-        "action_kind": "STRING",
-        "query_name": "STRING",
-        "est_cost_usd": "DOUBLE"
-      }
-    }
+ "graph": "phx_dm_pce_practice_demo",
+ "vertices": {
+  "phx_dm_pce_month": {
+   "primary_id": "month_id",
+   "attributes": {
+    "month_id": "STRING",
+    "month_name": "STRING",
+    "start_dt": "DATETIME",
+    "end_dt": "DATETIME",
+    "trading_days": "INT",
+    "is_baseline": "BOOL",
+    "is_partial": "BOOL"
+   }
   },
-  "edges": {
-    "phx_dm_pce_product_in_group": {
-      "from": "phx_dm_pce_product",
-      "to": "phx_dm_pce_product_group",
-      "reverse": "phx_dm_pce_group_has_product"
-    },
-    "phx_dm_pce_group_in_class": {
-      "from": "phx_dm_pce_product_group",
-      "to": "phx_dm_pce_revenue_class",
-      "reverse": "phx_dm_pce_class_has_group"
-    },
-    "phx_dm_pce_txn_by_advisor": {
-      "from": "phx_dm_pce_revenue_transaction",
-      "to": "phx_dm_pce_advisor",
-      "reverse": "phx_dm_pce_advisor_has_txn"
-    },
-    "phx_dm_pce_txn_for_account": {
-      "from": "phx_dm_pce_revenue_transaction",
-      "to": "phx_dm_pce_account",
-      "reverse": "phx_dm_pce_account_has_txn"
-    },
-    "phx_dm_pce_txn_of_product": {
-      "from": "phx_dm_pce_revenue_transaction",
-      "to": "phx_dm_pce_product",
-      "reverse": "phx_dm_pce_product_has_txn"
-    },
-    "phx_dm_pce_txn_in_month": {
-      "from": "phx_dm_pce_revenue_transaction",
-      "to": "phx_dm_pce_month",
-      "reverse": "phx_dm_pce_month_has_txn"
-    },
-    "phx_dm_pce_mr_by_advisor": {
-      "from": "phx_dm_pce_monthly_revenue",
-      "to": "phx_dm_pce_advisor",
-      "reverse": "phx_dm_pce_advisor_has_mr"
-    },
-    "phx_dm_pce_mr_in_month": {
-      "from": "phx_dm_pce_monthly_revenue",
-      "to": "phx_dm_pce_month",
-      "reverse": "phx_dm_pce_month_has_mr"
-    },
-    "phx_dm_pce_mr_of_product": {
-      "from": "phx_dm_pce_monthly_revenue",
-      "to": "phx_dm_pce_product",
-      "reverse": "phx_dm_pce_product_has_mr"
-    },
-    "phx_dm_pce_mr_in_group": {
-      "from": "phx_dm_pce_monthly_revenue",
-      "to": "phx_dm_pce_product_group",
-      "reverse": "phx_dm_pce_group_has_mr"
-    },
-    "phx_dm_pce_am_for_account": {
-      "from": "phx_dm_pce_account_month",
-      "to": "phx_dm_pce_account",
-      "reverse": "phx_dm_pce_account_has_am"
-    },
-    "phx_dm_pce_am_by_advisor": {
-      "from": "phx_dm_pce_account_month",
-      "to": "phx_dm_pce_advisor",
-      "reverse": "phx_dm_pce_advisor_has_am"
-    },
-    "phx_dm_pce_am_in_month": {
-      "from": "phx_dm_pce_account_month",
-      "to": "phx_dm_pce_month",
-      "reverse": "phx_dm_pce_month_has_am"
-    },
-    "phx_dm_pce_account_in_household": {
-      "from": "phx_dm_pce_account",
-      "to": "phx_dm_pce_household",
-      "reverse": "phx_dm_pce_household_has_account"
-    },
-    "phx_dm_pce_rel_of_account": {
-      "from": "phx_dm_pce_account_eci_rel",
-      "to": "phx_dm_pce_account",
-      "reverse": "phx_dm_pce_account_has_rel"
-    },
-    "phx_dm_pce_rel_to_household": {
-      "from": "phx_dm_pce_account_eci_rel",
-      "to": "phx_dm_pce_household",
-      "reverse": "phx_dm_pce_household_has_rel"
-    },
-    "phx_dm_pce_map_of_account": {
-      "from": "phx_dm_pce_account_eci_map",
-      "to": "phx_dm_pce_account",
-      "reverse": "phx_dm_pce_account_has_map"
-    },
-    "phx_dm_pce_map_to_household": {
-      "from": "phx_dm_pce_account_eci_map",
-      "to": "phx_dm_pce_household",
-      "reverse": "phx_dm_pce_household_has_map"
-    },
-    "phx_dm_pce_account_in_rpg": {
-      "from": "phx_dm_pce_account",
-      "to": "phx_dm_pce_rpg",
-      "reverse": "phx_dm_pce_rpg_has_account"
-    },
-    "phx_dm_pce_txn_in_rpg": {
-      "from": "phx_dm_pce_revenue_transaction",
-      "to": "phx_dm_pce_rpg",
-      "reverse": "phx_dm_pce_rpg_has_txn"
-    },
-    "phx_dm_pce_transfer_of_account": {
-      "from": "phx_dm_pce_account_transfer",
-      "to": "phx_dm_pce_account",
-      "reverse": "phx_dm_pce_account_has_transfer"
-    },
-    "phx_dm_pce_transfer_from": {
-      "from": "phx_dm_pce_account_transfer",
-      "to": "phx_dm_pce_advisor",
-      "reverse": "phx_dm_pce_advisor_transferred_out"
-    },
-    "phx_dm_pce_transfer_to": {
-      "from": "phx_dm_pce_account_transfer",
-      "to": "phx_dm_pce_advisor",
-      "reverse": "phx_dm_pce_advisor_transferred_in"
-    },
-    "phx_dm_pce_team_primary": {
-      "from": "phx_dm_pce_team_agreement",
-      "to": "phx_dm_pce_advisor",
-      "reverse": "phx_dm_pce_advisor_primary_on"
-    },
-    "phx_dm_pce_team_secondary": {
-      "from": "phx_dm_pce_team_agreement",
-      "to": "phx_dm_pce_advisor",
-      "reverse": "phx_dm_pce_advisor_secondary_on"
-    },
-    "phx_dm_pce_flow_by_advisor": {
-      "from": "phx_dm_pce_advisor_flow_month",
-      "to": "phx_dm_pce_advisor",
-      "reverse": "phx_dm_pce_advisor_has_flow"
-    },
-    "phx_dm_pce_flow_in_month": {
-      "from": "phx_dm_pce_advisor_flow_month",
-      "to": "phx_dm_pce_month",
-      "reverse": "phx_dm_pce_month_has_flow"
-    },
-    "phx_dm_pce_opportunity_for_household": {
-      "from": "phx_dm_pce_opportunity",
-      "to": "phx_dm_pce_household",
-      "reverse": "phx_dm_pce_household_has_opportunity"
-    },
-    "phx_dm_pce_opportunity_by_advisor": {
-      "from": "phx_dm_pce_opportunity",
-      "to": "phx_dm_pce_advisor",
-      "reverse": "phx_dm_pce_advisor_has_opportunity"
-    },
-    "phx_dm_pce_chunk_of_document": {
-      "from": "phx_dm_pce_document_chunk",
-      "to": "phx_dm_pce_document",
-      "reverse": "phx_dm_pce_document_has_chunk"
-    },
-    "phx_dm_pce_rule_in_version": {
-      "from": "phx_dm_pce_rule",
-      "to": "phx_dm_pce_rule_set_version",
-      "reverse": "phx_dm_pce_version_has_rule"
-    },
-    "phx_dm_pce_rule_cites_chunk": {
-      "from": "phx_dm_pce_rule",
-      "to": "phx_dm_pce_document_chunk",
-      "reverse": "phx_dm_pce_chunk_supports_rule"
-    },
-    "phx_dm_pce_run_uses_version": {
-      "from": "phx_dm_pce_insight_run",
-      "to": "phx_dm_pce_rule_set_version",
-      "reverse": "phx_dm_pce_version_used_by_run"
-    },
-    "phx_dm_pce_run_for_advisor": {
-      "from": "phx_dm_pce_insight_run",
-      "to": "phx_dm_pce_advisor",
-      "reverse": "phx_dm_pce_advisor_has_run"
-    },
-    "phx_dm_pce_finding_in_run": {
-      "from": "phx_dm_pce_finding",
-      "to": "phx_dm_pce_insight_run",
-      "reverse": "phx_dm_pce_run_has_finding"
-    },
-    "phx_dm_pce_finding_matched_rule": {
-      "from": "phx_dm_pce_finding",
-      "to": "phx_dm_pce_rule",
-      "reverse": "phx_dm_pce_rule_produced_finding"
-    },
-    "phx_dm_pce_evidence_of_finding": {
-      "from": "phx_dm_pce_evidence_row",
-      "to": "phx_dm_pce_finding",
-      "reverse": "phx_dm_pce_finding_has_evidence"
-    },
-    "phx_dm_pce_query_in_run": {
-      "from": "phx_dm_pce_agent_query_log",
-      "to": "phx_dm_pce_insight_run",
-      "reverse": "phx_dm_pce_run_has_query"
-    },
-    "phx_dm_pce_turn_in_run": {
-      "from": "phx_dm_pce_agent_turn_log",
-      "to": "phx_dm_pce_insight_run",
-      "reverse": "phx_dm_pce_run_has_turn"
-    }
+  "phx_dm_pce_revenue_class": {
+   "primary_id": "class_id",
+   "attributes": {
+    "class_id": "STRING",
+    "class_name": "STRING"
+   }
+  },
+  "phx_dm_pce_product_group": {
+   "primary_id": "group_id",
+   "attributes": {
+    "group_id": "STRING",
+    "group_name": "STRING",
+    "display_prefix": "STRING",
+    "class_id": "STRING",
+    "sort_order": "INT",
+    "is_aggregated": "BOOL"
+   }
+  },
+  "phx_dm_pce_product": {
+   "primary_id": "product_id",
+   "attributes": {
+    "product_id": "STRING",
+    "product_cd": "STRING",
+    "product_sub_cd": "STRING",
+    "product_name": "STRING",
+    "sor": "STRING",
+    "file_key": "STRING",
+    "group_id": "STRING",
+    "grid_type": "STRING"
+   }
+  },
+  "phx_dm_pce_advisor": {
+   "primary_id": "advisor_sid",
+   "attributes": {
+    "advisor_sid": "STRING",
+    "rep_code": "STRING",
+    "advisor_name": "STRING",
+    "branch_cd": "STRING",
+    "employee_id": "STRING",
+    "in_cohort": "BOOL"
+   }
+  },
+  "phx_dm_pce_account": {
+   "primary_id": "acct_key",
+   "attributes": {
+    "acct_key": "STRING",
+    "account_no_raw": "STRING",
+    "account_class_cd": "STRING",
+    "account_class_nm": "STRING",
+    "account_lob_cd": "STRING",
+    "account_purpose_cd": "STRING",
+    "managed_platform_cd": "STRING",
+    "service_channel_cd": "STRING",
+    "account_open_dt": "DATETIME",
+    "is_managed": "BOOL",
+    "opened_in_scope": "BOOL",
+    "primary_eci_id": "STRING"
+   }
+  },
+  "phx_dm_pce_household": {
+   "primary_id": "eci_id",
+   "attributes": {
+    "eci_id": "STRING",
+    "account_count": "INT"
+   }
+  },
+  "phx_dm_pce_account_eci_rel": {
+   "primary_id": "rel_id",
+   "attributes": {
+    "rel_id": "STRING",
+    "acct_key": "STRING",
+    "eci_id": "STRING",
+    "enterprise_relationship_code": "STRING",
+    "party_role_name": "STRING",
+    "client_employee_ind": "STRING",
+    "is_owner_role": "BOOL"
+   }
+  },
+  "phx_dm_pce_account_eci_map": {
+   "primary_id": "map_id",
+   "attributes": {
+    "map_id": "STRING",
+    "acct_src_key": "STRING",
+    "acct_src_raw": "STRING",
+    "wm_src_sys_cd": "STRING",
+    "eci_id": "STRING",
+    "bus_dt": "DATETIME",
+    "new_exst_adv_clnt_in": "STRING"
+   }
+  },
+  "phx_dm_pce_rpg": {
+   "primary_id": "rpg_id",
+   "attributes": {
+    "rpg_id": "STRING",
+    "account_count": "INT"
+   }
+  },
+  "phx_dm_pce_team_agreement": {
+   "primary_id": "agreement_key",
+   "attributes": {
+    "agreement_key": "STRING",
+    "agreement_id": "INT",
+    "team_rep_cd": "STRING",
+    "agreement_type": "STRING",
+    "status_cd": "STRING",
+    "prm_advisor_sid": "STRING",
+    "prm_share_pct": "DOUBLE",
+    "sec_advisor_sid": "STRING",
+    "sec_share_pct": "DOUBLE",
+    "start_ts": "DATETIME",
+    "end_ts": "DATETIME"
+   }
+  },
+  "phx_dm_pce_revenue_transaction": {
+   "primary_id": "txn_id",
+   "attributes": {
+    "txn_id": "STRING",
+    "trade_ref_no": "STRING",
+    "split_seq_no": "STRING",
+    "advisor_sid": "STRING",
+    "acct_key": "STRING",
+    "product_id": "STRING",
+    "month_id": "STRING",
+    "trade_dt": "DATETIME",
+    "proc_dt": "DATETIME",
+    "days_to_process": "INT",
+    "credited_amt": "DOUBLE",
+    "non_credited_amt": "DOUBLE",
+    "pre_split_amt": "DOUBLE",
+    "split_pct": "DOUBLE",
+    "reason_cd": "STRING",
+    "is_credited": "BOOL",
+    "standard_rate_bps": "DOUBLE",
+    "client_rate_bps": "DOUBLE",
+    "discount_amt": "DOUBLE",
+    "eff_disc_pct": "DOUBLE",
+    "grid_reduction": "DOUBLE",
+    "rpg": "STRING",
+    "concession_type": "STRING",
+    "file_key": "STRING",
+    "trade_description": "STRING"
+   }
+  },
+  "phx_dm_pce_monthly_revenue": {
+   "primary_id": "mr_id",
+   "attributes": {
+    "mr_id": "STRING",
+    "advisor_sid": "STRING",
+    "month_id": "STRING",
+    "product_id": "STRING",
+    "group_id": "STRING",
+    "class_id": "STRING",
+    "credited_amt": "DOUBLE",
+    "non_credited_amt": "DOUBLE",
+    "txn_count": "INT",
+    "distinct_accounts": "INT"
+   }
+  },
+  "phx_dm_pce_account_month": {
+   "primary_id": "am_id",
+   "attributes": {
+    "am_id": "STRING",
+    "acct_key": "STRING",
+    "advisor_sid": "STRING",
+    "month_id": "STRING",
+    "end_balance": "DOUBLE",
+    "credited_amt": "DOUBLE",
+    "txn_count": "INT",
+    "is_zero_balance": "BOOL",
+    "present_prior_month": "BOOL",
+    "prior_end_balance": "DOUBLE",
+    "prior_credited_amt": "DOUBLE"
+   }
+  },
+  "phx_dm_pce_account_transfer": {
+   "primary_id": "transfer_id",
+   "attributes": {
+    "transfer_id": "STRING",
+    "acct_key": "STRING",
+    "from_advisor_sid": "STRING",
+    "to_advisor_sid": "STRING",
+    "from_rr": "STRING",
+    "to_rr": "STRING",
+    "transfer_ts": "DATETIME",
+    "month_id": "STRING",
+    "is_intra_team": "BOOL",
+    "occd_cd": "STRING"
+   }
+  },
+  "phx_dm_pce_advisor_flow_month": {
+   "primary_id": "afm_id",
+   "attributes": {
+    "afm_id": "STRING",
+    "advisor_sid": "STRING",
+    "month_id": "STRING",
+    "flow_product_cd": "STRING",
+    "flow_product_desc": "STRING",
+    "comp_group_type": "STRING",
+    "total_inflows": "DOUBLE",
+    "total_outflows": "DOUBLE",
+    "total_net_flows": "DOUBLE",
+    "credited_flows": "DOUBLE",
+    "departed_advisor_sid": "STRING",
+    "departed_advisor_excl_am": "DOUBLE",
+    "lob_trfr_excl_am": "DOUBLE",
+    "oi_pa_referral_cap_adj_am": "DOUBLE",
+    "large_flow_cap_adj_am": "DOUBLE",
+    "forced_closure_excl_am": "DOUBLE"
+   }
+  },
+  "phx_dm_pce_opportunity": {
+   "primary_id": "opportunity_id",
+   "attributes": {
+    "opportunity_id": "STRING",
+    "eci_id": "STRING",
+    "advisor_sid": "STRING",
+    "stage": "STRING",
+    "status": "STRING",
+    "amount": "DOUBLE",
+    "product_group": "STRING",
+    "open_dt": "DATETIME",
+    "expected_close_dt": "DATETIME",
+    "close_dt": "DATETIME",
+    "source": "STRING",
+    "data_source": "STRING"
+   }
+  },
+  "phx_dm_pce_document": {
+   "primary_id": "document_id",
+   "attributes": {
+    "document_id": "STRING",
+    "document_name": "STRING",
+    "document_type": "STRING",
+    "page_count": "INT",
+    "content_hash": "STRING",
+    "status": "STRING",
+    "uploaded_at": "DATETIME"
+   }
+  },
+  "phx_dm_pce_document_chunk": {
+   "primary_id": "chunk_id",
+   "attributes": {
+    "chunk_id": "STRING",
+    "document_id": "STRING",
+    "chunk_index": "INT",
+    "page_no": "INT",
+    "section_path": "STRING",
+    "chunk_text": "STRING",
+    "has_table": "BOOL",
+    "chroma_collection": "STRING"
+   }
+  },
+  "phx_dm_pce_rule_set_version": {
+   "primary_id": "version_id",
+   "attributes": {
+    "version_id": "STRING",
+    "version_no": "INT",
+    "status": "STRING",
+    "rule_count": "INT",
+    "approved_by": "STRING",
+    "approved_at": "DATETIME",
+    "notes": "STRING"
+   }
+  },
+  "phx_dm_pce_rule": {
+   "primary_id": "rule_key",
+   "attributes": {
+    "rule_key": "STRING",
+    "version_id": "STRING",
+    "rule_code": "STRING",
+    "rule_name": "STRING",
+    "statement": "STRING",
+    "worked_example": "STRING",
+    "kind": "STRING",
+    "plan_json": "STRING",
+    "explanation": "STRING",
+    "missing_note": "STRING",
+    "grain": "STRING",
+    "provenance": "STRING",
+    "confidence": "DOUBLE",
+    "status": "STRING"
+   }
+  },
+  "phx_dm_pce_insight_run": {
+   "primary_id": "run_id",
+   "attributes": {
+    "run_id": "STRING",
+    "advisor_sid": "STRING",
+    "from_month_id": "STRING",
+    "to_month_id": "STRING",
+    "version_id": "STRING",
+    "status": "STRING",
+    "query_count": "INT",
+    "budget_hit": "BOOL",
+    "budget_hit_tokens": "BOOL",
+    "started_at": "DATETIME",
+    "completed_at": "DATETIME",
+    "narrative": "STRING",
+    "bullets_json": "STRING",
+    "total_input_tokens": "INT",
+    "total_output_tokens": "INT",
+    "total_cache_read_tokens": "INT",
+    "est_cost_usd": "DOUBLE",
+    "wall_ms": "INT"
+   }
+  },
+  "phx_dm_pce_finding": {
+   "primary_id": "finding_id",
+   "attributes": {
+    "finding_id": "STRING",
+    "run_id": "STRING",
+    "title": "STRING",
+    "summary": "STRING",
+    "impact_amt": "DOUBLE",
+    "driver_code": "STRING",
+    "product_id": "STRING",
+    "provenance": "STRING",
+    "rule_key": "STRING",
+    "rank_order": "INT"
+   }
+  },
+  "phx_dm_pce_evidence_row": {
+   "primary_id": "evidence_id",
+   "attributes": {
+    "evidence_id": "STRING",
+    "finding_id": "STRING",
+    "row_index": "INT",
+    "row_json": "STRING"
+   }
+  },
+  "phx_dm_pce_agent_query_log": {
+   "primary_id": "query_id",
+   "attributes": {
+    "query_id": "STRING",
+    "run_id": "STRING",
+    "seq_no": "INT",
+    "agent_name": "STRING",
+    "query_name": "STRING",
+    "params_json": "STRING",
+    "row_count": "INT",
+    "latency_ms": "INT"
+   }
+  },
+  "phx_dm_pce_agent_turn_log": {
+   "primary_id": "turn_id",
+   "attributes": {
+    "turn_id": "STRING",
+    "run_id": "STRING",
+    "seq_no": "INT",
+    "agent_name": "STRING",
+    "model": "STRING",
+    "input_tokens": "INT",
+    "output_tokens": "INT",
+    "cache_read_tokens": "INT",
+    "cache_write_tokens": "INT",
+    "latency_ms": "INT",
+    "action_kind": "STRING",
+    "query_name": "STRING",
+    "est_cost_usd": "DOUBLE"
+   }
+  },
+  "phx_dm_pce_feature_flag": {
+   "primary_id": "flag_key",
+   "attributes": {
+    "flag_key": "STRING",
+    "enabled": "BOOL",
+    "updated_at": "STRING",
+    "updated_by": "STRING",
+    "note_reason": "STRING",
+    "note_at": "STRING"
+   }
   }
+ },
+ "edges": {
+  "phx_dm_pce_product_in_group": {
+   "from": "phx_dm_pce_product",
+   "to": "phx_dm_pce_product_group",
+   "reverse": "phx_dm_pce_group_has_product"
+  },
+  "phx_dm_pce_group_in_class": {
+   "from": "phx_dm_pce_product_group",
+   "to": "phx_dm_pce_revenue_class",
+   "reverse": "phx_dm_pce_class_has_group"
+  },
+  "phx_dm_pce_txn_by_advisor": {
+   "from": "phx_dm_pce_revenue_transaction",
+   "to": "phx_dm_pce_advisor",
+   "reverse": "phx_dm_pce_advisor_has_txn"
+  },
+  "phx_dm_pce_txn_for_account": {
+   "from": "phx_dm_pce_revenue_transaction",
+   "to": "phx_dm_pce_account",
+   "reverse": "phx_dm_pce_account_has_txn"
+  },
+  "phx_dm_pce_txn_of_product": {
+   "from": "phx_dm_pce_revenue_transaction",
+   "to": "phx_dm_pce_product",
+   "reverse": "phx_dm_pce_product_has_txn"
+  },
+  "phx_dm_pce_txn_in_month": {
+   "from": "phx_dm_pce_revenue_transaction",
+   "to": "phx_dm_pce_month",
+   "reverse": "phx_dm_pce_month_has_txn"
+  },
+  "phx_dm_pce_mr_by_advisor": {
+   "from": "phx_dm_pce_monthly_revenue",
+   "to": "phx_dm_pce_advisor",
+   "reverse": "phx_dm_pce_advisor_has_mr"
+  },
+  "phx_dm_pce_mr_in_month": {
+   "from": "phx_dm_pce_monthly_revenue",
+   "to": "phx_dm_pce_month",
+   "reverse": "phx_dm_pce_month_has_mr"
+  },
+  "phx_dm_pce_mr_of_product": {
+   "from": "phx_dm_pce_monthly_revenue",
+   "to": "phx_dm_pce_product",
+   "reverse": "phx_dm_pce_product_has_mr"
+  },
+  "phx_dm_pce_mr_in_group": {
+   "from": "phx_dm_pce_monthly_revenue",
+   "to": "phx_dm_pce_product_group",
+   "reverse": "phx_dm_pce_group_has_mr"
+  },
+  "phx_dm_pce_am_for_account": {
+   "from": "phx_dm_pce_account_month",
+   "to": "phx_dm_pce_account",
+   "reverse": "phx_dm_pce_account_has_am"
+  },
+  "phx_dm_pce_am_by_advisor": {
+   "from": "phx_dm_pce_account_month",
+   "to": "phx_dm_pce_advisor",
+   "reverse": "phx_dm_pce_advisor_has_am"
+  },
+  "phx_dm_pce_am_in_month": {
+   "from": "phx_dm_pce_account_month",
+   "to": "phx_dm_pce_month",
+   "reverse": "phx_dm_pce_month_has_am"
+  },
+  "phx_dm_pce_account_in_household": {
+   "from": "phx_dm_pce_account",
+   "to": "phx_dm_pce_household",
+   "reverse": "phx_dm_pce_household_has_account"
+  },
+  "phx_dm_pce_rel_of_account": {
+   "from": "phx_dm_pce_account_eci_rel",
+   "to": "phx_dm_pce_account",
+   "reverse": "phx_dm_pce_account_has_rel"
+  },
+  "phx_dm_pce_rel_to_household": {
+   "from": "phx_dm_pce_account_eci_rel",
+   "to": "phx_dm_pce_household",
+   "reverse": "phx_dm_pce_household_has_rel"
+  },
+  "phx_dm_pce_map_of_account": {
+   "from": "phx_dm_pce_account_eci_map",
+   "to": "phx_dm_pce_account",
+   "reverse": "phx_dm_pce_account_has_map"
+  },
+  "phx_dm_pce_map_to_household": {
+   "from": "phx_dm_pce_account_eci_map",
+   "to": "phx_dm_pce_household",
+   "reverse": "phx_dm_pce_household_has_map"
+  },
+  "phx_dm_pce_account_in_rpg": {
+   "from": "phx_dm_pce_account",
+   "to": "phx_dm_pce_rpg",
+   "reverse": "phx_dm_pce_rpg_has_account"
+  },
+  "phx_dm_pce_txn_in_rpg": {
+   "from": "phx_dm_pce_revenue_transaction",
+   "to": "phx_dm_pce_rpg",
+   "reverse": "phx_dm_pce_rpg_has_txn"
+  },
+  "phx_dm_pce_transfer_of_account": {
+   "from": "phx_dm_pce_account_transfer",
+   "to": "phx_dm_pce_account",
+   "reverse": "phx_dm_pce_account_has_transfer"
+  },
+  "phx_dm_pce_transfer_from": {
+   "from": "phx_dm_pce_account_transfer",
+   "to": "phx_dm_pce_advisor",
+   "reverse": "phx_dm_pce_advisor_transferred_out"
+  },
+  "phx_dm_pce_transfer_to": {
+   "from": "phx_dm_pce_account_transfer",
+   "to": "phx_dm_pce_advisor",
+   "reverse": "phx_dm_pce_advisor_transferred_in"
+  },
+  "phx_dm_pce_team_primary": {
+   "from": "phx_dm_pce_team_agreement",
+   "to": "phx_dm_pce_advisor",
+   "reverse": "phx_dm_pce_advisor_primary_on"
+  },
+  "phx_dm_pce_team_secondary": {
+   "from": "phx_dm_pce_team_agreement",
+   "to": "phx_dm_pce_advisor",
+   "reverse": "phx_dm_pce_advisor_secondary_on"
+  },
+  "phx_dm_pce_flow_by_advisor": {
+   "from": "phx_dm_pce_advisor_flow_month",
+   "to": "phx_dm_pce_advisor",
+   "reverse": "phx_dm_pce_advisor_has_flow"
+  },
+  "phx_dm_pce_flow_in_month": {
+   "from": "phx_dm_pce_advisor_flow_month",
+   "to": "phx_dm_pce_month",
+   "reverse": "phx_dm_pce_month_has_flow"
+  },
+  "phx_dm_pce_opportunity_for_household": {
+   "from": "phx_dm_pce_opportunity",
+   "to": "phx_dm_pce_household",
+   "reverse": "phx_dm_pce_household_has_opportunity"
+  },
+  "phx_dm_pce_opportunity_by_advisor": {
+   "from": "phx_dm_pce_opportunity",
+   "to": "phx_dm_pce_advisor",
+   "reverse": "phx_dm_pce_advisor_has_opportunity"
+  },
+  "phx_dm_pce_chunk_of_document": {
+   "from": "phx_dm_pce_document_chunk",
+   "to": "phx_dm_pce_document",
+   "reverse": "phx_dm_pce_document_has_chunk"
+  },
+  "phx_dm_pce_rule_in_version": {
+   "from": "phx_dm_pce_rule",
+   "to": "phx_dm_pce_rule_set_version",
+   "reverse": "phx_dm_pce_version_has_rule"
+  },
+  "phx_dm_pce_rule_cites_chunk": {
+   "from": "phx_dm_pce_rule",
+   "to": "phx_dm_pce_document_chunk",
+   "reverse": "phx_dm_pce_chunk_supports_rule"
+  },
+  "phx_dm_pce_run_uses_version": {
+   "from": "phx_dm_pce_insight_run",
+   "to": "phx_dm_pce_rule_set_version",
+   "reverse": "phx_dm_pce_version_used_by_run"
+  },
+  "phx_dm_pce_run_for_advisor": {
+   "from": "phx_dm_pce_insight_run",
+   "to": "phx_dm_pce_advisor",
+   "reverse": "phx_dm_pce_advisor_has_run"
+  },
+  "phx_dm_pce_finding_in_run": {
+   "from": "phx_dm_pce_finding",
+   "to": "phx_dm_pce_insight_run",
+   "reverse": "phx_dm_pce_run_has_finding"
+  },
+  "phx_dm_pce_finding_matched_rule": {
+   "from": "phx_dm_pce_finding",
+   "to": "phx_dm_pce_rule",
+   "reverse": "phx_dm_pce_rule_produced_finding"
+  },
+  "phx_dm_pce_evidence_of_finding": {
+   "from": "phx_dm_pce_evidence_row",
+   "to": "phx_dm_pce_finding",
+   "reverse": "phx_dm_pce_finding_has_evidence"
+  },
+  "phx_dm_pce_query_in_run": {
+   "from": "phx_dm_pce_agent_query_log",
+   "to": "phx_dm_pce_insight_run",
+   "reverse": "phx_dm_pce_run_has_query"
+  },
+  "phx_dm_pce_turn_in_run": {
+   "from": "phx_dm_pce_agent_turn_log",
+   "to": "phx_dm_pce_insight_run",
+   "reverse": "phx_dm_pce_run_has_turn"
+  }
+ }
 }

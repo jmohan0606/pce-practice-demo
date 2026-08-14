@@ -13,12 +13,16 @@ separately from the SID; a blank name stays blank.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.flags.registry import require_feature
 
 from app.graph.queries.catalog import CatalogError
 from app.graph.queries.noncredited import run_noncredited_query
 
-router = APIRouter(prefix="/api/dashboard", tags=["ranking"])
+router = APIRouter(prefix="/api/dashboard", tags=["ranking"],
+                   # Round A2B task 7: OFF means these queries do not run
+                   dependencies=[Depends(require_feature("dashboard.table.top_bottom"))])
 
 
 @router.get("/product/{group_id}/ranking")

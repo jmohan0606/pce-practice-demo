@@ -340,6 +340,13 @@ CREATE VERTEX phx_dm_pce_agent_turn_log (PRIMARY_ID turn_id STRING, run_id STRIN
   seq_no INT, agent_name STRING, model STRING, input_tokens INT, output_tokens INT,
   cache_read_tokens INT, cache_write_tokens INT, latency_ms INT, action_kind STRING,
   query_name STRING, est_cost_usd DOUBLE) WITH primary_id_as_attribute="true";
+
+-- Round A2B task 7 — feature-flag state (app-written; the FlagStore's runtime
+-- upsert is its loading job). Current state only; the change history lives in
+-- the app's durable SQLite (data/runtime/feature_flags.db).
+CREATE VERTEX phx_dm_pce_feature_flag (PRIMARY_ID flag_key STRING, enabled BOOL,
+  updated_at STRING, updated_by STRING, note_reason STRING, note_at STRING)
+  WITH primary_id_as_attribute="true";
 ```
 
 `rule_key = version_id ||'|'|| rule_code`. `run_id = advisor_sid ||'|'|| from_month_id ||'|'||
@@ -415,7 +422,7 @@ CREATE DIRECTED EDGE phx_dm_pce_query_in_run (FROM phx_dm_pce_agent_query_log, T
 CREATE DIRECTED EDGE phx_dm_pce_turn_in_run (FROM phx_dm_pce_agent_turn_log, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_turn";
 ```
 
-**26 vertices (17 source-loaded + 9 app-written) · 39 edge types.** Drop order is the reverse of create order.
+**27 vertices (17 source-loaded + 10 app-written) · 39 edge types.** Drop order is the reverse of create order.
 
 ---
 

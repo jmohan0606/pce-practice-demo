@@ -10,13 +10,17 @@ query and never computes figures itself.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.flags.registry import require_feature
 
 from app.graph.queries.catalog import CatalogError
 from app.graph.queries.noncredited import run_noncredited_query
 from app.shared.reason_codes import REASON_CODES
 
-router = APIRouter(prefix="/api/noncredited", tags=["noncredited"])
+router = APIRouter(prefix="/api/noncredited", tags=["noncredited"],
+                   # Round A2B task 7: OFF means these queries do not run
+                   dependencies=[Depends(require_feature("dashboard.noncredited"))])
 
 # cause key -> its detail query (each cause has a DIFFERENT shape by design)
 DETAIL_QUERIES = {
