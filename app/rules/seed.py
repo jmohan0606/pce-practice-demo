@@ -3,8 +3,8 @@
 Round E shape: each rule is a plain-English ``statement`` plus an
 operator-authored ``plan`` in the Rule Compiler's JSON format, validated
 through the SAME five checks every compiled rule passes (including execution
-against mock data). Provenance OPERATOR_SPECIFIED, evaluation_order
-10,20,20,25,30.
+against mock data). Provenance TECH_TEAM_WRITTEN (Round C docs/rules rename —
+was OPERATOR_SPECIFIED), evaluation_order 10,20,20,25,30.
 
 Round F correction: v0 holds ONLY logic the operator supplied because no plan
 document states it — exactly five account-lifecycle rules. FEE_REDUCTION_SHARING
@@ -310,10 +310,14 @@ def ensure_v0_seed() -> dict:
                 {
                     **rule,
                     "explanation": rule["plan"].get("explanation"),
-                    # Round A1: RETAINED_ACCOUNT carries its own provenance
-                    # (TECH_TEAM_WRITTEN); the operator-dictated five stay
-                    # OPERATOR_SPECIFIED.
-                    "provenance": rule.get("provenance", "OPERATOR_SPECIFIED"),
+                    # Round C (docs/rules) task 1.2: the whole v0 seed is
+                    # TECH TEAM WRITTEN — logic we supplied because no document
+                    # states it (renamed from OPERATOR_SPECIFIED; rehydrated
+                    # stores migrate in RuleStore._normalize_round_c_fields).
+                    "provenance": rule.get("provenance", "TECH_TEAM_WRITTEN"),
+                    "applies_to": "ALL",
+                    "applies_to_key": None,
+                    "active": True,
                     "status": "PUBLISHED",
                     "confidence": 1.0,
                     "citations": [],

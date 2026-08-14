@@ -195,20 +195,19 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     # Round F: v0 held exactly the five account-lifecycle rules the operator
     # supplied (FEE_REDUCTION_SHARING is document-derived and comes from the
     # extractor; PARTIAL_PERIOD could never fire — June is complete).
-    # Round A1 task 3.3: RETAINED_ACCOUNT joins as a sixth rule, provenance
-    # TECH_TEAM_WRITTEN (tech-team authored, not operator-dictated) — the
-    # original five stay OPERATOR_SPECIFIED.
+    # Round A1 task 3.3: RETAINED_ACCOUNT joins as a sixth rule.
+    # Round C (docs/rules) task 1.2: the whole seed's provenance is
+    # TECH_TEAM_WRITTEN — the OPERATOR_SPECIFIED tag was renamed (spec 1.2:
+    # "logic we supplied because no document states it").
     codes = sorted(r["rule_code"] for r in v0_rules)
     expected_codes = sorted(["NEW_ACCOUNT", "ACCOUNT_TRANSFERRED_IN",
                              "ACCOUNT_TRANSFERRED_OUT", "NEW_BILLING", "LOST_ACCOUNT",
                              "RETAINED_ACCOUNT"])
     check("B3-13", "v0 seed present with exactly the 6 lifecycle rules, all PUBLISHED, "
-                   "5 OPERATOR_SPECIFIED + RETAINED_ACCOUNT TECH_TEAM_WRITTEN",
+                   "all TECH_TEAM_WRITTEN (Round C docs/rules rename)",
           v0["version_no"] == 0 and codes == expected_codes
           and all(r["status"] == "PUBLISHED" for r in v0_rules)
-          and all(r["provenance"] == ("TECH_TEAM_WRITTEN"
-                                      if r["rule_code"] == "RETAINED_ACCOUNT"
-                                      else "OPERATOR_SPECIFIED") for r in v0_rules),
+          and all(r["provenance"] == "TECH_TEAM_WRITTEN" for r in v0_rules),
           f"version_no={v0['version_no']}, rules={codes}")
 
     order = {r["rule_code"]: r["evaluation_order"] for r in v0_rules}

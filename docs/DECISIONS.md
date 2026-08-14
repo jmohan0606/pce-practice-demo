@@ -253,6 +253,21 @@ Context: MOCKUP_FEATURE_FLAGS.html shows a staged "Save Changes" bar. The built 
 Decision: Toggles apply on change; the savebar shows live counts and "changes apply immediately and persist". The mockup file is updated to match the built app per the spec's divergence rule. Also: spec's "Practice Dashboard (7)" enumerates 8 sections — reconciled at 8 (the per-cause 9X detail is its own child flag); final count 26 of ceiling 30. Cost hints read /api/trace averages; chat's "~$0.02 per message" is the one static string, labelled "estimate, feature not built".
 Reversible: yes
 
+## 2026-08-14 · Round C (docs/rules) task 1 · applies_to and scopes are different axes
+Context: Round G's `scopes` declares which evaluation scopes a rule CAN run at (derived from its plan's parameters — a plan needing :advisor_sid cannot run at practice scope without a variant). Spec 1.1 adds `applies_to`/`applies_to_key`.
+Decision: They are orthogonal and both filter evaluation, in this order: (1) `active` (task 2), (2) `applies_to` — SHOULD this rule apply to the entity being evaluated (PRACTICE = firm-level runs only; ADVISOR[+sid] = that advisor's runs; PRODUCT[+group] = that product group's drill-downs; ALL = everywhere, the default), (3) `scopes` — CAN the rule's plan execute at this evaluation scope. A rule can be ADVISOR-applied yet practice-evaluable: applies_to=ADVISOR limits it to advisor runs even though its plan could run firm-wide. Each filter produces `skipped` with its own reason, never an error. `evaluate_rule_set` gained an optional `group_id` (drill-down passes its product group) so PRODUCT-applied rules can match. An `applies_to`/`applies_to_key` edit preserves the compiled plan (the query itself is unchanged — Round A1 display-only precedent) and so publishes without a recompile.
+Reversible: yes
+
+## 2026-08-14 · Round C (docs/rules) task 1.2 · Rule provenance is a four-tag closed set; v0 renamed TECH_TEAM_WRITTEN
+Context: Spec 1.2 replaces the binary provenance with DOCUMENT_DERIVED / TECH TEAM WRITTEN / MANUALLY WRITTEN-PRACTICE / MANUALLY WRITTEN-TECH and renames the v0 seed's tag.
+Decision: Codes are stored as identifiers (TECH_TEAM_WRITTEN, MANUALLY_WRITTEN_PRACTICE, …) with the spec's chip text as display labels in `RULE_PROVENANCE_TAGS` (app/rules/store.py); the API serializes both `provenance` and `provenance_label`. ALL SIX v0 rules (including the five ex-OPERATOR_SPECIFIED) are TECH_TEAM_WRITTEN — the spec's definition ("logic we supplied because no document states it") covers them all; rehydrated stores migrate in place at construction, no reseed. Glossary gains the four rule-provenance definitions alongside the finding chips (REAL/DERIVED/DUMMY), same `provenance.*` namespace, distinct keys. verify_round_b B3-13 re-pinned.
+Reversible: yes
+
+## 2026-08-14 · Round C (docs/rules) task 1.3 · 145 bps pinned as a code constant with citations
+Context: The Round F DECISIONS entry resolved 145-vs-115 for documents, but no code constant existed — generator scripts carried bare `145.0` literals.
+Decision: `app/shared/fee_schedule.py` exports STANDARD_MANAGED_FEE_BPS = 145.0 with its three schedule citations (FAQ p.13, PCA p.3, SAG p.4); generate_mock_data.py and make_test_raw_extracts.py import it. NO constant is exported for 115 by design — it exists only inside labelled worked-example prose (sample PDF §3.2, make_test_pdf), per FAQ p.15.
+Reversible: yes
+
 ## 2026-08-14 · Round A2B · Per-subtask commits collapsed for parallel-dispatched work
 Context: The spec asks for commits after 6.2/6.4/6.7; Subagent C's work arrived complete from the parallel dispatch (Round E tasks 6+7 precedent).
 Decision: One verified commit per task (6 and 7). Batch insight generation (advisor="all", 21 runs, $1.52) was run by the main thread during the round so exceptions/insights/advisor views verify against real stored runs.

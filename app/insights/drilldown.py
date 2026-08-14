@@ -346,8 +346,11 @@ def _scoped_rule_findings(scope: str, parts: dict, to_month: str,
 
     rule_scope = RULE_SCOPE[scope]
     advisor_sid = parts.get("advisor_sid")
+    # Round C (docs/rules) task 1.1: the product group rides along so
+    # PRODUCT-applied rules filter to their own group.
     outcome = evaluate_rule_set(version["version_id"], month=to_month,
-                                advisor_sid=advisor_sid, scope=rule_scope)
+                                advisor_sid=advisor_sid, scope=rule_scope,
+                                group_id=parts.get("group_id"))
     rule_map = {r["rule_key"]: r
                 for r in get_rule_store().version_rules(version["version_id"])}
     findings: list[dict] = []

@@ -42,6 +42,17 @@ PROVENANCE_DEFINITIONS: dict[str, str] = {
                "traceable, but not a single stored value.",
     "DUMMY": "The row comes from generated placeholder data (data_source='DUMMY') — "
              "illustrative only, never a client fact.",
+    # Round C (docs/rules) task 1.2 — RULE provenance chips (where a rule came
+    # from), distinct from the finding chips above.
+    "DOCUMENT_DERIVED": "The rule was extracted from an uploaded document and "
+                        "carries a citation to its page and section.",
+    "TECH_TEAM_WRITTEN": "The rule is part of the v0 seed — logic the "
+                         "implementation team supplied because no document "
+                         "states it.",
+    "MANUALLY_WRITTEN_PRACTICE": "The rule was authored in the app by a "
+                                 "practice user.",
+    "MANUALLY_WRITTEN_TECH": "The rule was authored in the app by the "
+                             "implementation team.",
 }
 
 

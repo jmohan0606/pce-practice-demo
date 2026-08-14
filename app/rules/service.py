@@ -33,6 +33,44 @@ def rule_scopes(rule: dict) -> list[str]:
     return derive_scopes(rule.get("plan"), rule.get("plan_by_scope"))
 
 
+def applies_to_skip_reason(rule: dict, scope: str, advisor_sid: str | None,
+                           group_id: str | None = None) -> str | None:
+    """Round C (docs/rules) task 1.1 — ``applies_to`` filtering, BEFORE
+    evaluation. Returns a human-readable skip reason when the rule should not
+    apply to this evaluation, else None.
+
+    Distinct from ``scopes`` (Round G): scopes says which evaluation scopes a
+    rule CAN run at; applies_to says which entities it SHOULD apply to. A rule
+    can be ADVISOR-applied yet practice-evaluable — both checks run, and either
+    produces a skipped (never an error) result."""
+    level = rule.get("applies_to") or "ALL"
+    key = rule.get("applies_to_key") or None
+    if level == "ALL":
+        return None
+    if level == "PRACTICE":
+        if advisor_sid is None and group_id is None:
+            return None
+        return ("rule applies at PRACTICE (firm) level only — not applicable "
+                "to this " + ("advisor" if advisor_sid else "product") + "-level evaluation")
+    if level == "ADVISOR":
+        if advisor_sid is None:
+            return (f"rule applies to advisor {key} only — not applicable to a "
+                    f"{scope}-level evaluation" if key else
+                    "rule applies at ADVISOR level only — no advisor in this evaluation")
+        if key and str(advisor_sid) != str(key):
+            return f"rule applies to advisor {key} only — this evaluation is for {advisor_sid}"
+        return None
+    if level == "PRODUCT":
+        if group_id is None:
+            return (f"rule applies to product group {key} only — no product group "
+                    f"in this evaluation" if key else
+                    "rule applies at PRODUCT level only — no product group in this evaluation")
+        if key and str(group_id) != str(key):
+            return f"rule applies to product group {key} only — this evaluation is for {group_id}"
+        return None
+    return f"unknown applies_to level {level!r} — rule skipped, not errored"
+
+
 def plan_for_scope(rule: dict, scope: str | None) -> dict | None:
     """Round G 1.3: a rule may carry ``plan_by_scope`` (scope → plan JSON);
     evaluation at that scope uses the scope's plan, falling back to ``plan``."""
@@ -95,9 +133,23 @@ def evaluate_rule(rule: dict, month: str | None = None, advisor_sid: str | None 
     }
 
 
+def _skip_result(rule: dict, scope: str, reason: str) -> dict:
+    return {
+        "rule_code": rule.get("rule_code"),
+        "rule_key": rule.get("rule_key"),
+        "evaluated": False,
+        "skipped": True,
+        "skip_reason": reason,
+        "scope": scope,
+        "matched": [], "matched_count": 0,
+        "evaluation_order": rule.get("evaluation_order"),
+    }
+
+
 def evaluate_rule_set(version_id: str, month: str | None = None,
                       advisor_sid: str | None = None,
-                      scope: str | None = None) -> dict:
+                      scope: str | None = None,
+                      group_id: str | None = None) -> dict:
     """Evaluate every rule of a version in evaluation_order at one scope.
     Exclusion is explicit only: a rule's ``exclude_matched_of`` names the
     earlier rules whose matched account keys are removed from its population.
@@ -119,17 +171,24 @@ def evaluate_rule_set(version_id: str, month: str | None = None,
     matched_by_code: dict[str, set[str]] = {}
     results = []
     for rule in rules:
+        # Round C (docs/rules) task 2.1: an inactive rule is not evaluated in
+        # new runs — skipped with the recorded reason, never an error. It
+        # remains queryable and historical insights citing it stay valid.
+        if rule.get("active") is False:
+            results.append(_skip_result(
+                rule, scope,
+                "rule is inactive"
+                + (f" — {rule['active_reason']}" if rule.get("active_reason") else "")))
+            continue
+        # Round C (docs/rules) task 1.1: applies_to filtering runs BEFORE the
+        # scopes check — "should this rule apply to this entity at all".
+        applies_reason = applies_to_skip_reason(rule, scope, advisor_sid, group_id)
+        if applies_reason:
+            results.append(_skip_result(rule, scope, applies_reason))
+            continue
         if scope not in rule_scopes(rule):
-            results.append({
-                "rule_code": rule.get("rule_code"),
-                "rule_key": rule.get("rule_key"),
-                "evaluated": False,
-                "skipped": True,
-                "skip_reason": f"not applicable at {scope} scope",
-                "scope": scope,
-                "matched": [], "matched_count": 0,
-                "evaluation_order": rule.get("evaluation_order"),
-            })
+            results.append(_skip_result(
+                rule, scope, f"not applicable at {scope} scope"))
             continue
         # Explicit claims only — keys matched by the named earlier rules
         # (e.g. NEW_BILLING excludes NEW_ACCOUNT's accounts, LOST_ACCOUNT

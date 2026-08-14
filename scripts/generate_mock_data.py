@@ -49,6 +49,7 @@ SCALE = 1.0
 ACCT_F = 1
 
 from app.revenue.aggregation import build_monthly_revenue  # noqa: E402
+from app.shared.fee_schedule import STANDARD_MANAGED_FEE_BPS  # noqa: E402
 from app.revenue.products import (  # noqa: E402
     PRODUCT_GROUPS,
     product_group_rows,
@@ -314,7 +315,7 @@ def build_transactions(products: list[dict], by_advisor: dict[str, list[dict]], 
         for month_id in ("202605", "202606"):
             factor = JUNE_FACTOR if month_id == "202606" else 1.0
             emit(acct["_advisor"], acct, oisc, month_id, RNG.uniform(900, 1800) * factor,
-                 std_bps=145.0, cli_bps=cli, grid_red=grid, description="Managed account fee — discounted")
+                 std_bps=STANDARD_MANAGED_FEE_BPS, cli_bps=cli, grid_red=grid, description="Managed account fee — discounted")
 
     # syndicate one-off: two large STRT allocations, V000001, May only
     strt = next(p for p in mapped_products if p["product_id"] == "STRT|")

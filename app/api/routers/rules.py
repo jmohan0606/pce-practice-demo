@@ -38,6 +38,16 @@ def _serialize(rule: dict) -> dict:
     # Round A1 task 2: severity + its one-line reason always serialize
     out.setdefault("severity", None)
     out.setdefault("severity_reason", None)
+    # Round C (docs/rules) task 1: applies_to targeting, active state and the
+    # provenance chip label always serialize.
+    out.setdefault("applies_to", "ALL")
+    out.setdefault("applies_to_key", None)
+    out.setdefault("active", True)
+    out.setdefault("active_reason", None)
+    from app.rules.store import RULE_PROVENANCE_TAGS
+
+    out["provenance_label"] = RULE_PROVENANCE_TAGS.get(
+        str(rule.get("provenance") or ""), rule.get("provenance"))
     # Round H task 1: exclusion is declared ON the rule — always serialized so
     # the rule detail UI can show it (empty list = no exclusions).
     out.setdefault("exclude_matched_of", [])

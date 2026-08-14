@@ -37,6 +37,7 @@ sys.path.insert(0, str(ROOT))
 
 from scripts.build_real_data import RAW_CONTRACT  # noqa: E402
 from scripts.select_cohort import select  # noqa: E402
+from app.shared.fee_schedule import STANDARD_MANAGED_FEE_BPS  # noqa: E402
 
 RNG = random.Random(4242)
 
@@ -243,7 +244,7 @@ def main() -> int:
             grid = 3.0 if f["has_recorded_grid_reduction"] == "true" else 0.0
             for month in ("202605", "202606"):
                 emit(sid, acct_by_sid[sid][0], "OISC", "", month,
-                     RNG.uniform(900, 1800), std=145.0,
+                     RNG.uniform(900, 1800), std=STANDARD_MANAGED_FEE_BPS,
                      cli=RNG.choice([118.0, 124.0, 128.0]), grid=grid,
                      desc="Managed account fee — discounted")
     # unmapped product activity (MISC is in the hierarchy but not the 24-group seed)

@@ -59,13 +59,35 @@ RULE_STATUSES = ("DRAFT", "COMPILED", "PUBLISHED", "SUPERSEDED",
 # Round A1 task 2 — rule severity, most severe first (sort order everywhere).
 SEVERITIES = ("CRITICAL", "HIGH", "MODERATE", "LOW", "INFO")
 
+# Round C (docs/rules) task 1.1 — which entities a rule SHOULD apply to.
+# Distinct from Round G's ``scopes`` (which evaluation scopes a rule CAN run
+# at): a rule can be ADVISOR-applied yet practice-evaluable. DECISIONS.md.
+# ALL is the default and matches pre-Round-C behaviour.
+APPLIES_TO = ("PRACTICE", "ADVISOR", "PRODUCT", "ALL")
+
+# Round C (docs/rules) task 1.2 — explicit provenance tags, code -> chip label.
+# The tag renders everywhere a rule appears so the client always sees where a
+# rule came from. The v0 seed's old OPERATOR_SPECIFIED tag is renamed
+# TECH_TEAM_WRITTEN (logic we supplied because no document states it);
+# rehydrated pre-Round-C rules migrate at store construction.
+RULE_PROVENANCE_TAGS: dict[str, str] = {
+    "DOCUMENT_DERIVED": "DOCUMENT DERIVED",
+    "TECH_TEAM_WRITTEN": "TECH TEAM WRITTEN",
+    "MANUALLY_WRITTEN_PRACTICE": "MANUALLY WRITTEN-PRACTICE",
+    "MANUALLY_WRITTEN_TECH": "MANUALLY WRITTEN-TECH",
+}
+
 # Rule fields whose edit does NOT invalidate the compiled plan: they change
 # what is DISPLAYED or how urgently it is triaged, never what the query
 # computes. A severity-only edit therefore keeps COMPILED status and can be
 # approved and published without a recompile (DECISIONS.md, Round A1 task 2).
 _DISPLAY_ONLY_FIELDS = frozenset(
     {"severity", "severity_reason", "driver_label", "driver_definition",
-     "driver_tag", "rule_name"})
+     "driver_tag", "rule_name",
+     # Round C (docs/rules): applies_to/active change WHICH entities the next
+     # generation evaluates the rule for, never what the query computes — the
+     # compiled plan stays valid, so these edits publish without a recompile.
+     "applies_to", "applies_to_key", "active", "active_reason", "provenance"})
 
 
 class RuleStoreError(RuntimeError):
@@ -103,6 +125,7 @@ class RuleStore:
         # their own durable table.
         for rule in self.rules.values():
             self._normalize_driver_fields(rule)
+            self._normalize_round_c_fields(rule)
         self.driver_labels: dict[str, str] = self._persist.load_driver_labels()
         if self.versions:
             _log.info(
@@ -121,6 +144,19 @@ class RuleStore:
                 rule.get("driver_tag") or rule.get("rule_code"))
         if not rule.get("driver_label"):
             rule["driver_label"] = rule.get("driver_tag") or None
+
+    @staticmethod
+    def _normalize_round_c_fields(rule: dict) -> None:
+        """Round C (docs/rules) task 1: pre-Round-C rules migrate in place —
+        OPERATOR_SPECIFIED provenance renames to TECH_TEAM_WRITTEN (the seed
+        is logic we supplied because no document states it), applies_to
+        defaults to ALL (today's behaviour) and active defaults to True.
+        Persisted on the rule's next write; served correctly immediately."""
+        if rule.get("provenance") == "OPERATOR_SPECIFIED":
+            rule["provenance"] = "TECH_TEAM_WRITTEN"
+        rule.setdefault("applies_to", "ALL")
+        rule.setdefault("applies_to_key", None)
+        rule.setdefault("active", True)
 
     # ----- driver labels (Round A1 task 1) -----
 
@@ -239,6 +275,11 @@ class RuleStore:
                 rule["statement"] = rule["plain_description"]
             rule.setdefault("created_at", _now())
             self._normalize_driver_fields(rule)
+            self._normalize_round_c_fields(rule)
+            if rule["applies_to"] not in APPLIES_TO:
+                raise RuleStoreError(
+                    f"unknown applies_to {rule['applies_to']!r} — expected one of "
+                    f"{', '.join(APPLIES_TO)}")
             self.rules[rule["rule_key"]] = rule
             if version_id:
                 version = self.versions[version_id]
@@ -356,6 +397,10 @@ class RuleStore:
                 # Round A1: display/severity metadata is editable; driver_code
                 # (identity) deliberately is NOT
                 "driver_label", "driver_definition", "severity", "severity_reason",
+                # Round C (docs/rules): applies_to targeting and provenance are
+                # editable (provenance only between the two MANUAL tags at the
+                # router layer; the store stays permissive for migrations)
+                "applies_to", "applies_to_key", "provenance",
             }
             rejected = sorted(set(changes) - editable)
             if rejected:
