@@ -60,6 +60,11 @@ export function NarrativeText({ text }: { text: string }) {
   const parts = text.split(FIGURE);
   const out: ReactNode[] = [];
   let pendingArrow: "up" | "dn" | null = null;
+  // Direction of the last styled figure — a parenthesised PERCENT that
+  // immediately follows one (only whitespace between) is a restatement of the
+  // same move ("rose $34,166 (4.0%)"), not a negative, and inherits it.
+  let lastDir: "up" | "dn" | null = null;
+  let sinceLastFigure = "";
   parts.forEach((part, i) => {
     if (!part) return;
     if (part.startsWith("▲") || part.startsWith("▼")) {
@@ -67,25 +72,32 @@ export function NarrativeText({ text }: { text: string }) {
       pendingArrow = part.startsWith("▲") ? "up" : "dn";
       return;
     }
+    const parenPct = /^\(\d+(?:\.\d+)?%\)$/.test(part);
     const negative = /^\(.*\)$/.test(part) && /[\d]/.test(part);
     const positive = /^(\$[\d,]|(?:\d+(?:\.\d+)?%)|\+[\d,])/.test(part);
-    if (negative || (positive && pendingArrow !== "dn")) {
-      const cls = negative ? "dn" : pendingArrow ?? "up";
+    if (negative || positive) {
+      let cls: "up" | "dn";
+      // A movement verb right before the figure decides its direction:
+      // "lost $54,977.60" / "fell 4.7%" are declines even unparenthesised.
+      const declineContext = /\b(lost|loss(?:es)?\s+(?:of|was|were)|fell|fall(?:ing)? (?:of|by)|dropped|declined?(?: by)?|down|shrank|decrease[ds]?(?: by)?)\W*$/i.test(
+        sinceLastFigure.slice(-30),
+      );
+      if (parenPct && lastDir && /^\s*$/.test(sinceLastFigure)) cls = lastDir;
+      else if (negative || declineContext) cls = "dn";
+      else cls = pendingArrow ?? "up";
       out.push(
         <span key={i} className={cls}>
           {cls === "dn" ? "▼" : "▲"} {part}
         </span>,
       );
-    } else if (positive && pendingArrow === "dn") {
-      out.push(
-        <span key={i} className="dn">
-          ▼ {part}
-        </span>,
-      );
+      lastDir = cls;
+      sinceLastFigure = "";
+      pendingArrow = null;
     } else {
       out.push(part);
+      sinceLastFigure = part;
+      pendingArrow = null;
     }
-    pendingArrow = null;
   });
   return <>{out}</>;
 }

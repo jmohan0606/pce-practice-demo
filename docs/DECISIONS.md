@@ -242,3 +242,18 @@ Reversible: yes
 Context: 5.1's S=1 byte-identity check exposed that build_transactions selects each advisor's product subset with builtin hash(), which is salted per process (PYTHONHASHSEED). Regenerating on ANY machine produces different transaction subsets than the committed CSVs — the "seed 42 deterministic" claim only ever covered the random module. Pre-existing since Round A; the committed data/ CSVs are canonical and verify pins depend on them.
 Decision: NOT fixed this round — replacing hash() with a stable hash would change every data-derived pin mid-round. Recorded here so nobody regenerates data/ expecting a no-op diff. Scale measurements were run under PYTHONHASHSEED=0 so they are reproducible. Fix candidate for a future round: zlib.crc32, then re-commit data/ and re-pin.
 Reversible: n/a (documentation)
+
+## 2026-08-14 · Round A2B task 6 · NNM ships labelled; the four categories are absent from the feed
+Context: The A2B spec (superseding Round E's advisor_nnm_position drop) orders NNM shown both ways on the advisor page with the four categories (NB/YI/EC/FS) "available", and the $4MM qualification marked ASSUMED. Verified in phx_dm_pce_advisor_flow_month: comp_group_type carries only 'NNM' and flow products only BRKF/MGDF — the four categories do not exist in the data.
+Decision: The metrics strip shows "NNM YTD (from Apr 2026 — first loaded month)" (cumulative net flows across loaded months, coverage named — never annualised or presented as a full-year figure) and "NNM in scope (<From>→<To>)", plus the Managed/Brokerage split that IS in the feed, with the explicit note "NB / YI / EC / FS categories are not present in the current data feed". The $4MM qualification statement carries an ASSUMED chip. verify_round_e E-7 re-pinned to allowlist exactly these sanctioned surfaces; the reporter's NNM-recommendation block stays.
+Reversible: yes (render the categories when the feed carries them)
+
+## 2026-08-14 · Round A2B task 7 · Flag toggles apply immediately; mockup reconciled
+Context: MOCKUP_FEATURE_FLAGS.html shows a staged "Save Changes" bar. The built page applies each toggle immediately via PATCH (each write is one durable, history-recorded, reason-gated operation; a staged batch would need partial-failure semantics for no user benefit at this scale).
+Decision: Toggles apply on change; the savebar shows live counts and "changes apply immediately and persist". The mockup file is updated to match the built app per the spec's divergence rule. Also: spec's "Practice Dashboard (7)" enumerates 8 sections — reconciled at 8 (the per-cause 9X detail is its own child flag); final count 26 of ceiling 30. Cost hints read /api/trace averages; chat's "~$0.02 per message" is the one static string, labelled "estimate, feature not built".
+Reversible: yes
+
+## 2026-08-14 · Round A2B · Per-subtask commits collapsed for parallel-dispatched work
+Context: The spec asks for commits after 6.2/6.4/6.7; Subagent C's work arrived complete from the parallel dispatch (Round E tasks 6+7 precedent).
+Decision: One verified commit per task (6 and 7). Batch insight generation (advisor="all", 21 runs, $1.52) was run by the main thread during the round so exceptions/insights/advisor views verify against real stored runs.
+Reversible: n/a (process note)
