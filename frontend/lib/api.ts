@@ -201,6 +201,22 @@ export interface Rule {
   // Round H task 1: exclusion is declared ON the rule (e.g. LOST_ACCOUNT
   // excludes accounts matched by the transfer rules) — shown in rule detail.
   exclude_matched_of?: string[];
+  // Round A1: severity + display driver fields (always serialized).
+  severity?: string | null;
+  severity_reason?: string | null;
+  driver_code?: string;
+  driver_label?: string | null;
+  driver_definition?: string | null;
+  // Round C (docs/rules): applies_to targeting, active state, provenance chip.
+  applies_to?: string; // PRACTICE | ADVISOR | PRODUCT | ALL
+  applies_to_key?: string | null;
+  active?: boolean;
+  active_reason?: string | null;
+  active_changed_by?: string | null;
+  active_changed_at?: string | null;
+  provenance_label?: string | null; // chip text, e.g. "TECH TEAM WRITTEN"
+  // Round C task 5: a natural-language-only rule has no plan by design.
+  natural_language_only?: boolean;
 }
 export interface RulesResponse {
   rules: Rule[];
