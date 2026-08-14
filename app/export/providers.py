@@ -54,26 +54,19 @@ def _num(value: Any) -> float:
 # dashboard_table
 # ---------------------------------------------------------------------------
 
-def _dashboard_table_source(from_month: str, to_month: str, view: str,
-                            advisor: str) -> dict:
-    """The one function the main thread repoints later.
+def _dashboard_table_source(from_month: str, to_month: str, view: str) -> list[dict]:
+    """Round A1 main-thread repoint (the designed one-function swap): the
+    export now reads Task 3's ``product_transition_table`` catalog query — the
+    same rows the on-screen expanded table binds to, including accounts/trades
+    and per-view share_pct. The ``__TOTAL__`` row rides last."""
+    from app.graph.queries.catalog import CatalogError, run_catalog_query
 
-    TODO(Round A1 main thread): once Subagent A's Task 3
-    ``product_transition_table`` query lands in app/graph/queries/catalog.py,
-    swap this to call it (it adds accounts/trades columns and per-view
-    share_pct). Only this function changes; the provider and all four
-    renderers stay as they are.
-    """
-    from app.graph.client import get_graph_client
-
-    result = get_graph_client().run_query(
-        "pce_dashboard_product_contribution",
-        {"from": from_month, "to": to_month, "advisor": advisor,
-         "class": _VIEW_TO_CLASS[view]})
-    results = result.get("results") or []
-    if not results:
-        raise ExportParamError("dashboard query returned no results")
-    return results[0]
+    try:
+        return run_catalog_query("product_transition_table", {
+            "from_month": from_month, "to_month": to_month,
+            "product_view": "non_recurring" if view == "nrec" else view})["rows"]
+    except CatalogError as exc:
+        raise ExportParamError(str(exc)) from exc
 
 
 def provide_dashboard_table(params: dict) -> dict:
@@ -83,45 +76,46 @@ def provide_dashboard_table(params: dict) -> dict:
         raise ExportParamError(
             f"unknown view '{view}' (expected all|split|recurring|non_recurring)")
     advisor = str(params.get("advisor") or "all")
-    try:
-        data = _dashboard_table_source(from_month, to_month, view, advisor)
-    except ValueError as exc:
-        raise ExportParamError(str(exc)) from exc
+    if advisor not in ("", "all"):
+        raise ExportParamError(
+            "the dashboard table is firm-level — it has no advisor filter on "
+            "screen, so an advisor-scoped export of it would not reproduce the "
+            "screen; use section=insights for advisor-scoped output")
+    data = _dashboard_table_source(from_month, to_month, view)
 
     columns = [
-        col("class_name", "Class"),
+        col("class_id", "Class"),
         col("group_name", "Product"),
+        col("from_account_count", f"{from_month} Accts", "int"),
+        col("from_trade_count", f"{from_month} Trades", "int"),
         col("from_amt", f"{from_month} Revenue", "money"),
+        col("to_account_count", f"{to_month} Accts", "int"),
+        col("to_trade_count", f"{to_month} Trades", "int"),
         col("to_amt", f"{to_month} Revenue", "money"),
-        col("change_amt", "Change", "money", signed=True),
+        col("account_delta", "\u0394 Accts", "int", signed=True),
+        col("trade_delta", "\u0394 Trades", "int", signed=True),
+        col("change_amt", "\u0394 Revenue", "money", signed=True),
         col("change_pct", "Change %", "pct", signed=True),
         col("share_pct", "Share %", "pct"),
     ]
+    keys = [c["key"] for c in columns]
     rows: list[dict] = []
-    for section in data.get("sections") or []:
-        class_name = section.get("class_name") or section.get("class_id")
-        for row in section.get("rows") or []:
-            rows.append({"class_name": class_name,
-                         "group_name": (row.get("display_prefix") or "") + (row.get("group_name") or ""),
-                         **{k: row.get(k) for k in
-                            ("from_amt", "to_amt", "change_amt", "change_pct", "share_pct")}})
-        if view in ("all", "split") and section.get("rows"):
-            sub = section.get("subtotal") or {}
-            rows.append({"class_name": class_name,
-                         "group_name": f"{class_name} subtotal", "_role": "subtotal",
-                         **{k: sub.get(k) for k in
-                            ("from_amt", "to_amt", "change_amt", "change_pct", "share_pct")}})
-    total = data.get("total") or {}
-    totals = {"class_name": "", "group_name": "Total",
-              **{k: total.get(k) for k in
-                 ("from_amt", "to_amt", "change_amt", "change_pct", "share_pct")}} if rows else None
+    totals = None
+    for row in data:
+        flat = {k: row.get(k) for k in keys}
+        flat["group_name"] = ((row.get("display_prefix") or "")
+                              + (row.get("group_name") or ""))
+        if row.get("group_id") == "__TOTAL__":
+            flat["group_name"] = "Total (all product types)"
+            totals = flat
+        else:
+            rows.append(flat)
 
     return make_payload(
         "dashboard_table", params,
-        title="Product Contribution",
-        subtitle=_transition_text(from_month, to_month, view)
-                 + ("" if advisor in ("", "all") else f" · Advisor {advisor}"),
-        columns=columns, rows=rows, totals=totals,
+        title="What Is Driving the Change",
+        subtitle=_transition_text(from_month, to_month, view),
+        columns=columns, rows=rows, totals=totals if rows else None,
         footnotes=[f"{name}: {definition}"
                    for name, definition in METRIC_DEFINITIONS.items()],
         filename_stem=f"dashboard_table_{from_month}-{to_month}_{view}")
