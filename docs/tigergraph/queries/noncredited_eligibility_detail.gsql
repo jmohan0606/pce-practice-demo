@@ -1,0 +1,18 @@
+// noncredited_eligibility_detail — Round A1 task 4 (9E Eligibility).
+// Grouped by PRODUCT, never advisor — eligibility is a plan definition, not
+// advisor behaviour; an advisor grouping would imply blame where there is
+// none. Includes legacy INELG rows (same cause in the one code→cause mapping,
+// app/shared/reason_codes.py). reason: unmapped products report "product code
+// absent from the mapping"; everything else "outside the credited scope".
+// Local-tier equivalent: app/graph/queries/noncredited.py::noncredited_eligibility_detail
+CREATE QUERY noncredited_eligibility_detail(STRING month_id) FOR GRAPH phx_dm_pce_practice_demo {
+  SumAccum<DOUBLE> @value; SumAccum<INT> @trades;
+  SetAccum<STRING> @accts; SetAccum<STRING> @advisors;
+  p = SELECT pr FROM phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_of_product)- phx_dm_pce_product:pr
+      WHERE x.month_id == month_id AND (x.reason_cd == "9E" OR x.reason_cd == "INELG")
+      ACCUM pr.@value += x.non_credited_amt, pr.@trades += 1,
+            pr.@accts += x.acct_key, pr.@advisors += x.advisor_sid;
+  PRINT p[p.product_id AS product_id, p.product_name AS product, p.group_id AS group_id,
+          p.@accts.size() AS accounts, p.@advisors.size() AS advisors,
+          p.@trades AS trades, p.@value AS value];
+}

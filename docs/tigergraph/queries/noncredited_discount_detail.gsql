@@ -1,0 +1,25 @@
+// noncredited_discount_detail — Round A1 task 4 (9D Fee Discount Applied).
+// Per advisor over the month's 9D rows: accounts, avg standard/actual bps,
+// avg reduction %, accounts above the 10% threshold, and the
+// expected-vs-recorded grid-point gap — the strongest finding class we have.
+// grid_points_expected = one point per 1% of effective reduction above the
+// threshold (threshold parameter = catalog FEE_THRESHOLD_DEFAULT, 10.0);
+// grid_points_recorded = the transaction's recorded grid_reduction.
+// Local-tier equivalent: app/graph/queries/noncredited.py::noncredited_discount_detail
+CREATE QUERY noncredited_discount_detail(STRING month_id, DOUBLE threshold_pct) FOR GRAPH phx_dm_pce_practice_demo {
+  // per-account fee facts first (max reduction / max recorded grid per account)
+  MapAccum<STRING, MaxAccum<DOUBLE>> @@red; MapAccum<STRING, MaxAccum<DOUBLE>> @@grid;
+  MapAccum<STRING, MaxAccum<DOUBLE>> @@std; MapAccum<STRING, MaxAccum<DOUBLE>> @@cli;
+  MapAccum<STRING, SumAccum<DOUBLE>> @@val; MapAccum<STRING, SumAccum<INT>> @@trades;
+  MapAccum<STRING, SetAccum<STRING>> @@accts;
+  t = SELECT x FROM phx_dm_pce_revenue_transaction:x
+      WHERE x.month_id == month_id AND x.reason_cd == "9D"
+      ACCUM @@red += (x.acct_key -> x.eff_disc_pct), @@grid += (x.acct_key -> x.grid_reduction),
+            @@std += (x.acct_key -> x.standard_rate_bps), @@cli += (x.acct_key -> x.client_rate_bps),
+            @@val += (x.advisor_sid -> x.non_credited_amt), @@trades += (x.advisor_sid -> 1),
+            @@accts += (x.advisor_sid -> x.acct_key);
+  // advisor-level averages and grid_points_expected(sum over accounts above
+  // threshold of round(reduction - threshold)) resolve in POST-ACCUM.
+  PRINT @@red AS reduction_pct, @@grid AS grid_recorded, @@std AS standard_bps,
+        @@cli AS client_bps, @@val AS value, @@trades AS trades, @@accts AS accounts;
+}

@@ -331,6 +331,222 @@ def build_transactions(products: list[dict], by_advisor: dict[str, list[dict]], 
     return txns
 
 
+# --------------------------------------------------------------------------- 9X post-pass
+# Round A1 task 4 — the client's non-credited reason codes (9H small household,
+# 9G inheritance, 9D fee discount, 9E eligibility; app/shared/reason_codes.py
+# is the one code→cause mapping). Applied as a DETERMINISTIC POST-PASS over the
+# finished transaction list:
+#   (a) relabels every legacy ADJ/INELG row — 9H when the account's household
+#       assets that month are below HOUSEHOLD_MIN_ASSETS, else 9E;
+#   (b) appends 9H rows on small-household accounts (1 per account per month,
+#       May+June, skipping zero-balance and inherited accounts);
+#   (c) appends 9G rows on transferred-in (inherited) accounts (2 per account
+#       per month, May+June — months_since_transfer starts at 1);
+#   (d) appends one 9D row per discounted credited fee row, its amount derived
+#       arithmetically as credited_amt × eff_disc_pct — no RNG, never a guess.
+# The post-pass has its OWN random.Random(POSTPASS_SEED), iterates in stable
+# sorted order, never uses builtin hash() and never consumes the module RNG
+# stream. Credited rows (reason_cd='__NONE__') are NEVER modified, so every
+# credited-revenue figure — and every data-derived verify pin built on one —
+# survives byte-identically. Volumes scale with the account counts, which
+# already carry the --scale factor.
+POSTPASS_SEED = 99
+NONCREDITED_MONTHS = ("202605", "202606")
+NINE_G_TXNS_PER_MONTH = 2
+
+
+def apply_noncredited_postpass(txns: list[dict], eci_of_acct: dict[str, str],
+                               hh_assets: dict[tuple[str, str], float],
+                               am_balance: dict[tuple[str, str], float],
+                               inherited: list[dict],
+                               advisor_of_acct: dict[str, str]) -> dict:
+    """Mutates ``txns`` in place (relabels + appends). Returns a summary dict.
+    Refuses to run twice — a second application would double the appends."""
+    from app.shared.reason_codes import HOUSEHOLD_MIN_ASSETS
+
+    already = {t["reason_cd"] for t in txns} & {"9H", "9G", "9D", "9E"}
+    if already:
+        raise RuntimeError(f"9X post-pass already applied (found {sorted(already)})")
+    rng = random.Random(POSTPASS_SEED)
+    summary: dict[str, int] = defaultdict(int)
+
+    # first non-blank rpg per account, in txn order (both CSV and in-memory paths)
+    rpg_of_acct: dict[str, str] = {}
+    for t in txns:
+        if t["rpg"] and t["acct_key"] not in rpg_of_acct:
+            rpg_of_acct[t["acct_key"]] = t["rpg"]
+
+    # (a) relabel legacy codes
+    for t in txns:
+        if t["reason_cd"] in ("ADJ", "INELG"):
+            eci = eci_of_acct.get(t["acct_key"], "")
+            assets = hh_assets.get((eci, t["month_id"]), 0.0)
+            t["reason_cd"] = "9H" if assets < HOUSEHOLD_MIN_ASSETS else "9E"
+            summary[f"relabelled_{t['reason_cd']}"] += 1
+
+    ref = max(int(t["trade_ref_no"]) for t in txns)
+
+    def emit(advisor: str, acct_key: str, product_id: str, month_id: str,
+             amount: float, reason_cd: str, std: float = 0.0, cli: float = 0.0,
+             grid: float = 0.0, desc: str = "") -> None:
+        nonlocal ref
+        ref += 1
+        day = rng.choice(TRADE_DAYS[month_id])
+        eff = round((std - cli) / std * 100, 1) if std else 0.0
+        txns.append({
+            "txn_id": f"{ref}|1|{advisor}", "trade_ref_no": str(ref), "split_seq_no": "1",
+            "advisor_sid": advisor, "acct_key": acct_key, "product_id": product_id,
+            "month_id": month_id, "trade_dt": f"{day} 00:00:00", "proc_dt": f"{day} 00:00:00",
+            "days_to_process": str(rng.randint(1, 5)),
+            "credited_amt": money(0.0), "non_credited_amt": money(amount),
+            "pre_split_amt": money(amount / 0.85), "split_pct": "0.85",
+            "reason_cd": reason_cd, "is_credited": "false",
+            "standard_rate_bps": money(std), "client_rate_bps": money(cli),
+            "discount_amt": money(0.0), "eff_disc_pct": f"{eff:.1f}",
+            "grid_reduction": money(grid), "rpg": rpg_of_acct.get(acct_key, ""),
+            "concession_type": "STD" if eff <= 10 else "DISC",
+            "file_key": "daily_trade_details", "trade_description": desc,
+        })
+        summary[f"appended_{reason_cd}"] += 1
+
+    products_9h = sorted({t["product_id"] for t in txns if t["product_id"] != "MISC|"})
+    inherited_keys = {r["acct_key"] for r in inherited}
+
+    # (b) 9H — small-household activity that does not credit
+    for acct_key in sorted(eci_of_acct):
+        if acct_key in inherited_keys:
+            continue
+        for month_id in NONCREDITED_MONTHS:
+            eci = eci_of_acct[acct_key]
+            if hh_assets.get((eci, month_id), 0.0) >= HOUSEHOLD_MIN_ASSETS:
+                continue
+            if am_balance.get((acct_key, month_id), 0.0) <= 0:
+                continue
+            emit(advisor_of_acct.get(acct_key, ""), acct_key,
+                 rng.choice(products_9h), month_id, rng.uniform(25, 120), "9H",
+                 desc="Below household minimum — not credited")
+
+    # (c) 9G — inherited accounts outside the inheritance credit window
+    for row in sorted(inherited, key=lambda r: r["acct_key"]):
+        for month_id in NONCREDITED_MONTHS:
+            for _ in range(NINE_G_TXNS_PER_MONTH):
+                emit(row["to_advisor_sid"], row["acct_key"], "OISC|", month_id,
+                     rng.uniform(60, 180), "9G",
+                     desc="Inherited account — outside the inheritance credit window")
+
+    # (d) 9D — the non-credited discount portion of each discounted fee row
+    for t in list(txns):
+        if t["reason_cd"] == "__NONE__" and float(t["standard_rate_bps"]) > 0 \
+                and float(t["eff_disc_pct"]) > 10:
+            amt = round(float(t["credited_amt"]) * float(t["eff_disc_pct"]) / 100, 2)
+            emit(t["advisor_sid"], t["acct_key"], t["product_id"], t["month_id"],
+                 amt, "9D", std=float(t["standard_rate_bps"]),
+                 cli=float(t["client_rate_bps"]), grid=float(t["grid_reduction"]),
+                 desc="Managed fee discount — non-credited portion")
+
+    return dict(summary)
+
+
+def _recount_am_txns(am_rows: list[dict], txns: list[dict]) -> None:
+    """account_month.txn_count counts ALL the account's transactions in the
+    month (credited and not) — refresh it after the post-pass appends. The
+    credited_amt column is untouched: appended rows carry zero credited."""
+    per: dict[tuple[str, str, str], int] = defaultdict(int)
+    for t in txns:
+        per[(t["acct_key"], t["advisor_sid"], t["month_id"])] += 1
+    for r in am_rows:
+        r["txn_count"] = str(per.get((r["acct_key"], r["advisor_sid"], r["month_id"]), 0))
+
+
+def _postpass_inputs_from_rows(accounts: list[dict], am_rows: list[dict],
+                               transfer_rows: list[dict], cohort_sids: set[str]):
+    """The post-pass lookups, derived identically from in-memory rows and from
+    re-read CSVs (both are string dicts with the CSV column names)."""
+    eci_of_acct = {a["acct_key"]: a["primary_eci_id"] for a in accounts}
+    am_balance: dict[tuple[str, str], float] = {}
+    hh_assets: dict[tuple[str, str], float] = defaultdict(float)
+    advisor_of_acct: dict[str, str] = {}
+    for r in am_rows:
+        key = (r["acct_key"], r["month_id"])
+        bal = float(r["end_balance"])
+        am_balance[key] = bal
+        hh_assets[(eci_of_acct.get(r["acct_key"], ""), r["month_id"])] += bal
+        advisor_of_acct[r["acct_key"]] = r["advisor_sid"]
+    inherited = [{"acct_key": t["acct_key"], "to_advisor_sid": t["to_advisor_sid"]}
+                 for t in transfer_rows if t["to_advisor_sid"] in cohort_sids]
+    return eci_of_acct, dict(hh_assets), am_balance, inherited, advisor_of_acct
+
+
+def retag_noncredited_csv() -> None:
+    """--retag-noncredited: apply the 9X post-pass to the COMMITTED data/ CSVs
+    without regenerating them (the generator's per-advisor product subsets use
+    builtin hash(), salted per process — a from-scratch regen does NOT
+    reproduce the committed data; DECISIONS.md). Rewrites only what the
+    appends force: the transaction CSV (credited rows byte-identical), the
+    derived monthly_revenue and account_month.txn_count, the txn-/mr-derived
+    edge CSVs, and the manifest counts."""
+
+    def load(name: str) -> list[dict]:
+        with (VDIR / f"{name}.csv").open(newline="", encoding="utf-8-sig") as f:
+            return list(csv.DictReader(f))
+
+    txns = load("phx_dm_pce_revenue_transaction")
+    accounts = load("phx_dm_pce_account")
+    am_rows = load("phx_dm_pce_account_month")
+    transfer_rows = load("phx_dm_pce_account_transfer")
+    cohort_sids = {a["advisor_sid"] for a in load("phx_dm_pce_advisor")
+                   if a["in_cohort"] == "true"}
+
+    eci_of_acct, hh_assets, am_balance, inherited, advisor_of_acct = \
+        _postpass_inputs_from_rows(accounts, am_rows, transfer_rows, cohort_sids)
+    summary = apply_noncredited_postpass(txns, eci_of_acct, hh_assets,
+                                         am_balance, inherited, advisor_of_acct)
+    for k in sorted(summary):
+        print(f"postpass {k}: {summary[k]}")
+
+    mrows = build_monthly_revenue(txns)
+    _recount_am_txns(am_rows, txns)
+
+    changed_vertices = {
+        "phx_dm_pce_revenue_transaction": txns,
+        "phx_dm_pce_monthly_revenue": mrows,
+        "phx_dm_pce_account_month": am_rows,
+    }
+    new_counts: dict[str, int] = {}
+    for target, rows in changed_vertices.items():
+        rel = f"vertices/{target}.csv"
+        new_counts[rel] = write_csv(DATA / rel, VERTEX_COLUMNS[target], rows)
+        print(f"vertex {target}: {new_counts[rel]} rows")
+
+    # rebuild ONLY the edges derived from the changed vertices
+    valid_ids = {}
+    for ttype in ("phx_dm_pce_advisor", "phx_dm_pce_account", "phx_dm_pce_product",
+                  "phx_dm_pce_month", "phx_dm_pce_rpg", "phx_dm_pce_product_group"):
+        valid_ids[ttype] = {r[ID_COLUMNS[ttype]] for r in load(ttype)}
+    for edge_name, (ftype, ttype, source, ffield, tfield) in EDGES.items():
+        if source not in changed_vertices:
+            continue
+        rows, seen = [], set()
+        for r in changed_vertices[source]:
+            fid, tid = r.get(ffield, ""), r.get(tfield, "")
+            if not fid or not tid or tid not in valid_ids[ttype] or (fid, tid) in seen:
+                continue
+            seen.add((fid, tid))
+            rows.append({"from_id": fid, "to_id": tid})
+        rel = f"edges/{edge_name}.csv"
+        new_counts[rel] = write_csv(DATA / rel, ["from_id", "to_id"], rows)
+        print(f"edge {edge_name}: {new_counts[rel]} rows")
+
+    manifest = json.loads((DATA / "manifest.json").read_text(encoding="utf-8"))
+    for entry in manifest["files"]:
+        if entry["file"] in new_counts:
+            entry["expected_rows"] = new_counts[entry["file"]]
+    if "9X post-pass" not in manifest["generated_by"]:
+        manifest["generated_by"] += " + 9X non-credited post-pass (--retag-noncredited)"
+    (DATA / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    print(f"manifest: {len(new_counts)} file counts updated")
+
+
 # --------------------------------------------------------------------------- other vertices
 def build_account_month(by_advisor: dict[str, list[dict]], txns: list[dict]) -> list[dict]:
     per = defaultdict(lambda: {"credited": 0.0, "count": 0})
@@ -567,7 +783,16 @@ def main() -> None:
                          "by S, account-level counts by ceil(S/2); --scale 28 "
                          "hits the client-volume target (~60k txns, ~3k "
                          "accounts, ~400 households). Default 1 = unscaled.")
+    ap.add_argument("--retag-noncredited", action="store_true",
+                    help="Round A1 task 4: apply the deterministic 9X reason-"
+                         "code post-pass to the EXISTING data/ CSVs (credited "
+                         "rows stay byte-identical) instead of regenerating. "
+                         "Use this on the committed data set — a from-scratch "
+                         "regen does not reproduce it (builtin-hash salting).")
     args = ap.parse_args()
+    if args.retag_noncredited:
+        retag_noncredited_csv()
+        return
     if args.scale < 1:
         ap.error("--scale must be >= 1")
     SCALE = args.scale
@@ -599,10 +824,20 @@ def main() -> None:
     vertex_rows["phx_dm_pce_team_agreement"] = build_team_agreements()
 
     txns = build_transactions(products, by_advisor, cohort)
+    # build_account_month and build_transfers run BEFORE the 9X post-pass (its
+    # 9H classification needs the balances; transfers feed 9G). Same module-RNG
+    # consumption order as before — the post-pass uses its own seeded Random.
+    am_rows = build_account_month(by_advisor, txns)
+    transfer_rows = build_transfers(by_advisor)
+    pp_inputs = _postpass_inputs_from_rows(accounts, am_rows, transfer_rows, set(cohort))
+    pp_summary = apply_noncredited_postpass(txns, *pp_inputs)
+    _recount_am_txns(am_rows, txns)
+    for k in sorted(pp_summary):
+        print(f"postpass {k}: {pp_summary[k]}")
     vertex_rows["phx_dm_pce_revenue_transaction"] = txns
     vertex_rows["phx_dm_pce_monthly_revenue"] = build_monthly_revenue(txns)
-    vertex_rows["phx_dm_pce_account_month"] = build_account_month(by_advisor, txns)
-    vertex_rows["phx_dm_pce_account_transfer"] = build_transfers(by_advisor)
+    vertex_rows["phx_dm_pce_account_month"] = am_rows
+    vertex_rows["phx_dm_pce_account_transfer"] = transfer_rows
     vertex_rows["phx_dm_pce_advisor_flow_month"] = build_flows(cohort)
     vertex_rows["phx_dm_pce_opportunity"] = build_opportunities(by_advisor)
 

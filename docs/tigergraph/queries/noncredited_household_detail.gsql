@@ -1,0 +1,27 @@
+// noncredited_household_detail — Round A1 task 4 (9H Small Household).
+// Per advisor: households, accounts, trades, value, avg household assets, and
+// households_within_10k_of_threshold — the households a consolidation would
+// move into credit. Household assets = sum of member accounts' end balances
+// for the month; the plan minimum / ±window constants live app-side in
+// app/shared/reason_codes.py (HOUSEHOLD_MIN_ASSETS, HOUSEHOLD_THRESHOLD_WINDOW)
+// and are passed in as parameters here.
+// Local-tier equivalent: app/graph/queries/noncredited.py::noncredited_household_detail
+CREATE QUERY noncredited_household_detail(STRING month_id, DOUBLE min_assets, DOUBLE window_amt) FOR GRAPH phx_dm_pce_practice_demo {
+  MapAccum<STRING, SumAccum<DOUBLE>> @@hh_assets;      // eci -> month assets
+  am = SELECT r FROM phx_dm_pce_account_month:r -(phx_dm_pce_am_for_account)- phx_dm_pce_account:a
+       WHERE r.month_id == month_id
+       ACCUM @@hh_assets += (a.primary_eci_id -> r.end_balance);
+  SumAccum<DOUBLE> @value; SumAccum<INT> @trades;
+  SetAccum<STRING> @accts; SetAccum<STRING> @hhs;
+  adv = SELECT v FROM phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_by_advisor)- phx_dm_pce_advisor:v,
+                     phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_for_account)- phx_dm_pce_account:a
+        WHERE x.month_id == month_id AND x.reason_cd == "9H"
+        ACCUM v.@value += x.non_credited_amt, v.@trades += 1,
+              v.@accts += x.acct_key, v.@hhs += a.primary_eci_id;
+  // household_count / avg_household_assets / within-window count computed over
+  // each advisor's @hhs against @@hh_assets in a POST-ACCUM pass (app-side in
+  // the local tier; identical arithmetic).
+  PRINT adv[adv.advisor_sid AS advisor_sid, adv.advisor_name AS advisor_name,
+            adv.@hhs.size() AS household_count, adv.@accts.size() AS accounts,
+            adv.@trades AS trades, adv.@value AS value];
+}

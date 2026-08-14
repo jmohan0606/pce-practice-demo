@@ -1,0 +1,27 @@
+// noncredited_inheritance_detail — Round A1 task 4 (9G Inheritance).
+// Per (receiving advisor, source advisor): accounts, transfer date,
+// months_since_transfer (drives the six-month departure exception), trades,
+// value. from_advisor_departed is DERIVED — the source advisor has no credited
+// revenue in the month (the schema stores no departure flag; deriving honestly
+// beats fabricating a field that looks measured).
+// Local-tier equivalent: app/graph/queries/noncredited.py::noncredited_inheritance_detail
+CREATE QUERY noncredited_inheritance_detail(STRING month_id) FOR GRAPH phx_dm_pce_practice_demo {
+  SetAccum<STRING> @@active;   // advisors with credited revenue this month
+  c = SELECT x FROM phx_dm_pce_revenue_transaction:x
+      WHERE x.month_id == month_id AND x.credited_amt > 0
+      ACCUM @@active += x.advisor_sid;
+  MapAccum<STRING, STRING> @@from_of; MapAccum<STRING, STRING> @@ts_of;  // acct -> transfer facts
+  tr = SELECT t FROM phx_dm_pce_account_transfer:t
+       ACCUM @@from_of += (t.acct_key -> t.from_advisor_sid),
+             @@ts_of += (t.acct_key -> t.transfer_ts);
+  // group 9G rows by (receiving advisor, from advisor); months_since_transfer
+  // and the departure flag resolve from @@ts_of/@@active in POST-ACCUM.
+  MapAccum<STRING, SumAccum<DOUBLE>> @@value; MapAccum<STRING, SumAccum<INT>> @@trades;
+  MapAccum<STRING, SetAccum<STRING>> @@accts;
+  g = SELECT x FROM phx_dm_pce_revenue_transaction:x
+      WHERE x.month_id == month_id AND x.reason_cd == "9G"
+      ACCUM @@value += (x.advisor_sid + "|" + @@from_of.get(x.acct_key) -> x.non_credited_amt),
+            @@trades += (x.advisor_sid + "|" + @@from_of.get(x.acct_key) -> 1),
+            @@accts += (x.advisor_sid + "|" + @@from_of.get(x.acct_key) -> x.acct_key);
+  PRINT @@value AS value, @@trades AS trades, @@accts AS accounts, @@ts_of AS transfer_ts, @@active AS active_advisors;
+}

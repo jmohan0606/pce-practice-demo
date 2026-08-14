@@ -1,0 +1,19 @@
+// non_credited_by_cause — Round A1 task 4 (docs/ROUND_A1_SPEC.md).
+// Non-credited transactions grouped by reason code for one month: accounts,
+// trades, value, advisors. Cause labels/descriptions resolve app-side from the
+// ONE code→cause mapping (app/shared/reason_codes.py) — never stored here.
+// Local-tier equivalent: app/graph/queries/noncredited.py::non_credited_by_cause
+CREATE QUERY non_credited_by_cause(STRING month_id) FOR GRAPH phx_dm_pce_practice_demo {
+  MapAccum<STRING, SumAccum<DOUBLE>> @@value;
+  MapAccum<STRING, SumAccum<INT>> @@trades;
+  MapAccum<STRING, SetAccum<STRING>> @@accts;
+  MapAccum<STRING, SetAccum<STRING>> @@advisors;
+  t = SELECT x FROM phx_dm_pce_revenue_transaction:x
+      WHERE x.month_id == month_id AND x.reason_cd != "" AND x.reason_cd != "__NONE__"
+      ACCUM @@value += (x.reason_cd -> x.non_credited_amt),
+            @@trades += (x.reason_cd -> 1),
+            @@accts += (x.reason_cd -> x.acct_key),
+            @@advisors += (x.reason_cd -> x.advisor_sid);
+  // RETURNS per reason_cd: account_count, trade_count, value, advisor_count
+  PRINT @@value AS value, @@trades AS trade_count, @@accts AS accounts, @@advisors AS advisors;
+}

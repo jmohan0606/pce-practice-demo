@@ -12,6 +12,17 @@ cause and is deliberately absent from this table.
 """
 from __future__ import annotations
 
+# Modelling constants for the 9H (Small Household) cause — one place, imported
+# by both the mock generator's 9X post-pass and the non-credited queries so the
+# data and its analysis can never disagree.
+# HOUSEHOLD_MIN_ASSETS is the mock plan's minimum household asset level: a
+# household whose summed account end-balances for the month sit below it does
+# not credit. HOUSEHOLD_THRESHOLD_WINDOW feeds
+# ``households_within_10k_of_threshold`` — households inside this band below
+# the minimum are the ones a consolidation would move into credit.
+HOUSEHOLD_MIN_ASSETS = 800_000.0
+HOUSEHOLD_THRESHOLD_WINDOW = 10_000.0
+
 # reason_cd -> {cause (stable key for /api/noncredited/detail/{cause}),
 #               cause_label, description}
 REASON_CODES: dict[str, dict] = {
