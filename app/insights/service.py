@@ -109,7 +109,11 @@ def evaluate_published_rules(advisor_sid: str, from_month: str, to_month: str,
                         f"{len(matched)} {rule.get('grain') or 'entity'}(s) in {to_month}. "
                         f"{rule.get('statement') or ''}").strip(),
             "impact_amt": impact,
-            "driver_tag": rule.get("driver_tag") or "Other",
+            # Round A1 task 1: driver_code is the stored identity; driver_tag
+            # here is the creation-time label for the reporter's prompt — the
+            # store strips it, the API re-resolves it at read time.
+            "driver_code": rule.get("driver_code") or "OTHER",
+            "driver_tag": rule.get("driver_label") or rule.get("driver_tag") or "Other",
             "group_id": None,
             "rule_key": result.get("rule_key"),
             "provenance": "REAL",

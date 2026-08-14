@@ -86,11 +86,46 @@ class RuleStore:
         # counts as existing, so ensure_v0_seed stays a no-op after restart.
         self._persist = RuleStorePersistence()
         self.rules, self.versions, self._draft_seq = self._persist.load_all()
+        # Round A1 task 1 — driver identity: rehydrated pre-A1 rules carry only
+        # the display driver_tag; give each its stable driver_code (idempotent
+        # slug; persisted on the rule's next write). Label overrides load from
+        # their own durable table.
+        for rule in self.rules.values():
+            self._normalize_driver_fields(rule)
+        self.driver_labels: dict[str, str] = self._persist.load_driver_labels()
         if self.versions:
             _log.info(
                 "rule store rehydrated from SQLite (%s): %d rules, %d versions "
                 "— ensure_v0_seed will no-op, no reseed",
                 self._persist.db.db_path, len(self.rules), len(self.versions))
+
+    @staticmethod
+    def _normalize_driver_fields(rule: dict) -> None:
+        """driver_code (stable identity) from driver_tag when absent;
+        driver_label defaults to the label the rule was written with."""
+        from app.rules.drivers import slug_driver_code
+
+        if not rule.get("driver_code"):
+            rule["driver_code"] = slug_driver_code(
+                rule.get("driver_tag") or rule.get("rule_code"))
+        if not rule.get("driver_label"):
+            rule["driver_label"] = rule.get("driver_tag") or None
+
+    # ----- driver labels (Round A1 task 1) -----
+
+    def driver_label_override(self, driver_code: str) -> str | None:
+        return self.driver_labels.get(driver_code)
+
+    def set_driver_label(self, driver_code: str, label: str) -> None:
+        """Rename a driver's DISPLAY label. Labels resolve at read time, so
+        every historical finding immediately shows the new name — no
+        regeneration, no version mint (identity, driver_code, never changes)."""
+        label = str(label).strip()
+        if not label:
+            raise RuleStoreError("driver label cannot be blank")
+        with self._lock:
+            self.driver_labels[driver_code] = label
+            self._persist.save_driver_label(driver_code, label)
 
     # ----- graph mirroring -----
 
@@ -192,6 +227,7 @@ class RuleStore:
             if rule.get("plain_description") and not rule.get("statement"):
                 rule["statement"] = rule["plain_description"]
             rule.setdefault("created_at", _now())
+            self._normalize_driver_fields(rule)
             self.rules[rule["rule_key"]] = rule
             if version_id:
                 version = self.versions[version_id]
@@ -230,7 +266,8 @@ class RuleStore:
 
     def mark_compiled(self, rule_key: str, plan: dict, explanation: str,
                       execution: dict, scopes: list[str] | None = None,
-                      plan_by_scope: dict | None = None) -> dict:
+                      plan_by_scope: dict | None = None,
+                      driver_definition: str | None = None) -> dict:
         """The Rule Compiler produced a plan that passed all five checks
         (including execution against mock data). DRAFT → COMPILED. Round G:
         the compiler also sets ``scopes`` (derived from the plan's scope
@@ -246,6 +283,10 @@ class RuleStore:
             fields["scopes"] = list(scopes)
         if plan_by_scope is not None:
             fields["plan_by_scope"] = plan_by_scope
+        # Round A1 1.3: compiler-drafted tooltip text; an existing (human)
+        # definition is never overwritten by a recompile
+        if driver_definition and not self.rules[rule_key].get("driver_definition"):
+            fields["driver_definition"] = driver_definition
         return self._update_rule_fields(rule_key, **fields)
 
     def mark_needs_data(self, rule_key: str, reason: str, plan: dict | None = None,
@@ -301,6 +342,9 @@ class RuleStore:
                 "missing", "unclear_notes", "evaluation_order",
                 # Round G: a human may override the compiler-derived scopes
                 "scopes",
+                # Round A1: display/severity metadata is editable; driver_code
+                # (identity) deliberately is NOT
+                "driver_label", "driver_definition", "severity", "severity_reason",
             }
             rejected = sorted(set(changes) - editable)
             if rejected:

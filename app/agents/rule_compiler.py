@@ -91,6 +91,8 @@ def build_system_prompt() -> str:
         '   "attribute":{"name":"<label>","expr":"<arithmetic over fields and value>"} or null,\n'
         '   "params":[":month",":advisor_sid"],\n'
         '   "explanation":"<2-3 plain-English sentences: what the plan reads, computes and flags>",\n'
+        '   "driver_definition":"<1-2 plain sentences explaining what this driver MEANS to a '
+        'business reader — drafted from the rule statement; feeds the UI chip tooltip>",\n'
         '   "unsupported":null,\n'
         '   "plan_by_scope":{"practice":{...a full plan object...}} or omit}\n\n'
         "Scopes (set automatically — you rarely need to think about them): a plan "
@@ -234,6 +236,9 @@ def compile_rule_with_agent(rule_key: str,
             return store.mark_needs_data(rule_key, str(unsupported),
                                          plan=decoded, explanation=decoded.get("explanation"))
 
+        # Round A1 1.3: the compiler drafts the driver definition from the
+        # statement (document-derived rules have no seed author to write one).
+        driver_definition = decoded.pop("driver_definition", None)
         plan_by_scope = decoded.pop("plan_by_scope", None)
         outcome = validate_plan(rule.get("rule_code") or rule_key,
                                 rule.get("grain") or "", decoded)
@@ -256,7 +261,9 @@ def compile_rule_with_agent(rule_key: str,
                 explanation=str(decoded.get("explanation") or ""),
                 execution=outcome["execution"],
                 scopes=derive_scopes(decoded, plan_by_scope),
-                plan_by_scope=plan_by_scope if isinstance(plan_by_scope, dict) else None)
+                plan_by_scope=plan_by_scope if isinstance(plan_by_scope, dict) else None,
+                driver_definition=(str(driver_definition).strip()
+                                   if driver_definition else None))
         repairs += 1
         last_error = scope_error or outcome["error"]
         _log.info("rule %s: plan failed validation (%s) — repair attempt %d",

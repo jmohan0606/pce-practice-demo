@@ -379,7 +379,10 @@ def _scoped_rule_findings(scope: str, parts: dict, to_month: str,
                         f"{rule.get('grain') or 'entity'}(s) in {to_month} at "
                         f"{rule_scope} scope. {rule.get('statement') or ''}").strip(),
             "impact_amt": _monetary_impact(rule, matched),
-            "driver_tag": rule.get("driver_tag") or "Other",
+            # Round A1 task 1: driver_code stored; driver_tag is the
+            # creation-time label (stripped by the store, resolved at read).
+            "driver_code": rule.get("driver_code") or "OTHER",
+            "driver_tag": rule.get("driver_label") or rule.get("driver_tag") or "Other",
             "group_id": parts["group_id"],
             "rule_key": result.get("rule_key"),
             "provenance": "REAL",

@@ -33,6 +33,14 @@ _DDL = (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
     )""",
+    # Round A1 task 1 — driver display-label overrides. Keyed by the STABLE
+    # driver_code; resolved at read time so a rename reaches every historical
+    # finding with no regeneration.
+    """CREATE TABLE IF NOT EXISTS driver_label (
+        driver_code TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        persisted_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )""",
 )
 
 
@@ -62,6 +70,17 @@ class RuleStorePersistence:
             conn.execute(
                 "INSERT INTO meta (key, value) VALUES ('draft_seq', ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (str(value),))
+
+    def save_driver_label(self, driver_code: str, label: str) -> None:
+        with self.db.transaction() as conn:
+            conn.execute(
+                "INSERT INTO driver_label (driver_code, label) VALUES (?, ?) "
+                "ON CONFLICT(driver_code) DO UPDATE SET label = excluded.label, "
+                "persisted_at = datetime('now')", (driver_code, label))
+
+    def load_driver_labels(self) -> dict[str, str]:
+        return {row["driver_code"]: row["label"]
+                for row in self.db.query("SELECT * FROM driver_label")}
 
     def load_all(self) -> tuple[dict[str, dict], dict[str, dict], int]:
         """(rules by rule_key, versions by version_id, draft_seq). Raises

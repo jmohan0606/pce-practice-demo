@@ -40,6 +40,9 @@ V0_RULES: list[dict] = [
         "kind": "TRIGGER",
         "grain": "account",
         "driver_tag": "New Accounts",
+        "driver_code": "NEW_ACCOUNTS",
+        "driver_label": "New Accounts",
+        "driver_definition": "An account that did not exist in the prior month and produced credited revenue this month.",
         "evaluation_order": 10,
         "plan": {
             "vertex": "phx_dm_pce_account_month",
@@ -63,6 +66,9 @@ V0_RULES: list[dict] = [
         "kind": "RECORD",
         "grain": "account",
         "driver_tag": "Transfers",
+        "driver_code": "TRANSFERS",
+        "driver_label": "Transfers",
+        "driver_definition": "An account that moved into or out of this advisor's book from or to another advisor.",
         "evaluation_order": 20,
         # Round G task 1: meaningful firm-wide too — "how many accounts moved
         # between advisors this month" is a practice question, answered by a
@@ -104,6 +110,9 @@ V0_RULES: list[dict] = [
         "kind": "EXCLUDE",
         "grain": "account",
         "driver_tag": "Transfers",
+        "driver_code": "TRANSFERS",
+        "driver_label": "Transfers",
+        "driver_definition": "An account that moved into or out of this advisor's book from or to another advisor.",
         "evaluation_order": 20,
         # Round G task 1: at practice scope the advisor filter drops — every
         # transferred account is excluded from the firm-wide lost population.
@@ -145,6 +154,9 @@ V0_RULES: list[dict] = [
         "kind": "TRIGGER",
         "grain": "account",
         "driver_tag": "New Billing",
+        "driver_code": "NEW_BILLING",
+        "driver_label": "New Billing",
+        "driver_definition": "An account that held a balance in the prior month but produced no credited revenue, and produced credited revenue this month. Distinct from a new account, which did not exist before.",
         "evaluation_order": 25,
         # Runs AFTER NEW_ACCOUNT (order 10): accounts NEW_ACCOUNT already
         # claimed are excluded — an account opened this month is new, not
@@ -179,6 +191,9 @@ V0_RULES: list[dict] = [
         "kind": "TRIGGER",
         "grain": "account",
         "driver_tag": "Lost Accounts",
+        "driver_code": "LOST_ACCOUNTS",
+        "driver_label": "Lost Accounts",
+        "driver_definition": "An account that produced credited revenue in the prior month and produces none this month — closed or zeroed.",
         "evaluation_order": 30,
         # Round H task 1: the transfer exclusion is DECLARED here, replacing the
         # implicit transferred_keys accumulation in evaluate_rule_set (which

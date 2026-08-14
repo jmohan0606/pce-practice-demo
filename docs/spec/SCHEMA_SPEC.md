@@ -320,8 +320,11 @@ CREATE VERTEX phx_dm_pce_insight_run (PRIMARY_ID run_id STRING, advisor_sid STRI
   total_input_tokens INT, total_output_tokens INT, total_cache_read_tokens INT,
   est_cost_usd DOUBLE, wall_ms INT) WITH primary_id_as_attribute="true";
 
+-- Round A1: driver_tag (display string) renamed driver_code (stable identity
+-- slug, e.g. NEW_BILLING). The display label lives on the rule and resolves at
+-- read time, so a driver rename reaches historical findings without rewrites.
 CREATE VERTEX phx_dm_pce_finding (PRIMARY_ID finding_id STRING, run_id STRING, title STRING,
-  summary STRING, impact_amt DOUBLE, driver_tag STRING, product_id STRING,
+  summary STRING, impact_amt DOUBLE, driver_code STRING, product_id STRING,
   provenance STRING, rule_key STRING, rank_order INT) WITH primary_id_as_attribute="true";
 
 CREATE VERTEX phx_dm_pce_evidence_row (PRIMARY_ID evidence_id STRING, finding_id STRING,

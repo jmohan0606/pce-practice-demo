@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Practice Management Dashboard — Mockup</title>
+<style>
+:root{
+  --navy:#16365C; --navy-hi:#1E4675; --ink:#1A2430; --slate:#5A6B7D; --slate-2:#8A9AAA;
+  --rule:#E2E7ED; --rule-2:#EFF2F6; --canvas:#F4F6F9; --panel:#FBFCFD;
+  --rec:#C5B88F; --nrec:#6699C2; --all:#4E7CA1;
+  --pos:#157F4C; --pos-bg:#E8F5EE; --pos-br:#B5D9C6;
+  --neg:#B3261E; --neg-bg:#FBECEA; --neg-br:#EFC6C2;
+  --real-bg:#E6F4EC; --real-tx:#1A6B42;
+  --der-bg:#FBF0DC; --der-tx:#8A5A00;
+  --dum-bg:#F0EDF8; --dum-tx:#5B4A9E;
+  --tag-bg:#EDF1F5; --tag-tx:#4A5B6D;
+  --ai:#4C4EA3; --ai-bg:#EEEEF8; --ai-br:#C9CAE8;
+  --tot-bg:#EAF0F7;
+  --sev-crit:#7A1710; --sev-crit-bg:#F7DDDA;
+  --sev-high:#B3261E; --sev-high-bg:#FBECEA;
+  --sev-mod:#8A5A00;  --sev-mod-bg:#FBF0DC;
+  --sev-low:#1E4675;  --sev-low-bg:#E8EFF7;
+  --sev-info:#4A5B6D; --sev-info-bg:#EDF1F5;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-variant-numeric:tabular-nums}
+h2,h3{margin:0;font-weight:600;letter-spacing:-.01em}
+.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+a{color:var(--navy-hi)}
+.topbar{background:var(--navy);color:#fff;padding:0 24px;height:50px;display:flex;
+  align-items:center;justify-content:space-between}
+.brand{font-weight:600;font-size:16px}
+.topbar .right{font-size:12.5px;opacity:.9;display:flex;gap:10px;align-items:center}
+.pill-tg{font-size:11.5px;color:#BFE6D0;background:rgba(255,255,255,.12);
+  border:1px solid rgba(255,255,255,.25);padding:3px 10px;border-radius:12px}
+.nav{background:#fff;border-bottom:1px solid var(--rule);padding:0 24px;display:flex;gap:4px;
+  overflow-x:auto;position:sticky;top:0;z-index:20}
+.nav button{background:none;border:0;border-bottom:2px solid transparent;padding:13px 16px;
+  font:inherit;font-weight:500;color:var(--slate);cursor:pointer;white-space:nowrap}
+.nav button[aria-selected="true"]{color:var(--navy);border-bottom-color:var(--navy);font-weight:600}
+.wrap{max-width:1500px;margin:0 auto;padding:20px 24px 64px}
+.pagehead{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;
+  flex-wrap:wrap;margin:0 2px 16px}
+.pagehead .t{font-size:19px;font-weight:600}
+.pagehead .m{font-size:12.5px;color:var(--slate);margin-top:3px}
+.card{background:#fff;border:1px solid var(--rule);border-radius:6px;margin-bottom:16px}
+.card-h{padding:15px 20px;border-bottom:1px solid var(--rule);display:flex;
+  justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.card-h h2{font-size:16px}
+.card-h p{margin:4px 0 0;color:var(--slate);font-size:12.5px}
+.card-b{padding:18px 20px}
+.card-b.flush{padding:0}
+.ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+select,.btn{font:inherit;font-size:13px;border:1px solid var(--rule);background:#fff;
+  color:var(--ink);padding:7px 12px;border-radius:4px;cursor:pointer}
+.btn.primary{background:var(--navy);color:#fff;border-color:var(--navy);font-weight:500}
+.btn.sm{padding:3px 9px;font-size:12px}
+.sel-strong{font-weight:600;border-color:var(--navy-hi);color:var(--navy)}
+/* tooltip affordance */
+[title]{cursor:help}
+.info{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;
+  border-radius:50%;border:1px solid var(--slate-2);color:var(--slate);font-size:9.5px;
+  font-weight:700;margin-left:5px;cursor:help;vertical-align:middle;line-height:1}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;
+  padding:3px 7px;border-radius:3px;letter-spacing:.03em;text-transform:uppercase}
+.chip.real{background:var(--real-bg);color:var(--real-tx)}
+.chip.derived{background:var(--der-bg);color:var(--der-tx)}
+.chip.dummy{background:var(--dum-bg);color:var(--dum-tx)}
+.chip.tag{background:var(--tag-bg);color:var(--tag-tx)}
+.chip.aigen{background:var(--ai-bg);color:var(--ai)}
+.sev{display:inline-flex;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:3px;
+  letter-spacing:.03em;text-transform:uppercase;white-space:nowrap}
+.sev.crit{background:var(--sev-crit-bg);color:var(--sev-crit)}
+.sev.high{background:var(--sev-high-bg);color:var(--sev-high)}
+.sev.mod{background:var(--sev-mod-bg);color:var(--sev-mod)}
+.sev.low{background:var(--sev-low-bg);color:var(--sev-low)}
+.sev.info{background:var(--sev-info-bg);color:var(--sev-info)}
+.src{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--ai);
+  text-decoration:none;border-bottom:1px solid var(--ai-br);padding-bottom:1px}
+.src::before{content:"";width:11px;height:6px;border-left:1px solid var(--ai-br);
+  border-bottom:1px solid var(--ai-br);border-bottom-left-radius:4px;margin-bottom:4px}
+.rulelink{font-size:11.5px;color:var(--ai);text-decoration:none;border-bottom:1px dotted var(--ai)}
+.advlink{color:var(--navy-hi);text-decoration:none;border-bottom:1px dotted var(--navy-hi)}
+.advlink:hover{border-bottom-style:solid}
+/* chart */
+.legend{display:flex;gap:18px;font-size:12px;color:var(--slate);justify-content:flex-end;
+  padding:12px 20px 0}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:6px}
+.chartwrap{position:relative;padding:6px 20px 4px}
+.yax{position:absolute;left:20px;top:52px;bottom:52px;width:62px;display:flex;
+  flex-direction:column;justify-content:space-between;font-size:11px;color:var(--slate-2);
+  text-align:right}
+.plot{margin-left:70px;position:relative;height:300px}
+.grid{position:absolute;inset:46px 0 42px 0;display:flex;flex-direction:column;
+  justify-content:space-between}
+.grid div{border-top:1px solid var(--rule-2)}
+.bars{position:absolute;inset:46px 0 42px 0;display:flex;align-items:flex-end}
+.mcol{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
+  height:100%;position:relative}
+.bval{font-size:13.5px;font-weight:600}
+.baum{font-size:12.5px;font-weight:600;color:var(--navy-hi);margin-bottom:7px}
+.bar{width:62%;max-width:150px;display:flex;flex-direction:column-reverse;cursor:pointer}
+.bar:hover{opacity:.88}
+.sr{background:var(--rec)}.sn{background:var(--nrec)}.sa{background:var(--all)}
+.mlab{position:absolute;bottom:-32px;font-size:12px;color:var(--slate);text-align:center;width:100%}
+.arrows{position:absolute;inset:46px 0 42px 0;pointer-events:none}
+.arrows svg{width:100%;height:100%;overflow:visible}
+.apill{position:absolute;transform:translate(-50%,-50%);font-size:12px;font-weight:600;
+  padding:4px 11px;border-radius:14px;background:#fff;white-space:nowrap;pointer-events:auto;
+  cursor:pointer;border:1px solid;font-family:inherit}
+.apill.up{color:var(--pos);border-color:var(--pos-br)}
+.apill.dn{color:var(--neg);border-color:var(--neg-br)}
+.apill.up[aria-pressed="true"]{background:var(--pos-bg);border:2px solid var(--pos);
+  box-shadow:0 0 0 3px rgba(21,127,76,.10)}
+.apill.dn[aria-pressed="true"]{background:var(--neg-bg);border:2px solid var(--neg);
+  box-shadow:0 0 0 3px rgba(179,38,30,.10)}
+/* tables */
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-size:12px;letter-spacing:.02em;color:#E8EEF6;font-weight:600;
+  padding:11px 10px;background:var(--navy)}
+th.num{text-align:right}
+th.grp{text-align:center;border-left:1px solid rgba(255,255,255,.18);
+  background:var(--navy-hi);font-size:12px;letter-spacing:.04em}
+td{padding:8px 10px;border-bottom:1px solid var(--rule-2)}
+tr.sect td{background:var(--panel);font-weight:600;font-size:11.5px;color:var(--slate);padding:7px 10px}
+tr.sub td{background:var(--panel);font-weight:600;border-top:1px solid var(--rule)}
+tr.tot td{background:var(--tot-bg);font-weight:700;font-size:13px;border-top:2px solid var(--navy);
+  border-bottom:0;padding:11px 10px}
+tbody tr:not(.sect):not(.tot):hover td{background:#F6F9FC}
+.up{color:var(--pos);font-weight:600}.dn{color:var(--neg);font-weight:600}
+tr.tot .up,tr.tot .dn{font-weight:700}
+.share{color:var(--slate)}
+.pfx{color:var(--slate-2)}
+.grpline{border-left:1px solid var(--rule)}
+.note{font-size:12px;color:var(--slate);padding:11px 14px;background:var(--panel);
+  border-top:1px solid var(--rule);line-height:1.55}
+.drill{background:none;border:0;font:inherit;font-variant-numeric:tabular-nums;cursor:pointer;
+  padding:2px 5px;margin:-2px -5px;border-radius:3px;border-bottom:1px dashed currentColor}
+.drill:hover{background:var(--ai-bg);border-bottom-style:solid}
+.drill.up{color:var(--pos);font-weight:600}
+.drill.dn{color:var(--neg);font-weight:600}
+/* narrative */
+.narr{background:#FCFCFE;border:1px solid var(--ai-br);border-left:3px solid var(--ai);
+  border-radius:0 5px 5px 0;padding:15px 17px;margin-bottom:14px}
+.narr p{margin:0 0 11px;line-height:1.62}
+.narr ul{margin:0;padding-left:19px}
+.narr li{margin-bottom:8px;line-height:1.58}
+.narr li:last-child{margin-bottom:0}
+.rulecite{display:block;margin-top:4px;font-size:11.5px}
+.kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:14px}
+.kpi .k{font-size:10.5px;letter-spacing:.03em;color:var(--slate);text-transform:uppercase}
+.kpi .v{font-size:19px;font-weight:600;margin-top:3px}
+.kpi .d{font-size:11.5px;margin-top:2px}
+.finding{border-bottom:1px solid var(--rule-2)}
+.finding:last-child{border-bottom:0}
+.finding-h{padding:11px 14px;display:flex;justify-content:space-between;align-items:flex-start;
+  gap:12px;cursor:pointer}
+.finding-h:hover{background:#F7FAFD}
+.finding-t{font-weight:600;font-size:13px}
+.finding-m{color:var(--slate);font-size:12.5px;margin-top:3px;line-height:1.5}
+.finding-b{padding:0 14px 14px;display:none}
+.finding.open .finding-b{display:block}
+.chips{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;margin-top:5px}
+.pivot{display:flex;gap:2px;background:var(--rule-2);padding:3px;border-radius:5px}
+.pivot button{background:none;border:0;padding:6px 13px;border-radius:4px;font:inherit;
+  font-size:12.5px;font-weight:500;color:var(--slate);cursor:pointer}
+.pivot button[aria-selected="true"]{background:#fff;color:var(--ink);
+  box-shadow:0 1px 2px rgba(0,0,0,.07)}
+/* modal */
+.scrim{position:fixed;inset:0;background:rgba(16,28,44,.30);opacity:0;pointer-events:none;
+  transition:opacity .16s;z-index:30}
+.scrim.on{opacity:1;pointer-events:auto}
+.modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.98);
+  width:min(1180px,95vw);max-height:88vh;background:#fff;border-radius:8px;
+  box-shadow:0 18px 60px rgba(16,28,44,.26);z-index:31;opacity:0;pointer-events:none;
+  transition:opacity .16s,transform .16s;display:flex;flex-direction:column}
+.modal.on{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+.m-head{padding:15px 20px;border-bottom:1px solid var(--rule);display:flex;
+  justify-content:space-between;align-items:flex-start;gap:12px}
+.m-body{overflow-y:auto;padding:18px 20px}
+.m-close{background:none;border:1px solid var(--rule);border-radius:4px;width:30px;height:30px;
+  cursor:pointer;font-size:16px;color:var(--slate);line-height:1}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.two h3{font-size:13px;margin-bottom:8px}
+@media(max-width:1000px){.two{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">Practice Management</div>
+  <div class="right"><span>As of 30 Jun 2026</span><span class="pill-tg">&#9679; TigerGraph &middot; Tier 2</span></div>
+</div>
+
+<nav class="nav" role="tablist">
+  <button role="tab" aria-selected="true">Practice Management Dashboard</button>
+  <button role="tab" aria-selected="false">iPerform Advisor AI Insights</button>
+  <button role="tab" aria-selected="false">Documents &amp; Rules</button>
+  <button role="tab" aria-selected="false">Rule Versions</button>
+  <button role="tab" aria-selected="false">Trace</button>
+</nav>
+
+<div class="wrap">
+
+  <div class="pagehead">
+    <div>
+      <div class="t">Practice Management Dashboard</div>
+      <div class="m">Firm-level credited revenue &middot; 20 advisors &middot; Apr&ndash;Jun 2026</div>
+    </div>
+  </div>
+
+  <!-- ===================== BAR CHART ===================== -->
+  <div class="card">
+    <div class="card-h">
+      <div>
+        <h2>Credited Revenue &mdash; Month over Month</h2>
+        <p>Select an arrow to focus that transition. Every view below updates. Negative values are shown in parentheses.</p>
+      </div>
+      <div class="ctl">
+        <select class="sel-strong" id="prodview" onchange="setView(this.value)"
+                title="Controls how the bars are split. This selection also drives the grouping of the table below.">
+          <option value="all">All Products &mdash; Default</option>
+          <option value="split">All Products &mdash; Recurring / Non-Recurring</option>
+          <option value="rec">Recurring Only</option>
+          <option value="nrec">Non-Recurring Only</option>
+        </select>
+      </div>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="chartwrap">
+      <div class="yax"><span>$1.0M</span><span>$750K</span><span>$500K</span><span>$250K</span><span>$0</span></div>
+      <div class="plot">
+        <div class="grid"><div></div><div></div><div></div><div></div><div></div></div>
+        <div class="bars">
+          <div class="mcol">
+            <div class="bval">$870,537</div>
+            <div class="baum" title="Assets under management at month end for all products in view.">AUM $1.79B</div>
+            <div class="bar" style="height:87%"><div class="sa" style="height:100%"></div></div>
+            <div class="mlab">Apr 2026</div>
+          </div>
+          <div class="mcol">
+            <div class="bval">$932,993</div>
+            <div class="baum" title="Assets under management at month end for all products in view.">AUM $1.84B</div>
+            <div class="bar" style="height:93.3%"><div class="sa" style="height:100%"></div></div>
+            <div class="mlab">May 2026</div>
+          </div>
+          <div class="mcol">
+            <div class="bval">$889,146</div>
+            <div class="baum" title="Assets under management at month end for all products in view.">AUM $1.86B</div>
+            <div class="bar" style="height:88.9%"><div class="sa" style="height:100%"></div></div>
+            <div class="mlab">Jun 2026</div>
+          </div>
+        </div>
+        <div class="arrows">
+          <svg viewBox="0 0 900 240" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <marker id="ag" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+                <path d="M0,0 L9,4.5 L0,9 z" fill="#157F4C"/></marker>
+              <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+                <path d="M0,0 L9,4.5 L0,9 z" fill="#B3261E"/></marker>
+            </defs>
+            <line x1="228" y1="42" x2="368" y2="26" stroke="#157F4C" stroke-width="2.5" marker-end="url(#ag)"/>
+            <line x1="528" y1="24" x2="668" y2="38" stroke="#B3261E" stroke-width="2.5" marker-end="url(#ar)"/>
+          </svg>
+          <button class="apill up" aria-pressed="true" style="left:33%;top:0"
+                  title="Apr 2026 to May 2026. Selecting this transition refreshes the table, insights, drivers and exceptions below.">
+            &#9650; $62,456 &nbsp;7.2%</button>
+          <button class="apill dn" aria-pressed="false" style="left:66.5%;top:6px"
+                  title="May 2026 to Jun 2026.">&#9660; ($43,847) &nbsp;(4.7%)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== EXPANDED TABLE ===================== -->
+  <div class="card">
+    <div class="card-h">
+      <div>
+        <h2>What Is Driving the Change &mdash; Apr 2026 &rarr; May 2026</h2>
+        <p>Product-type contributions to the change of <span class="up">&#9650; $62,456 &nbsp;7.2%</span> across 20 advisors.</p>
+      </div>
+      <div class="ctl">
+        <select id="grouping" title="Synchronised with the chart view above.">
+          <option>No grouping</option>
+        </select>
+        <select class="btn" title="Exports the table exactly as shown, including the selected transition and grouping.">
+          <option>Export&hellip;</option><option>PDF</option><option>PowerPoint</option><option>Excel</option><option>CSV</option>
+        </select>
+      </div>
+    </div>
+    <div class="card-b flush" style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th rowspan="2" style="width:19%">Product Type</th>
+            <th class="grp" colspan="3">Apr 2026</th>
+            <th class="grp" colspan="3">May 2026</th>
+            <th class="grp" colspan="3">Difference</th>
+            <th rowspan="2" class="num">% Share
+              <span class="info" title="Share of the May 2026 total credited revenue. Always sums to 100%.">i</span></th>
+            <th rowspan="2" style="width:9%">Advisors</th>
+          </tr>
+          <tr>
+            <th class="num grpline">Accts</th><th class="num">Trades</th><th class="num">Revenue</th>
+            <th class="num grpline">Accts</th><th class="num">Trades</th><th class="num">Revenue</th>
+            <th class="num grpline">&#916; Accts</th><th class="num">&#916; Trades</th><th class="num">&#916; Revenue</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <tr>
+            <td>Managed Accounts</td>
+            <td class="num grpline">1,284</td><td class="num">3,412</td><td class="num">$182,340</td>
+            <td class="num grpline">1,296</td><td class="num">3,588</td><td class="num">$196,720</td>
+            <td class="num grpline up">&#9650; +12</td><td class="num up">&#9650; +176</td>
+            <td class="num"><button class="drill up" onclick="alert('Opens the drill-down panel')">&#9650; $14,380</button></td>
+            <td class="num share">21.1%</td>
+            <td><button class="btn sm" onclick="openTB('Managed Accounts')">&#9650;&#9660; Top / Bottom</button></td>
+          </tr>
+          <tr>
+            <td>Managed &ndash; Unified Managed Accounts</td>
+            <td class="num grpline">318</td><td class="num">742</td><td class="num">$54,180</td>
+            <td class="num grpline">324</td><td class="num">781</td><td class="num">$58,940</td>
+            <td class="num grpline up">&#9650; +6</td><td class="num up">&#9650; +39</td>
+            <td class="num"><button class="drill up" onclick="alert('Opens the drill-down panel')">&#9650; $4,760</button></td>
+            <td class="num share">6.3%</td>
+            <td><button class="btn sm" onclick="openTB('Managed – UMA')">&#9650;&#9660; Top / Bottom</button></td>
+          </tr>
+          <tr>
+            <td>Trails &ndash; Mutual Funds</td>
+            <td class="num grpline">2,106</td><td class="num">2,106</td><td class="num">$41,220</td>
+            <td class="num grpline">2,118</td><td class="num">2,118</td><td class="num">$42,110</td>
+            <td class="num grpline up">&#9650; +12</td><td class="num up">&#9650; +12</td>
+            <td class="num"><button class="drill up" onclick="alert('Opens the drill-down panel')">&#9650; $890</button></td>
+            <td class="num share">4.5%</td>
+            <td><button class="btn sm" onclick="openTB('Trails – Mutual Funds')">&#9650;&#9660; Top / Bottom</button></td>
+          </tr>
+          <tr>
+            <td>Trails &ndash; Life &amp; Annuities</td>
+            <td class="num grpline">884</td><td class="num">884</td><td class="num">$38,640</td>
+            <td class="num grpline">871</td><td class="num">871</td><td class="num">$37,275</td>
+            <td class="num grpline dn">&#9660; &minus;13</td><td class="num dn">&#9660; &minus;13</td>
+            <td class="num"><button class="drill dn" onclick="alert('Opens the drill-down panel')">&#9660; ($1,365)</button></td>
+            <td class="num share">4.0%</td>
+            <td><button class="btn sm" onclick="openTB('Trails – Life &amp; Annuities')">&#9650;&#9660; Top / Bottom</button></td>
+          </tr>
+          <tr>
+            <td><span class="pfx">TWHS &ndash;</span> Structured Products</td>
+            <td class="num grpline">142</td><td class="num">318</td><td class="num">$96,410</td>
+            <td class="num grpline">156</td><td class="num">402</td><td class="num">$118,220</td>
+            <td class="num grpline up">&#9650; +14</td><td class="num up">&#9650; +84</td>
+            <td class="num"><button class="drill up" onclick="alert('Opens the drill-down panel')">&#9650; $21,810</button></td>
+            <td class="num share">12.7%</td>
+            <td><button class="btn sm" onclick="openTB('TWHS – Structured Products')">&#9650;&#9660; Top / Bottom</button></td>
+          </tr>
+          <tr>
+            <td><span class="pfx">TWHS &ndash;</span> Equities</td>
+            <td class="num grpline">1,842</td><td class="num">6,104</td><td class="num">$58,220</td>
+            <td class="num grpline">1,866</td><td class="num">6,418</td><td class="num">$60,940</td>
+            <td class="num grpline up">&#9650; +24</td><td class="num up">&#9650; +314</td>
+            <td class="num"><button class="drill up" onclick="alert('Opens the drill-down panel')">&#9650; $2,720</button></td>
+            <td class="num share">6.5%</td>
+            <td><button class="btn sm" onclick="openTB('TWHS – Equities')">&#9650;&#9660; Top / Bottom</button></td>
+          </tr>
+          <tr>
+            <td><span class="pfx">TWHS &ndash;</span> Options</td>
+            <td class="num grpline">618</td><td class="num">2,240</td><td class="num">$24,760</td>
+            <td class="num grpline">602</td><td class="num">2,118</td><td class="num">$23,522</td>
+            <td class="num grpline dn">&#9660; &minus;16</td><td class="num dn">&#9660; &minus;122</td>
+            <td class="num"><button class="drill dn" onclick="alert('Opens the drill-down panel')">&#9660; ($1,238)</button></td>
+            <td class="num share">2.5%</td>
+            <td><button class="btn sm" onclick="openTB('TWHS – Options')">&#9650;&#9660; Top / Bottom</button></td>
+          </tr>
+          <tr>
+            <td>Life &amp; Annuities</td>
+            <td class="num grpline">406</td><td class="num">512</td><td class="num">$61,180</td>
+            <td class="num grpline">418</td><td class="num">548</td><td class="num">$64,553</td>
+            <td class="num grpline up">&#9650; +12</td><td class="num up">&#9650; +36</td>
+            <td class="num"><button class="drill up" onclick="alert('Opens the drill-down panel')">&#9650; $3,373</button></td>
+            <td class="num share">6.9%</td>
+            <td><button class="btn sm" onclick="openTB('Life &amp; Annuities')">&#9650;&#9660; Top / Bottom</button></td>
+          </tr>
+          <tr>
+            <td>Unmapped Products
+              <span class="info" title="Product codes present in the data but absent from the client's product mapping. Shown, never dropped.">i</span></td>
+            <td class="num grpline">18</td><td class="num">42</td><td class="num">$1,240</td>
+            <td class="num grpline">21</td><td class="num">51</td><td class="num">$1,486</td>
+            <td class="num grpline up">&#9650; +3</td><td class="num up">&#9650; +9</td>
+            <td class="num"><button class="drill up" onclick="alert('Opens the drill-down panel')">&#9650; $246</button></td>
+            <td class="num share">0.2%</td>
+            <td><button class="btn sm" onclick="openTB('Unmapped Products')">&#9650;&#9660; Top / Bottom</button></td>
+          </tr>
+          <tr class="tot">
+            <td>Total (all product types)</td>
+            <td class="num grpline">2,742</td><td class="num">15,318</td><td class="num">$870,537</td>
+            <td class="num grpline">2,786</td><td class="num">15,894</td><td class="num">$932,993</td>
+            <td class="num grpline up">&#9650; +44</td><td class="num up">&#9650; +576</td>
+            <td class="num up">&#9650; $62,456</td>
+            <td class="num">100.0%</td>
+            <td>&mdash;</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note">
+        Accounts = distinct accounts with credited revenue in the month. Trades = credited transaction count.
+        Revenue = sum of post-split credited amount where the reason code is empty.
+        <b>Top / Bottom</b> opens the ten highest and ten lowest contributing advisors within that product for this transition.
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== AI INSIGHTS ===================== -->
+  <div class="card">
+    <div class="card-h">
+      <div>
+        <h2>AI Insights &mdash; Apr 2026 &rarr; May 2026</h2>
+        <p>Generated 13 Aug 2026, 09:22 &middot; rule set v1 &middot; stored and shared by everyone</p>
+      </div>
+      <div class="ctl">
+        <select class="sel-strong">
+          <option>Apr 2026 &rarr; May 2026 &nbsp;&#9650; $62,456</option>
+          <option>May 2026 &rarr; Jun 2026 &nbsp;&#9660; ($43,847)</option>
+        </select>
+        <button class="btn" title="Regenerates insights for this transition only. Approximately $0.18 and 90 seconds.">&#8635; Re-Generate</button>
+      </div>
+    </div>
+    <div class="card-b">
+      <div class="narr">
+        <span class="chip aigen" style="margin-bottom:9px">&#9670; AI Generated</span>
+        <p><b>Revenue rose <span class="up">&#9650; $62,456 (7.2%)</span>, but almost none of it came from new business.</b>
+        Accounts grew by only <span class="up">&#9650; 44</span> while trades rose <span class="up">&#9650; 576</span> &mdash;
+        existing relationships did more, rather than new relationships arriving.</p>
+        <ul>
+          <li><b>Structured Products <span class="up">&#9650; $21,810</span> is the largest single mover</b> and sits with
+            two advisors &mdash; <a class="advlink" href="#">Sandra Mehta (V000002)</a> and
+            <a class="advlink" href="#">Karin Alvarez (V000009)</a>. Two syndicate allocations; it will not repeat in June.
+            <span class="rulecite"><a class="rulelink" href="#">Rule: One-Time Allocation</a> &nbsp;&middot;&nbsp;
+              <a class="src" href="#">CWM Private Client Advisor Plan &middot; p. 7</a></span></li>
+          <li><b>Six managed accounts began billing <span class="up">&#9650; $8,383</span></b> after holding balances all April
+            with no credited revenue.
+            <span class="rulecite"><a class="rulelink" href="#">Rule: New Billing</a> &nbsp;&middot;&nbsp;
+              <span style="font-size:11.5px;color:var(--slate)">Tech team written &mdash; no document source</span></span></li>
+          <li><b>Eleven accounts crossed the 10% fee reduction threshold</b> and only one carries a recorded grid
+            reduction, worth <span class="dn">&#9660; ($4,200)</span> against the increase.
+            <span class="rulecite"><a class="rulelink" href="#">Rule: Sharing a Client Fee Discount</a> &nbsp;&middot;&nbsp;
+              <a class="src" href="#">CWM Private Client Advisor Plan &middot; p. 4 &middot; Discount Sharing</a></span></li>
+          <li><b>Trails &ndash; Life &amp; Annuities fell <span class="dn">&#9660; ($1,365)</span></b> on 13 lost accounts &mdash;
+            the only recurring line moving down.
+            <span class="rulecite"><a class="rulelink" href="#">Rule: Lost Account</a> &nbsp;&middot;&nbsp;
+              <span style="font-size:11.5px;color:var(--slate)">Tech team written &mdash; no document source</span></span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== DRIVERS ===================== -->
+  <div class="card">
+    <div class="card-h">
+      <div><h2>Drivers</h2><p>What moved the number, ranked by impact</p></div>
+      <div class="pivot">
+        <button aria-selected="true">By Driver</button>
+        <button aria-selected="false">By Product</button>
+      </div>
+    </div>
+    <div class="card-b flush">
+      <div class="finding open">
+        <div class="finding-h" onclick="this.parentNode.classList.toggle('open')">
+          <div>
+            <div class="finding-t">One-Time Allocation
+              <span class="info" title="Revenue from a transaction type that does not recur monthly — syndicate allocations, new issues.">i</span></div>
+            <div class="finding-m">Two syndicate allocations across two advisors in TWHS &ndash; Structured Products</div>
+            <a class="rulelink" href="#" style="margin-top:6px;display:inline-block">Rule: One-Time Allocation</a>
+            &nbsp;<a class="src" href="#">Private Client Advisor Plan &middot; p. 7</a>
+          </div>
+          <div style="text-align:right">
+            <div class="num up" style="font-size:15px">&#9650; $21,810</div>
+            <div class="chips"><span class="chip real">Real</span></div>
+          </div>
+        </div>
+        <div class="finding-b">
+          <table style="margin-top:10px">
+            <thead><tr><th>Advisor</th><th>Account</th><th>Date</th><th class="num">Amount</th></tr></thead>
+            <tbody>
+              <tr><td><a class="advlink" href="#">Sandra Mehta (V000002)</a></td><td>3060</td><td>12 May 2026</td><td class="num up">$13,240</td></tr>
+              <tr><td><a class="advlink" href="#">Karin Alvarez (V000009)</a></td><td>4118</td><td>19 May 2026</td><td class="num up">$8,570</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="finding">
+        <div class="finding-h" onclick="this.parentNode.classList.toggle('open')">
+          <div>
+            <div class="finding-t">New Billing</div>
+            <div class="finding-m">Six managed accounts held balances in April with no revenue, then billed in May</div>
+            <a class="rulelink" href="#" style="margin-top:6px;display:inline-block">Rule: New Billing</a>
+          </div>
+          <div style="text-align:right"><div class="num up" style="font-size:15px">&#9650; $8,383</div>
+            <div class="chips"><span class="chip real">Real</span></div></div>
+        </div>
+        <div class="finding-b"><p style="color:var(--slate);font-size:12.5px;margin:10px 0 0">Evidence table.</p></div>
+      </div>
+      <div class="finding">
+        <div class="finding-h" onclick="this.parentNode.classList.toggle('open')">
+          <div>
+            <div class="finding-t">Lost Accounts</div>
+            <div class="finding-m">13 accounts in Trails &ndash; Life &amp; Annuities produced no revenue in May</div>
+            <a class="rulelink" href="#" style="margin-top:6px;display:inline-block">Rule: Lost Account</a>
+          </div>
+          <div style="text-align:right"><div class="num dn" style="font-size:15px">&#9660; ($1,365)</div>
+            <div class="chips"><span class="chip real">Real</span></div></div>
+        </div>
+        <div class="finding-b"><p style="color:var(--slate);font-size:12.5px;margin:10px 0 0">Evidence table.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== NON-CREDITED (9X) ===================== -->
+  <div class="card">
+    <div class="card-h">
+      <div>
+        <h2>Non-Credited Revenue &mdash; Why It Did Not Count
+          <span class="info" title="Transactions carrying a reason code. These are excluded from credited revenue but held in the graph so their causes can be analysed.">i</span></h2>
+        <p>$84,210 of May transaction value did not reach credited revenue. Grouped by cause.</p>
+      </div>
+      <div class="ctl"><select class="btn" title="Exports this section as shown.">
+        <option>Export&hellip;</option><option>PDF</option><option>PowerPoint</option><option>Excel</option><option>CSV</option>
+      </select></div>
+    </div>
+    <div class="card-b flush">
+      <table>
+        <thead><tr>
+          <th style="width:22%">Cause</th><th class="num">Accounts</th><th class="num">Trades</th>
+          <th class="num">Value</th><th class="num">Advisors</th><th style="width:34%">What it means</th><th></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><b>Small Household</b> <span class="chip tag">9H</span></td>
+            <td class="num">412</td><td class="num">906</td><td class="num">$38,940</td><td class="num">17</td>
+            <td style="color:var(--slate)">Households below the minimum asset level. Consolidation or a household review could bring these into credit.</td>
+            <td><button class="btn sm" onclick="openNine('household')">View</button></td>
+          </tr>
+          <tr>
+            <td><b>Inheritance</b> <span class="chip tag">9G</span></td>
+            <td class="num">86</td><td class="num">204</td><td class="num">$22,180</td><td class="num">9</td>
+            <td style="color:var(--slate)">Accounts inherited from a departing advisor. Credit follows the plan's inheritance window.</td>
+            <td><button class="btn sm" onclick="openNine('inheritance')">View</button></td>
+          </tr>
+          <tr>
+            <td><b>Fee Discount Applied</b> <span class="chip tag">9D</span></td>
+            <td class="num">58</td><td class="num">142</td><td class="num">$14,620</td><td class="num">6</td>
+            <td style="color:var(--slate)">Client fee reduced below the standard schedule. Above 10% this triggers grid sharing.</td>
+            <td><button class="btn sm" onclick="openNine('discount')">View</button></td>
+          </tr>
+          <tr>
+            <td><b>Eligibility</b> <span class="chip tag">9E</span></td>
+            <td class="num">104</td><td class="num">218</td><td class="num">$8,470</td><td class="num">12</td>
+            <td style="color:var(--slate)">Product or account type outside the credited scope for this plan year.</td>
+            <td><button class="btn sm" onclick="openNine('eligibility')">View</button></td>
+          </tr>
+          <tr class="tot">
+            <td>Total non-credited</td><td class="num">660</td><td class="num">1,470</td>
+            <td class="num">$84,210</td><td class="num">20</td><td>&mdash;</td><td>&mdash;</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note">
+        Non-credited transactions are loaded into the graph with their reason code so their causes can be analysed,
+        but are excluded from every credited revenue figure on this page.
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== EXCEPTIONS ===================== -->
+  <div class="card">
+    <div class="card-h">
+      <div><h2>Exceptions</h2><p>Where the plan expects something the data does not show. Select an advisor to open their view.</p></div>
+      <div class="ctl">
+        <select><option>All severities</option><option>Critical &amp; High only</option></select>
+      </div>
+    </div>
+    <div class="card-b flush">
+      <table>
+        <thead><tr>
+          <th style="width:9%">Severity</th><th style="width:17%">Advisor</th><th>Issue</th>
+          <th class="num">Impact</th><th style="width:22%">Source</th><th></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="sev crit">Critical</span></td>
+            <td><a class="advlink" href="#">Sandra Mehta (V000002)</a></td>
+            <td><div>Fee discounts above threshold with no grid reduction recorded</div>
+              <div style="color:var(--slate);font-size:12px;margin-top:2px">5 of 6 managed accounts in RPG900, discounts 12&ndash;19%</div></td>
+            <td class="num dn">&#9660; ($4,200)</td>
+            <td><a class="rulelink" href="#">Rule: Sharing a Client Fee Discount</a><br>
+              <a class="src" href="#">PCA &middot; p. 4 &middot; Discount Sharing</a></td>
+            <td><button class="btn sm">&rsaquo;</button></td>
+          </tr>
+          <tr>
+            <td><span class="sev high">High</span></td>
+            <td><a class="advlink" href="#">Raymond Okafor (V000014)</a></td>
+            <td><div>Average fee 118 bps against the 145 bps standard schedule across the whole book</div>
+              <div style="color:var(--slate);font-size:12px;margin-top:2px">Not account-specific &mdash; a book-wide discounting pattern</div></td>
+            <td class="num dn">&#9660; ($18,900)</td>
+            <td><a class="rulelink" href="#">Rule: Fee Schedule Variance</a><br>
+              <a class="src" href="#">FAQ &middot; p. 13</a></td>
+            <td><button class="btn sm">&rsaquo;</button></td>
+          </tr>
+          <tr>
+            <td><span class="sev mod">Moderate</span></td>
+            <td><a class="advlink" href="#">Lucie Fontaine (V000007)</a></td>
+            <td><div>12 accounts transferred out during the period</div>
+              <div style="color:var(--slate);font-size:12px;margin-top:2px">Inherited discounts follow the accounts; no departure exception applies</div></td>
+            <td class="num dn">&#9660; ($9,100)</td>
+            <td><a class="rulelink" href="#">Rule: Inherited Discounted Accounts</a><br>
+              <a class="src" href="#">2026 Changes FAQ &middot; p. 14</a></td>
+            <td><button class="btn sm">&rsaquo;</button></td>
+          </tr>
+          <tr>
+            <td><span class="sev low">Low</span></td>
+            <td><a class="advlink" href="#">Marta Castellanos (V000019)</a></td>
+            <td><div>Recurring revenue fell for a second consecutive month</div></td>
+            <td class="num dn">&#9660; ($6,400)</td>
+            <td><span style="font-size:11.5px;color:var(--slate)">Pattern &mdash; no rule matched</span></td>
+            <td><button class="btn sm">&rsaquo;</button></td>
+          </tr>
+          <tr>
+            <td><span class="sev info">Info</span></td>
+            <td><a class="advlink" href="#">Dara Ibrahim (V000011)</a></td>
+            <td><div>New to Managed Accounts this month</div>
+              <div style="color:var(--slate);font-size:12px;margin-top:2px">Two accounts, $640 &mdash; small, but it changes the advisor count</div></td>
+            <td class="num">&mdash;</td>
+            <td><span style="font-size:11.5px;color:var(--slate)">Observation</span></td>
+            <td><button class="btn sm">&rsaquo;</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="note">
+        Severity is assigned when the rule is extracted and can be changed on the rule. Impact figures are query
+        results; an exception with no dollar impact is an observation, not a revenue movement.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===================== TOP / BOTTOM MODAL ===================== -->
+<div class="scrim" id="scrim" onclick="closeAll()"></div>
+
+<div class="modal" id="tb">
+  <div class="m-head">
+    <div>
+      <h2 id="tbtitle">Managed Accounts</h2>
+      <p style="margin:4px 0 0;color:var(--slate);font-size:12.5px">
+        Apr 2026 &rarr; May 2026 &middot; ranked by change amount &middot; 14 advisors in this product</p>
+    </div>
+    <button class="m-close" onclick="closeAll()">&times;</button>
+  </div>
+  <div class="m-body">
+    <div class="two">
+      <div>
+        <h3 class="up">&#9650; Top 10 Contributors</h3>
+        <table>
+          <thead><tr><th>Advisor</th><th class="num">Apr</th><th class="num">May</th><th class="num">Change</th>
+            <th class="num">% of Change</th><th class="num">Accts</th><th>Dominant Driver</th></tr></thead>
+          <tbody>
+            <tr><td><a class="advlink" href="#">Sandra Mehta (V000002)</a></td>
+              <td class="num">$18,420</td><td class="num">$23,660</td>
+              <td class="num up">&#9650; $5,240</td><td class="num">36.4%</td>
+              <td class="num">31 <span class="up">+3</span></td><td>New Billing</td></tr>
+            <tr><td><a class="advlink" href="#">Karin Alvarez (V000009)</a></td>
+              <td class="num">$16,180</td><td class="num">$19,710</td>
+              <td class="num up">&#9650; $3,530</td><td class="num">24.5%</td>
+              <td class="num">27 <span class="up">+2</span></td><td>New Billing</td></tr>
+            <tr><td><a class="advlink" href="#">Priya Raghavan (V000005)</a></td>
+              <td class="num">$14,060</td><td class="num">$16,240</td>
+              <td class="num up">&#9650; $2,180</td><td class="num">15.2%</td>
+              <td class="num">22 <span class="up">+1</span></td><td>Market Appreciation</td></tr>
+            <tr><td><a class="advlink" href="#">Tom Whelan (V000012)</a></td>
+              <td class="num">$9,840</td><td class="num">$11,120</td>
+              <td class="num up">&#9650; $1,280</td><td class="num">8.9%</td>
+              <td class="num">18 &mdash;</td>
+              <td style="color:var(--slate);font-size:12px">AI Insights not generated yet</td></tr>
+            <tr><td><a class="advlink" href="#">Dara Ibrahim (V000011)</a></td>
+              <td class="num">&mdash;</td><td class="num">$640</td>
+              <td class="num up">&#9650; $640</td><td class="num">4.5%</td>
+              <td class="num">2 <span class="up">+2</span></td><td>New to Product</td></tr>
+          </tbody>
+        </table>
+        <div style="font-size:12px;color:var(--slate);padding:8px 2px">Showing 5 of 10</div>
+      </div>
+      <div>
+        <h3 class="dn">&#9660; Bottom 10 Contributors</h3>
+        <table>
+          <thead><tr><th>Advisor</th><th class="num">Apr</th><th class="num">May</th><th class="num">Change</th>
+            <th class="num">% of Change</th><th class="num">Accts</th><th>Dominant Driver</th></tr></thead>
+          <tbody>
+            <tr><td><a class="advlink" href="#">Raymond Okafor (V000014)</a></td>
+              <td class="num">$14,900</td><td class="num">$14,010</td>
+              <td class="num dn">&#9660; ($890)</td><td class="num">(6.2%)</td>
+              <td class="num">24 <span class="dn">&minus;2</span></td><td>Lost Accounts</td></tr>
+            <tr><td><a class="advlink" href="#">Marta Castellanos (V000019)</a></td>
+              <td class="num">$11,240</td><td class="num">$10,780</td>
+              <td class="num dn">&#9660; ($460)</td><td class="num">(3.2%)</td>
+              <td class="num">19 <span class="dn">&minus;1</span></td><td>Fee Discount</td></tr>
+            <tr><td><a class="advlink" href="#">Lucie Fontaine (V000007)</a></td>
+              <td class="num">$8,610</td><td class="num">$8,340</td>
+              <td class="num dn">&#9660; ($270)</td><td class="num">(1.9%)</td>
+              <td class="num">14 <span class="dn">&minus;3</span></td><td>Transferred Out</td></tr>
+            <tr><td><a class="advlink" href="#">Noor Haddad (V000016)</a></td>
+              <td class="num">$6,180</td><td class="num">$6,040</td>
+              <td class="num dn">&#9660; ($140)</td><td class="num">(1.0%)</td>
+              <td class="num">11 &mdash;</td>
+              <td style="color:var(--slate);font-size:12px">AI Insights not generated yet</td></tr>
+          </tbody>
+        </table>
+        <div style="font-size:12px;color:var(--slate);padding:8px 2px">Showing 4 of 10</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 9X DETAIL MODAL ===================== -->
+<div class="modal" id="nine">
+  <div class="m-head">
+    <div>
+      <h2 id="ninetitle"></h2>
+      <p id="ninesub" style="margin:4px 0 0;color:var(--slate);font-size:12.5px"></p>
+    </div>
+    <button class="m-close" onclick="closeAll()">&times;</button>
+  </div>
+  <div class="m-body">
+    <p id="ninelead" style="margin:0 0 14px;color:var(--slate);font-size:13px"></p>
+    <div id="ninetable"></div>
+    <div class="note" id="ninefoot" style="border:1px solid var(--rule);border-radius:5px;margin-top:12px"></div>
+  </div>
+</div>
+
+<script>
+const VIEWS = {
+  all:   {grouping:["No grouping"],
+          legend:[["var(--all)","All Products"]],
+          seg:'<div class="sa" style="height:100%"></div>'},
+  split: {grouping:["Group by Revenue Class","No grouping"],
+          legend:[["var(--rec)","Recurring"],["var(--nrec)","Non-Recurring"]],
+          seg:'<div class="sr" style="height:41%"></div><div class="sn" style="height:59%"></div>'},
+  rec:   {grouping:["Recurring products only"],
+          legend:[["var(--rec)","Recurring"]],
+          seg:'<div class="sr" style="height:100%"></div>'},
+  nrec:  {grouping:["Non-Recurring products only"],
+          legend:[["var(--nrec)","Non-Recurring"]],
+          seg:'<div class="sn" style="height:100%"></div>'}
+};
+function setView(v){
+  const V=VIEWS[v];
+  const L=document.getElementById('legend'); L.innerHTML='';
+  V.legend.forEach(([c,t])=>{
+    const s=document.createElement('span');
+    s.innerHTML='<i style="background:'+c+'"></i>'+t; L.appendChild(s);
+  });
+  const g=document.getElementById('grouping'); g.innerHTML='';
+  V.grouping.forEach(o=>{const e=document.createElement('option');e.textContent=o;g.appendChild(e);});
+  document.querySelectorAll('.bar').forEach(b=>{b.innerHTML=V.seg;});
+}
+function openTB(name){
+  document.getElementById('tbtitle').innerHTML=name;
+  document.getElementById('tb').classList.add('on');
+  document.getElementById('scrim').classList.add('on');
+}
+const NINE = {
+  household:{
+    title:"Small Household <span class='chip tag'>9H</span>",
+    sub:"May 2026 &middot; 412 accounts across 248 households &middot; $38,940 not credited",
+    lead:"Households below the minimum asset level do not generate credited revenue. Consolidating accounts within a household, or a household review, may bring these into credit.",
+    cols:["Advisor","Households","Accounts","Trades","Value","Avg Household Assets","Closest to Threshold"],
+    align:[0,1,1,1,1,1,1],
+    rows:[
+      ["Raymond Okafor (V000014)","38","64","142","$6,820","$41,200","9 within $10k"],
+      ["Marta Castellanos (V000019)","31","52","118","$5,410","$38,900","6 within $10k"],
+      ["Lucie Fontaine (V000007)","27","44","96","$4,180","$44,600","11 within $10k"]
+    ],
+    tot:["Total &mdash; 17 advisors","248","412","906","$38,940","$42,100","54 within $10k"],
+    foot:"Showing 3 of 17 advisors. <b>Closest to Threshold</b> counts households within $10,000 of the minimum &mdash; the ones a consolidation would move into credit."
+  },
+  inheritance:{
+    title:"Inheritance <span class='chip tag'>9G</span>",
+    sub:"May 2026 &middot; 86 accounts from 9 departing advisors &middot; $22,180 not credited",
+    lead:"Accounts inherited from a departing advisor. Credit follows the plan's inheritance window; these accounts fall outside it.",
+    cols:["Receiving Advisor","From Advisor","Accounts","Transferred","Months Since","Trades","Value"],
+    align:[0,0,1,0,1,1,1],
+    rows:[
+      ["Sandra Mehta (V000002)","Alan Reyes (V000031) <span class='chip tag'>Departed</span>","22","14 Apr 2026","1","54","$6,240"],
+      ["Karin Alvarez (V000009)","Alan Reyes (V000031) <span class='chip tag'>Departed</span>","18","14 Apr 2026","1","41","$4,980"],
+      ["Tom Whelan (V000012)","Bea Lund (V000044)","14","02 Apr 2026","1","33","$3,610"]
+    ],
+    tot:["Total &mdash; 9 source advisors","&mdash;","86","&mdash;","&mdash;","204","$22,180"],
+    foot:"Showing 3 of 12 receiving advisors. <b>Months Since</b> drives the six-month departure exception &mdash; accounts past six months return to normal treatment."
+  },
+  discount:{
+    title:"Fee Discount Applied <span class='chip tag'>9D</span>",
+    sub:"May 2026 &middot; 58 accounts across 6 advisors &middot; $14,620 not credited",
+    lead:"Client fee reduced below the standard 145 bps managed schedule. Above a 10% effective reduction the plan requires a grid point adjustment &mdash; one point per 1% above the threshold.",
+    cols:["Advisor","Accounts","Avg Standard","Avg Actual","Avg Reduction","Above 10%","Grid Points Expected","Recorded","Value"],
+    align:[0,1,1,1,1,1,1,1,1],
+    rows:[
+      ["Sandra Mehta (V000002)","14","145 bps","118 bps","<span class='dn'>19%</span>","11","9","<span class='dn'>1</span>","$4,820"],
+      ["Raymond Okafor (V000014)","18","145 bps","124 bps","<span class='dn'>14%</span>","16","4","<span class='dn'>0</span>","$5,140"],
+      ["Marta Castellanos (V000019)","11","145 bps","131 bps","<span class='dn'>10%</span>","4","0","0","$2,180"],
+      ["Lucie Fontaine (V000007)","8","145 bps","136 bps","6%","0","&mdash;","&mdash;","$1,340"]
+    ],
+    tot:["Total &mdash; 6 advisors","58","145 bps","126 bps","13%","31","13","<span class='dn'>1</span>","$14,620"],
+    foot:"<b>31 accounts are above the 10% threshold and only 1 carries a recorded grid reduction.</b> This gap also appears in Exceptions, where it is actionable per advisor. Standard schedule is 145 bps &mdash; <a class='src' href='#'>2026 Changes FAQ &middot; p. 13</a>"
+  },
+  eligibility:{
+    title:"Eligibility <span class='chip tag'>9E</span>",
+    sub:"May 2026 &middot; 104 accounts across 12 advisors &middot; $8,470 not credited",
+    lead:"Product or account type outside the credited scope for this plan year. Unlike the other causes, this is a plan definition rather than something an advisor can act on.",
+    cols:["Product","Reason","Accounts","Advisors","Trades","Value"],
+    align:[0,0,1,1,1,1],
+    rows:[
+      ["TWHS &ndash; Fixed Income &ndash; Other","Product not in the credited grid for 2026","41","8","96","$3,210"],
+      ["Lending &ndash; Margin","Excluded product type","28","6","62","$2,480"],
+      ["Unmapped Products","Product code absent from the mapping","21","5","38","$1,640"],
+      ["Cash Management &ndash; Brokered CDs","Below the product minimum","14","4","22","$1,140"]
+    ],
+    tot:["Total","&mdash;","104","12","218","$8,470"],
+    foot:"Grouped by product rather than advisor, because eligibility is a plan definition and not advisor behaviour. <b>Unmapped Products</b> is worth review &mdash; those codes may simply be missing from the mapping."
+  }
+};
+function openNine(key){
+  const d=NINE[key];
+  document.getElementById('ninetitle').innerHTML=d.title;
+  document.getElementById('ninesub').innerHTML=d.sub;
+  document.getElementById('ninelead').innerHTML=d.lead;
+  let h='<table><thead><tr>';
+  d.cols.forEach((c,i)=>h+='<th class="'+(d.align[i]?'num':'')+'">'+c+'</th>');
+  h+='</tr></thead><tbody>';
+  d.rows.forEach(r=>{h+='<tr>';r.forEach((c,i)=>h+='<td class="'+(d.align[i]?'num':'')+'">'+c+'</td>');h+='</tr>';});
+  h+='<tr class="tot">';
+  d.tot.forEach((c,i)=>h+='<td class="'+(d.align[i]?'num':'')+'">'+c+'</td>');
+  h+='</tr></tbody></table>';
+  document.getElementById('ninetable').innerHTML=h;
+  document.getElementById('ninefoot').innerHTML=d.foot;
+  document.getElementById('nine').classList.add('on');
+  document.getElementById('scrim').classList.add('on');
+}
+function closeAll(){
+  document.querySelectorAll('.modal').forEach(m=>m.classList.remove('on'));
+  document.getElementById('scrim').classList.remove('on');
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeAll();});
+document.querySelectorAll('.apill').forEach(p=>p.addEventListener('click',function(){
+  document.querySelectorAll('.apill').forEach(q=>q.setAttribute('aria-pressed','false'));
+  this.setAttribute('aria-pressed','true');
+}));
+setView('all');
+</script>
+</body>
+</html>

@@ -327,7 +327,7 @@
         "title": "STRING",
         "summary": "STRING",
         "impact_amt": "DOUBLE",
-        "driver_tag": "STRING",
+        "driver_code": "STRING",
         "product_id": "STRING",
         "provenance": "STRING",
         "rule_key": "STRING",

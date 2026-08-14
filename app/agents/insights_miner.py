@@ -314,8 +314,13 @@ def _validate_finding(payload: dict, tools: MinerTools) -> tuple[dict | None, st
         confidence = min(1.0, max(0.0, float(finding.get("confidence", 0.7))))
     except (TypeError, ValueError):
         confidence = 0.7
+    from app.rules.drivers import slug_driver_code
+
     result = {
         "title": title, "summary": summary, "impact_amt": impact,
+        # Round A1 task 1: the stable identity rides the finding; the tag stays
+        # for the reporter's prompt and is stripped at storage.
+        "driver_code": slug_driver_code(driver_tag),
         "driver_tag": driver_tag, "group_id": finding.get("group_id") or None,
         "rule_key": finding.get("rule_key") or None, "provenance": provenance,
         "confidence": confidence, "evidence_columns": columns,

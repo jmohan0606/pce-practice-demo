@@ -47,8 +47,11 @@ _RUN_ATTRS = ("run_id", "advisor_sid", "from_month_id", "to_month_id", "version_
               "started_at", "completed_at", "narrative", "bullets_json",
               "total_input_tokens", "total_output_tokens", "total_cache_read_tokens",
               "est_cost_usd", "wall_ms")
+# Round A1 task 1: findings store the STABLE driver_code (identity); the
+# display label (driver_tag on the API) resolves at read time from the rule
+# store — a rename reaches every historical finding with no regeneration.
 _FINDING_ATTRS = ("finding_id", "run_id", "title", "summary", "impact_amt",
-                  "driver_tag", "product_id", "provenance", "rule_key", "rank_order")
+                  "driver_code", "product_id", "provenance", "rule_key", "rank_order")
 _EVIDENCE_ATTRS = ("evidence_id", "finding_id", "row_index", "row_json")
 _QUERY_LOG_ATTRS = ("query_id", "run_id", "seq_no", "agent_name", "query_name",
                     "params_json", "row_count", "latency_ms")
@@ -69,6 +72,19 @@ def _evidence_caps() -> tuple[int, int]:
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _normalize_finding_driver(finding: dict) -> dict:
+    """Round A1 task 1 — driver_code is STORED, driver_tag is DERIVED.
+    Migrates any finding still carrying only the display tag (legacy persisted
+    rows and test fixtures) via the slug, then drops the tag: the label is
+    resolved at read time, never stored."""
+    from app.rules.drivers import slug_driver_code
+
+    if not finding.get("driver_code"):
+        finding["driver_code"] = slug_driver_code(finding.get("driver_tag"))
+    finding.pop("driver_tag", None)
+    return finding
 
 
 def make_run_id(advisor_sid: str, from_month: str, to_month: str, version_id: str) -> str:
@@ -298,7 +314,7 @@ class InsightStore:
             self._roll_up_tokens(run)
             stored: list[dict] = []
             for rank, finding in enumerate(findings, start=1):
-                finding = dict(finding)
+                finding = _normalize_finding_driver(dict(finding))
                 finding_id = f"{run_id}|F{rank:02d}|g{run['generation']}"
                 finding["finding_id"] = finding_id
                 finding["run_id"] = run_id
@@ -361,7 +377,9 @@ class InsightStore:
             return None
         run, findings, query_log, turn_log = loaded
         self.runs[run_id] = run
-        self.findings[run_id] = findings
+        # Round A1 task 1 migration: pre-A1 persisted findings carry only the
+        # display driver_tag — derive the stable driver_code via the slug.
+        self.findings[run_id] = [_normalize_finding_driver(f) for f in findings]
         self.query_log[run_id] = query_log
         self.turn_log[run_id] = turn_log
         _log.info("rehydrated insight run %s (%d findings) from SQLite",

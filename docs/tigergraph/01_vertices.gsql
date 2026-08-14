@@ -136,7 +136,7 @@ CREATE VERTEX phx_dm_pce_insight_run (PRIMARY_ID run_id STRING, advisor_sid STRI
   est_cost_usd DOUBLE, wall_ms INT) WITH primary_id_as_attribute="true";
 
 CREATE VERTEX phx_dm_pce_finding (PRIMARY_ID finding_id STRING, run_id STRING, title STRING,
-  summary STRING, impact_amt DOUBLE, driver_tag STRING, product_id STRING,
+  summary STRING, impact_amt DOUBLE, driver_code STRING, product_id STRING,
   provenance STRING, rule_key STRING, rank_order INT) WITH primary_id_as_attribute="true";
 
 CREATE VERTEX phx_dm_pce_evidence_row (PRIMARY_ID evidence_id STRING, finding_id STRING,

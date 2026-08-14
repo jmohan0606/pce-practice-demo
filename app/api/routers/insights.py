@@ -29,6 +29,13 @@ class GenerateRequest(BaseModel):
     version_id: str | None = None
 
 
+def _driver_label(finding: dict) -> str:
+    from app.rules.drivers import resolve_driver_label, slug_driver_code
+
+    code = finding.get("driver_code") or slug_driver_code(finding.get("driver_tag"))
+    return resolve_driver_label(code)
+
+
 def _serialize_finding(finding: dict) -> dict:
     from app.config.settings import get_settings
 
@@ -38,7 +45,12 @@ def _serialize_finding(finding: dict) -> dict:
         "finding_id": finding.get("finding_id"),
         "title": finding.get("title"), "summary": finding.get("summary"),
         "impact_amt": finding.get("impact_amt"),
-        "driver_tag": finding.get("driver_tag"), "group_id": finding.get("group_id"),
+        # Round A1 task 1: driver_code is the stored identity; driver_tag is
+        # the DERIVED display label (resolved at read time — a rename reaches
+        # every historical finding with no regeneration).
+        "driver_code": finding.get("driver_code"),
+        "driver_tag": _driver_label(finding),
+        "group_id": finding.get("group_id"),
         "rule_key": finding.get("rule_key"), "provenance": finding.get("provenance"),
         "confidence": finding.get("confidence"),
         "evidence_columns": finding.get("evidence_columns") or [],

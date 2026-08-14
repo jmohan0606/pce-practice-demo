@@ -38,6 +38,19 @@ def _serialize(rule: dict) -> dict:
     # Round H task 1: exclusion is declared ON the rule — always serialized so
     # the rule detail UI can show it (empty list = no exclusions).
     out.setdefault("exclude_matched_of", [])
+    # Round A1 task 1: stable identity + read-time-resolved display label +
+    # definition (chip tooltips read these; nothing is restated in the UI).
+    from app.rules.drivers import resolve_driver_definition, slug_driver_code
+
+    out["driver_code"] = rule.get("driver_code") or slug_driver_code(
+        rule.get("driver_tag") or rule.get("rule_code"))
+    label_override = get_rule_store().driver_label_override(out["driver_code"])
+    out["driver_label"] = (label_override or rule.get("driver_label")
+                           or rule.get("driver_tag"))
+    out["driver_definition"] = (rule.get("driver_definition")
+                                or resolve_driver_definition(out["driver_code"]))
+    # driver_tag stays on the response as the RESOLVED label (back-compat shape)
+    out["driver_tag"] = out["driver_label"]
     # Round G: the effective scope set (explicit or derived) is always shown,
     # so the review UI can display and override it.
     out["scopes"] = rule_scopes(rule) if rule.get("plan") else (rule.get("scopes") or [])
@@ -182,6 +195,33 @@ def never_fired_report(version: str = "latest") -> dict:
     if v is None:
         raise HTTPException(status_code=404, detail=f"unknown version {version!r}")
     return never_fired(v["version_id"])
+
+
+class DriverLabelRequest(BaseModel):
+    driver_label: str
+
+
+@router.patch("/{rule_key}/driver-label")
+def set_driver_label(rule_key: str, body: DriverLabelRequest) -> dict:
+    """Round A1 1.2 — rename a driver's DISPLAY label. Labels resolve at read
+    time, so every insight — including ones generated months ago — immediately
+    shows the new name with no regeneration and no rewriting of stored text.
+    (Driver names frozen inside narrative prose keep the old word — recorded in
+    DECISIONS.md; the UI renders bullet-lead driver names from driver_code.)"""
+    store = get_rule_store()
+    rule = store.get(rule_key)
+    if rule is None:
+        raise HTTPException(status_code=404, detail=f"unknown rule_key {rule_key!r}")
+    driver_code = rule.get("driver_code")
+    if not driver_code:
+        raise HTTPException(status_code=400, detail=f"{rule_key} carries no driver_code")
+    try:
+        store.set_driver_label(driver_code, body.driver_label)
+    except RuleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"driver_code": driver_code, "driver_label": body.driver_label,
+            "note": "labels resolve at read time — historical findings now show "
+                    "the new name; driver_code (identity) is unchanged"}
 
 
 class ApproveRequest(BaseModel):
