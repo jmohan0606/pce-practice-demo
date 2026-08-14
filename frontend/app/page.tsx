@@ -12,6 +12,7 @@ import {
   getMonths,
 } from "@/lib/api";
 import DrilldownPanel, { useDrilldownPanel } from "@/components/DrilldownPanel";
+import { Gated, useFlag } from "@/lib/flags";
 import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
 import { Delta } from "@/components/Num";
@@ -22,6 +23,10 @@ import ProductChangeTable, {
 } from "@/components/table/ProductChangeTable";
 import ExportMenu from "@/components/table/ExportMenu";
 import TopBottomModal from "@/components/table/TopBottomModal";
+import InsightsSection from "@/components/insights/InsightsSection";
+import DriversSection from "@/components/insights/DriversSection";
+import NoncreditedSection from "@/components/noncredited/NoncreditedSection";
+import ExceptionsSection from "@/components/exceptions/ExceptionsSection";
 
 /** Round A2B — Practice Management Dashboard (Subagent A owns this file).
  *
@@ -58,6 +63,10 @@ export default function DashboardPage() {
   const [tbRow, setTbRow] = useState<DashboardTableRow | null>(null);
   // Round G 4.2 — drill-down side panel (general component; keyed by scope)
   const { target: drillTarget, openPanel, closePanel } = useDrilldownPanel();
+  // Round A2B task 7 — flag-gated affordances (OFF = the fetch/query never runs)
+  const chartOn = useFlag("dashboard.chart");
+  const drilldownOn = useFlag("global.drilldown");
+  const topBottomOn = useFlag("dashboard.table.top_bottom");
 
   // month_name lookup (one fetch)
   useEffect(() => {
@@ -69,6 +78,7 @@ export default function DashboardPage() {
   // 2.5 — the chart fetches only when the view changes; selecting a
   // transition never refetches it.
   useEffect(() => {
+    if (chartOn === false) return; // flag off: the query does not run
     let cancelled = false;
     setChartError(null);
     getDashboardChart(view)
@@ -83,7 +93,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [view]);
+  }, [view, chartOn]);
 
   // 3.2 — the grouping option set changes with the chart view.
   useEffect(() => {
@@ -154,6 +164,7 @@ export default function DashboardPage() {
     <section>
       <PageHeader title="Practice Management Dashboard" meta={meta} />
 
+      <Gated flag="dashboard.chart">
       <div className="card">
         <div className="card-h">
           <div>
@@ -193,7 +204,9 @@ export default function DashboardPage() {
           <EmptyState title="Loading" message="Fetching monthly revenue…" />
         )}
       </div>
+      </Gated>
 
+      <Gated flag="dashboard.table">
       <div className="card">
         <div className="card-h">
           <div>
@@ -247,8 +260,8 @@ export default function DashboardPage() {
               grouping={grouping}
               fromLabel={monthName(activeTransition.from)}
               toLabel={monthName(activeTransition.to)}
-              onDrill={openDrill}
-              onTopBottom={setTbRow}
+              onDrill={drilldownOn !== false ? openDrill : undefined}
+              onTopBottom={topBottomOn !== false ? setTbRow : undefined}
             />
           ) : (
             <EmptyState
@@ -258,8 +271,43 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+      </Gated>
 
-      {/* Round A2B Task 5: insights / drivers / noncredited / exceptions sections are composed here by the main thread */}
+      {/* Round A2B Task 5 — one selected transition drives all of it; each
+          section fetches independently so a slow insight fetch never blocks
+          the table (composed by the main thread). */}
+      {activeTransition ? (
+        <>
+          <Gated flag="dashboard.insights">
+            <InsightsSection
+              fromMonth={activeTransition.from}
+              toMonth={activeTransition.to}
+              monthName={monthName}
+            />
+          </Gated>
+          <Gated flag="dashboard.drivers">
+            <DriversSection
+              fromMonth={activeTransition.from}
+              toMonth={activeTransition.to}
+              monthName={monthName}
+            />
+          </Gated>
+          <Gated flag="dashboard.noncredited">
+            <NoncreditedSection
+              fromMonth={activeTransition.from}
+              toMonth={activeTransition.to}
+              monthName={monthName}
+            />
+          </Gated>
+          <Gated flag="dashboard.exceptions">
+            <ExceptionsSection
+              fromMonth={activeTransition.from}
+              toMonth={activeTransition.to}
+              monthName={monthName}
+            />
+          </Gated>
+        </>
+      ) : null}
 
       {tbRow && activeTransition ? (
         <TopBottomModal

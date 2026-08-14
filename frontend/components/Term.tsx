@@ -2,6 +2,7 @@
 
 import { type ReactNode, useEffect, useState } from "react";
 import { type GlossaryResponse, type GlossaryTerm, getGlossary } from "@/lib/api";
+import { useFlag } from "@/lib/flags";
 
 /** Round A2B 1.1 — glossary-driven tooltips.
  *
@@ -60,10 +61,13 @@ export function useTerm(code: string): GlossaryTerm | null {
  * own term text is the label. */
 export default function Term({ code, children }: { code: string; children?: ReactNode }) {
   const term = useTerm(code);
+  // Round A2B task 7 — global.tooltips flag: off hides the affordance (the
+  // label itself always renders).
+  const tooltipsOn = useFlag("global.tooltips");
   return (
     <span>
       {children ?? term?.term ?? code}
-      {term?.definition ? (
+      {term?.definition && tooltipsOn !== false ? (
         <i className="info" title={term.definition} aria-label={`Definition: ${term.definition}`}>
           i
         </i>

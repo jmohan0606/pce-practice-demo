@@ -38,8 +38,10 @@ function ProductRow({
   onTopBottom,
 }: {
   row: DashboardTableRow;
-  onDrill: (row: DashboardTableRow) => void;
-  onTopBottom: (row: DashboardTableRow) => void;
+  /** Absent when the drill-down feature flag is off — renders plain text. */
+  onDrill?: (row: DashboardTableRow) => void;
+  /** Absent when the top/bottom sub-feature flag is off — button hidden. */
+  onTopBottom?: (row: DashboardTableRow) => void;
 }) {
   return (
     <tr>
@@ -64,21 +66,29 @@ function ProductRow({
         <Delta kind="count" value={row.trade_delta} />
       </td>
       <td className="num">
-        <button
-          type="button"
-          className={`drill ${row.direction === "down" ? "dn" : "up"}`}
-          onClick={() => onDrill(row)}
-        >
-          {arrow(row.change_amt)} {money(row.change_amt)}
-        </button>
+        {onDrill ? (
+          <button
+            type="button"
+            className={`drill ${row.direction === "down" ? "dn" : "up"}`}
+            onClick={() => onDrill(row)}
+          >
+            {arrow(row.change_amt)} {money(row.change_amt)}
+          </button>
+        ) : (
+          <Delta value={row.change_amt} />
+        )}
       </td>
       <td className="num share">
         <Pct value={row.share_pct} />
       </td>
       <td>
-        <button type="button" className="btn sm" onClick={() => onTopBottom(row)}>
-          ▲▼ Top / Bottom
-        </button>
+        {onTopBottom ? (
+          <button type="button" className="btn sm" onClick={() => onTopBottom(row)}>
+            ▲▼ Top / Bottom
+          </button>
+        ) : (
+          "—"
+        )}
       </td>
     </tr>
   );
@@ -97,8 +107,8 @@ export default function ProductChangeTable({
   grouping: string;
   fromLabel: string;
   toLabel: string;
-  onDrill: (row: DashboardTableRow) => void;
-  onTopBottom: (row: DashboardTableRow) => void;
+  onDrill?: (row: DashboardTableRow) => void;
+  onTopBottom?: (row: DashboardTableRow) => void;
 }) {
   const total = data.total;
 
