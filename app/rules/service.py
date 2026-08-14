@@ -15,6 +15,8 @@ at practice scope where both rules see the same transfer rows).
 """
 from __future__ import annotations
 
+import threading
+
 from app.rules.compiler import SCOPES, CompileError, derive_scopes, translate_plan
 from app.rules.store import get_rule_store
 from app.shared.logging import get_logger
@@ -100,11 +102,27 @@ def _run_plan(plan: dict, params: dict) -> dict:
     return rows[0]
 
 
+NL_SKIP_REASON = ("guidance only — no plan by design; the statement is "
+                  "injected into the Insights Miner's context instead of "
+                  "being evaluated")
+
+
+def natural_language_only(rule: dict) -> bool:
+    """Round C (docs/rules) 5.2 — a guidance rule: no plan BY DESIGN. It is
+    never evaluated deterministically and can never produce a computed impact
+    figure; its statement shapes the Insights Miner's attention instead."""
+    return bool(rule.get("natural_language_only")) and not rule.get("plan")
+
+
 def evaluate_rule(rule: dict, month: str | None = None, advisor_sid: str | None = None,
                   exclude_keys: list[str] | None = None,
                   scope: str | None = None) -> dict:
     """Evaluate one rule (with the scope's plan when it has one).
-    Uncompilable → an honest error payload, never a crash."""
+    Uncompilable → an honest error payload, never a crash. A
+    natural-language-only rule is SKIPPED with its reason — by design, never
+    a compile-first error."""
+    if natural_language_only(rule):
+        return _skip_result(rule, scope or "", NL_SKIP_REASON)
     compiled = _compile_for_scope(rule, scope)
     if isinstance(compiled, CompileError):
         return {"rule_code": rule.get("rule_code"), "evaluated": False,
@@ -180,6 +198,12 @@ def evaluate_rule_set(version_id: str, month: str | None = None,
                 "rule is inactive"
                 + (f" — {rule['active_reason']}" if rule.get("active_reason") else "")))
             continue
+        # Round C (docs/rules) task 5.2: a natural-language-only rule has no
+        # plan BY DESIGN — skipped with its reason, never a compile-first
+        # error. Its statement rides the Insights Miner's context instead.
+        if natural_language_only(rule):
+            results.append(_skip_result(rule, scope, NL_SKIP_REASON))
+            continue
         # Round C (docs/rules) task 1.1: applies_to filtering runs BEFORE the
         # scopes check — "should this rule apply to this entity at all".
         applies_reason = applies_to_skip_reason(rule, scope, advisor_sid, group_id)
@@ -206,6 +230,246 @@ def evaluate_rule_set(version_id: str, month: str | None = None,
                 str(entry["key"]) for entry in outcome.get("matched", []))
     return {"version_id": version["version_id"], "month": month,
             "advisor_sid": advisor_sid, "scope": scope, "results": results}
+
+
+# --------------------------------------------------------------------- Round C (docs/rules)
+# task 5.2 — the guidance <-> computed lifecycle. Promotion compiles a
+# natural-language rule into a computed rule; demotion removes the plan back
+# to guidance. BOTH are version-minting edits for version-bound rules (they
+# change whether the rule produces figures) with the recorded reason and
+# who/when — the set_active edit→approve→publish pattern. Draft-pool rules
+# get their fields updated in place (no version exists to mint yet).
+
+def _now_stamp() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _require_reason(reason: str, action: str) -> str:
+    reason = str(reason or "").strip()
+    if not reason:
+        from app.rules.store import RuleStoreError
+
+        raise RuleStoreError(
+            f"a reason is required to {action} — it changes whether the rule "
+            f"produces computed figures and becomes the audit record")
+    return reason
+
+
+def promote_rule(rule_key: str, reason: str, changed_by: str = "operator",
+                 llm=None) -> dict:
+    """Compile a natural-language-only rule into a computed rule. Returns
+    {rule, version, note}: version is the newly minted rule-set version for a
+    version-bound rule, None for a draft-pool rule (fields update) and None
+    when the compiler could not produce a valid plan (the honest failure is
+    on the returned rule — nothing publishes)."""
+    from app.agents.rule_compiler import compile_rule_with_agent
+    from app.rules.store import RuleStoreError
+
+    store = get_rule_store()
+    reason = _require_reason(reason, "promote a guidance rule to computed")
+    rule = store.get(rule_key)
+    if rule is None:
+        raise RuleStoreError(f"unknown rule_key {rule_key!r}")
+    if not natural_language_only(rule):
+        raise RuleStoreError(
+            f"{rule_key} is not a guidance-only rule — promote applies only to "
+            f"natural-language rules without a plan")
+    audit = {"promoted_by": changed_by or "operator", "promoted_at": _now_stamp(),
+             "promotion_reason": reason}
+    if not rule["version_id"]:
+        store.annotate(rule_key, natural_language_only=False, approved=False, **audit)
+        compiled = compile_rule_with_agent(rule_key, llm=llm)
+        if compiled.get("status") != "COMPILED":
+            # honest failure: back to guidance, with the compiler's outcome kept
+            store.annotate(rule_key, natural_language_only=True,
+                           promotion_error=compiled.get("compile_error")
+                           or compiled.get("needs_data_reason"),
+                           status="DRAFT", plan=None, explanation=None,
+                           needs_data_reason=None)
+            return {"rule": store.get(rule_key), "version": None,
+                    "note": "the compiler could not produce a valid plan — the "
+                            "rule stays guidance-only; see compile_attempts"}
+        return {"rule": compiled, "version": None,
+                "note": "draft rule — compiled in place; a version mints at publish"}
+    draft = store.edit(rule_key, {"natural_language_only": False})
+    store.annotate(draft["rule_key"], **audit)
+    compiled = compile_rule_with_agent(draft["rule_key"], llm=llm)
+    if compiled.get("status") != "COMPILED":
+        return {"rule": compiled, "version": None,
+                "note": "the compiler could not produce a valid plan — a draft "
+                        "was minted with the honest outcome, nothing published; "
+                        "retry via recompile or delete the draft"}
+    store.approve(draft["rule_key"], approved_by=changed_by or "operator")
+    version = store.publish(
+        approved_by=changed_by or "operator",
+        notes=f"promote {rule.get('rule_code')} to computed: {reason}")
+    published = [r for r in store.version_rules(version["version_id"])
+                 if r["rule_code"] == rule.get("rule_code")]
+    return {"rule": published[0] if published else store.get(draft["rule_key"]),
+            "version": version, "note": None}
+
+
+def demote_rule(rule_key: str, reason: str, changed_by: str = "operator") -> dict:
+    """Remove a rule's plan, back to guidance-only. Returns {rule, version,
+    note} — version-minting for version-bound rules, fields update for the
+    draft pool. The compiled plan is DELIBERATELY discarded (that is the
+    point); the prior version keeps its copy forever."""
+    from app.rules.store import RuleStoreError
+
+    store = get_rule_store()
+    reason = _require_reason(reason, "demote a computed rule to guidance")
+    rule = store.get(rule_key)
+    if rule is None:
+        raise RuleStoreError(f"unknown rule_key {rule_key!r}")
+    if not rule.get("plan"):
+        raise RuleStoreError(
+            f"{rule_key} has no compiled plan — it is already guidance-only "
+            f"(or was never compiled); demote applies to computed rules")
+    audit = {"demoted_by": changed_by or "operator", "demoted_at": _now_stamp(),
+             "demotion_reason": reason}
+    if not rule["version_id"]:
+        store.annotate(rule_key, natural_language_only=True, plan=None,
+                       plan_by_scope=None, explanation=None, compile_error=None,
+                       needs_data_reason=None, compiled_evaluated_rows=None,
+                       compiled_matched_count=None, compiled_at=None,
+                       status="DRAFT", approved=False, **audit)
+        return {"rule": store.get(rule_key), "version": None,
+                "note": "draft rule — fields updated; a version mints at publish"}
+    draft = store.edit(rule_key, {"natural_language_only": True})
+    store.annotate(draft["rule_key"], **audit)
+    store.approve(draft["rule_key"], approved_by=changed_by or "operator")
+    version = store.publish(
+        approved_by=changed_by or "operator",
+        notes=f"demote {rule.get('rule_code')} to guidance: {reason}")
+    published = [r for r in store.version_rules(version["version_id"])
+                 if r["rule_code"] == rule.get("rule_code")]
+    return {"rule": published[0] if published else store.get(draft["rule_key"]),
+            "version": version, "note": None}
+
+
+# --------------------------------------------------------------------- Round C (docs/rules)
+# task 5.3 — the three advisor-scoped manual-rule examples, seeded into the
+# DRAFT POOL (the client can see, edit, compile, delete them) and tagged
+# MANUALLY_WRITTEN_TECH. Statements only — the Rule Compiler produces each
+# plan on demand, and its honest outcome (a simplified attribute where the
+# grammar has no day_of_month(), or NEEDS_DATA naming what is missing) is the
+# demonstration. Fee Schedule Variance quotes the standard rate through
+# STANDARD_MANAGED_FEE_BPS — never a bare literal.
+
+def _manual_example_rules() -> list[dict]:
+    from app.shared.fee_schedule import STANDARD_MANAGED_FEE_BPS
+
+    std = int(STANDARD_MANAGED_FEE_BPS)
+    return [
+        {
+            "rule_code": "BILLABLE_DAYS",
+            "rule_name": "Billable Days",
+            "statement": (
+                "An account opened after the first of the month is billed for a "
+                "partial period, so its first month's revenue understates the "
+                "ongoing run rate. Flag accounts opened in scope (opened_in_scope "
+                "= true) with credited revenue in the month, so a first-month "
+                "figure is read as a partial-period figure, not the run rate."),
+            "worked_example": (
+                "An account opened on the 20th bills roughly a third of a full "
+                "month; comparing its first month to the next shows growth that "
+                "is calendar, not business."),
+            "grain": "account",
+            "severity": "LOW",
+            "severity_reason": "timing artifact — misreads run rate, moves no money",
+            "driver_label": "Billable Days",
+            "driver_tag": "Billable Days",
+            "driver_definition": (
+                "First-month revenue on a mid-month account opening covers a "
+                "partial billing period and understates the ongoing rate."),
+        },
+        {
+            "rule_code": "QUARTERLY_BILLING_CYCLE",
+            "rule_name": "Quarterly Billing Cycle",
+            "statement": (
+                "A product that bills in one month but not the next produces a "
+                "movement that is billing-cycle timing, not business change. "
+                "Flag accounts with no credited revenue this month that had "
+                "credited revenue in the prior month while still holding a "
+                "balance — a billing-cycle gap, distinct from a lost account."),
+            "worked_example": (
+                "A product billing quarterly posts revenue in March and June "
+                "but nothing in April/May; the April 'decline' is timing."),
+            "grain": "account",
+            "severity": "LOW",
+            "severity_reason": "timing, not business change — flags misreads",
+            "driver_label": "Quarterly Billing Cycle",
+            "driver_tag": "Quarterly Billing Cycle",
+            "driver_definition": (
+                "Revenue that appears in one month and not the next because of "
+                "the product's billing cycle, not a change in the business."),
+        },
+        {
+            "rule_code": "FEE_SCHEDULE_VARIANCE",
+            "rule_name": "Fee Schedule Variance",
+            "statement": (
+                f"An advisor whose BOOK-WIDE average managed fee rate sits below "
+                f"the {std} bps standard managed fee schedule is discounting "
+                f"across the whole book. Compute the advisor's average annualized "
+                f"fee rate in basis points across all managed account-months "
+                f"(credited revenue over end balance, annualized) and flag "
+                f"advisors whose book-wide average falls below {std} bps. This "
+                f"is distinct from the per-account discount rule: it measures "
+                f"the whole book, not account by account."),
+            "worked_example": (
+                f"An advisor billing an average of 120 bps across a $50MM book "
+                f"gives up ({std}-120) bps × $50MM ≈ $125K/yr versus the "
+                f"standard schedule."),
+            "grain": "advisor",
+            "severity": "HIGH",
+            "severity_reason": "book-wide discounting directly reduces revenue",
+            "driver_label": "Fee Schedule Variance",
+            "driver_tag": "Fee Schedule Variance",
+            "driver_definition": (
+                f"The advisor's book-wide average fee rate versus the {std} bps "
+                f"standard managed fee schedule — whole-book discounting, "
+                f"distinct from per-account discounts."),
+        },
+    ]
+
+
+_manual_seed_lock = threading.Lock()
+
+
+def ensure_manual_examples() -> dict:
+    """Idempotent: a rule_code already present anywhere in the store (any
+    status, any version — including client-edited or superseded copies) is
+    never seeded again, so a restart duplicates nothing. Seeds land as DRAFTs
+    with NO plan and generate_query pending — the client compiles (and edits)
+    them from the UI; no LLM call happens at seed time."""
+    store = get_rule_store()
+    with _manual_seed_lock:
+        existing_codes = {r.get("rule_code") for r in store.rules.values()}
+        seeded = []
+        for example in _manual_example_rules():
+            if example["rule_code"] in existing_codes:
+                continue
+            store.add_rule({
+                **example,
+                "kind": "TRIGGER",
+                "status": "DRAFT",
+                "provenance": "MANUALLY_WRITTEN_TECH",
+                "applies_to": "ADVISOR",
+                "applies_to_key": None,
+                "active": True,
+                "natural_language_only": False,
+                "confidence": 1.0,
+                "citations": [],
+                "missing": None,
+                "unclear_notes": None,
+                "manual_seed": True,
+            }, version_id=None)
+            seeded.append(example["rule_code"])
+        if seeded:
+            _log.info("seeded %d manual example rule(s): %s", len(seeded), seeded)
+        return {"seeded": seeded}
 
 
 def never_fired(version_id: str, months: list[str] | None = None) -> dict:

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual Rule Authoring &amp; Retry — Mockup</title>
+<!--
+  Round C (docs/rules) tasks 5 + 6 — the contract for the authoring + retry UI
+  on Documents & Rules (frontend/app/documents/page.tsx, ManualRuleForm.tsx,
+  AttemptCompare.tsx). Behavioural contract, in addition to what is drawn:
+
+  1. "Generate a query?" is a hard fork and must never blur:
+     YES -> POST /api/rules/manual {generate_query:true} runs the Rule
+            Compiler; the compiled plan (JSON + plain-English explanation) is
+            shown for review with an Approve action BEFORE any publish.
+     NO  -> natural_language_only:true, NO plan, labelled exactly
+            "Guidance only, not computed". Never evaluated; injected into the
+            Insights Miner's opening as labelled guidance; never an impact figure.
+  2. Provenance choice offers ONLY the two MANUAL tags; the API 400s anything else.
+  3. Scope picker: ALL / PRACTICE / ADVISOR (advisor dropdown from /api/advisors)
+     / PRODUCT (group dropdown from the dashboard product-contribution rows).
+  4. Retry (task 6): "Retry query generation" on any draft-pool compiled/DRAFT/
+     NEEDS_DATA rule opens an optional-note input; POST /{key}/recompile {note}.
+     EVERY attempt is kept (compile_attempts); an already-compiled rule keeps
+     its current plan until the user PICKS an attempt
+     (POST /{key}/attempts/{n}/pick — re-validated before applying, resets approval).
+     Version-bound rules refuse recompile: edit first (immutability).
+  5. Attempts render side by side: status chip, timestamp, the operator note,
+     explanation, plan JSON, "Current plan" marker, Pick control. NEEDS_DATA /
+     FAILED attempts show their honest reason and cannot be picked.
+  6. Promote/demote (drawn on the rule detail, wired via
+     POST /{key}/promote|demote {reason}): version-minting with a required
+     reason; draft-pool rules update fields in place.
+  7. Document category editing (task 3 surface on this page): per-row select
+     over the six categories; choosing PLAN/FAQ shows a "Run extraction?"
+     offer (never auto-runs). Unavailable backends degrade to an honest
+     message, never a crash.
+-->
+<style>
+:root{
+  --navy:#16365C; --navy-hi:#1E4675; --ink:#1A2430; --slate:#5A6B7D; --slate-2:#8A9AAA;
+  --rule:#E2E7ED; --rule-2:#EFF2F6; --canvas:#F4F6F9; --panel:#FBFCFD;
+  --pos:#157F4C; --pos-bg:#E8F5EE; --pos-br:#B5D9C6;
+  --neg:#B3261E; --neg-bg:#FBECEA; --neg-br:#EFC6C2;
+  --der-bg:#FBF0DC; --der-tx:#8A5A00;
+  --tag-bg:#EDF1F5; --tag-tx:#4A5B6D;
+  --ai:#4C4EA3; --ai-bg:#EEEEF8; --ai-br:#C9CAE8;
+  --warn-bg:#FDF3E1; --warn-tx:#8A5A00;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+h2,h3{margin:0;font-weight:600;letter-spacing:-.01em}
+.topbar{background:var(--navy);color:#fff;padding:0 24px;height:50px;display:flex;
+  align-items:center;justify-content:space-between}
+.brand{font-weight:600;font-size:16px}
+.topbar .right{font-size:12.5px;opacity:.9}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 24px 64px}
+.pagehead{margin:0 2px 16px}
+.pagehead .t{font-size:19px;font-weight:600}
+.pagehead .m{font-size:12.5px;color:var(--slate);margin-top:3px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+.card{background:#fff;border:1px solid var(--rule);border-radius:6px;margin-bottom:16px}
+.card-h{padding:15px 20px;border-bottom:1px solid var(--rule)}
+.card-h h2{font-size:16px}
+.card-h p{margin:4px 0 0;color:var(--slate);font-size:12.5px}
+.card-b{padding:16px 20px}
+label.fld{display:block;font-size:12px;color:var(--slate);margin-bottom:5px}
+input[type=text],select,textarea{width:100%;font:inherit;font-size:13px;border:1px solid var(--rule);
+  border-radius:4px;padding:7px 9px;background:#fff}
+textarea{min-height:74px;resize:vertical}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.btn{font:inherit;font-size:13px;border:1px solid var(--rule);background:#fff;border-radius:4px;
+  padding:7px 14px;cursor:pointer}
+.btn.primary{background:var(--navy);color:#fff;border-color:var(--navy);font-weight:500}
+.chip{display:inline-block;font-size:11px;font-weight:600;border-radius:10px;padding:1px 9px;
+  vertical-align:middle}
+.chip.pos{background:var(--pos-bg);color:var(--pos)}
+.chip.warn{background:var(--warn-bg);color:var(--warn-tx)}
+.chip.tag{background:var(--tag-bg);color:var(--tag-tx)}
+.chip.derived{background:var(--der-bg);color:var(--der-tx)}
+.chip.on{background:var(--navy);color:#fff}
+.chip.aigen{background:var(--ai-bg);color:var(--ai)}
+.choice{border:1px solid var(--rule);border-radius:5px;padding:10px 12px;margin-top:12px}
+.choice label{display:flex;gap:8px;font-size:12.5px;align-items:flex-start;margin-bottom:6px}
+.rule{border:1px solid var(--rule);border-radius:5px;padding:12px 14px;margin-bottom:12px}
+.rule.needs{background:var(--panel)}
+.rule-h{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+.rule-t{font-weight:600;font-size:13.5px}
+.rule-d{font-size:12.5px;margin-top:5px}
+.eg{font-size:12px;color:var(--slate);margin-top:5px}
+pre{font-size:10.5px;line-height:1.5;background:var(--panel);border:1px solid var(--rule);
+  border-radius:4px;padding:6px 8px;overflow-x:auto;margin:6px 0 0}
+.attempts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+@media(max-width:700px){.attempts{grid-template-columns:1fr}}
+.attempt{border:1px solid var(--rule);border-radius:5px;padding:10px 12px;background:#fff}
+.attempt.picked{border:1.5px solid var(--navy)}
+.attempt .when{font-size:11.5px;color:var(--slate);margin:2px 0 6px}
+.note-inline{display:flex;gap:6px;margin-top:6px}
+.doclist{list-style:none;margin:12px 0 0;padding:0}
+.doclist li{display:flex;justify-content:space-between;gap:10px;align-items:center;
+  padding:10px 4px;border-top:1px solid var(--rule-2)}
+.doclist .meta{font-size:11.5px;color:var(--slate)}
+.doclist select{width:auto}
+.offer{margin-top:6px;font-size:12.5px}
+.guidance{font-size:12.5px;color:var(--slate);font-style:italic}
+.err{color:var(--neg);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="brand">iPerform · PCE</div><div class="right">Documents &amp; Rules — authoring &amp; retry contract</div></div>
+<div class="wrap">
+<div class="pagehead">
+  <div class="t">Documents &amp; Rules</div>
+  <div class="m">Upload documents, write rules in plain English, and review the rules the engine runs</div>
+</div>
+
+<div class="grid2">
+<div>
+
+  <!-- ================= document category editing (task 3 surface) ============ -->
+  <div class="card">
+    <div class="card-h"><h2>Documents</h2>
+      <p>Six categories — only PLAN and FAQ feed the Rule Extractor; everything is searchable.</p></div>
+    <div class="card-b">
+      <label class="fld">Category at upload (defaults PLAN)</label>
+      <select style="max-width:340px">
+        <option selected>PLAN — rules are extracted</option>
+        <option>GUIDANCE — coaching, search only</option>
+        <option>PLAYBOOK — process, search only</option>
+        <option>TRAINING — reference, search only</option>
+        <option>FAQ — rules are extracted</option>
+        <option>OTHER — indexed, search only</option>
+      </select>
+      <ul class="doclist">
+        <li>
+          <div><b>2026 Changes FAQ.pdf</b>
+            <div class="meta">18 pages · 42 chunks · 3 table chunks · 12 rules</div>
+            <div class="offer">This category feeds the Rule Extractor — run extraction now?
+              <button class="btn primary" style="padding:3px 9px">Run extraction</button>
+              <button class="btn" style="padding:3px 9px">Not now</button>
+            </div>
+          </div>
+          <div><select><option>PLAN</option><option selected>FAQ</option><option>GUIDANCE</option><option>PLAYBOOK</option><option>TRAINING</option><option>OTHER</option></select>
+            <span class="chip pos">Indexed</span></div>
+        </li>
+        <li>
+          <div><b>coaching_notes.txt</b><div class="meta">1 page · 6 chunks</div></div>
+          <div><select><option>PLAN</option><option>FAQ</option><option selected>GUIDANCE</option><option>PLAYBOOK</option><option>TRAINING</option><option>OTHER</option></select>
+            <span class="chip pos">Indexed</span></div>
+        </li>
+      </ul>
+      <p class="err" style="margin:8px 0 0">If the category service is unavailable: “Category editing is not
+        available yet — the document category service has not been deployed.” (honest message, never a crash)</p>
+    </div>
+  </div>
+
+  <!-- ================= task 5 — the authoring form ================= -->
+  <div class="card">
+    <div class="card-h"><h2>Write a Rule</h2>
+      <p>Plain English, no document — with or without a generated query.</p></div>
+    <div class="card-b">
+      <label class="fld">Rule name</label>
+      <input type="text" value="Fee Schedule Variance">
+      <label class="fld" style="margin-top:10px">Statement — plain English</label>
+      <textarea>An advisor whose BOOK-WIDE average managed fee rate sits below the 145 bps standard managed fee schedule is discounting across the whole book…</textarea>
+      <div class="frow">
+        <div><label class="fld">Written by</label>
+          <select><option selected>MANUALLY WRITTEN-PRACTICE</option><option>MANUALLY WRITTEN-TECH</option></select></div>
+        <div><label class="fld">Severity</label>
+          <select><option>Critical</option><option selected>High</option><option>Moderate</option><option>Low</option><option>Info</option></select></div>
+        <div><label class="fld">Applies to</label>
+          <select><option>Everywhere (default)</option><option>Practice (firm level only)</option><option selected>One advisor</option><option>One product group</option></select></div>
+        <div><label class="fld">Advisor</label>
+          <select><option>Any advisor (advisor-level)</option><option selected>Sarah Okafor (V000007)</option></select></div>
+        <div><label class="fld">Driver label</label><input type="text" value="Fee Schedule Variance"></div>
+        <div><label class="fld">Driver definition</label><input type="text" value="Book-wide average rate vs the 145 bps standard"></div>
+      </div>
+      <div class="choice">
+        <label class="fld" style="margin-bottom:6px">Generate a query?</label>
+        <label><input type="radio" name="gq" checked>
+          <span><b>Yes</b> — the Rule Compiler translates the statement into a query plan, shown below for
+          review before approval. A rule with a plan produces reproducible figures.</span></label>
+        <label><input type="radio" name="gq">
+          <span><b>No</b> — <b>Guidance only, not computed.</b> The statement shapes the AI’s investigation;
+          it is never evaluated as a query and can never produce a computed impact figure.</span></label>
+      </div>
+      <div style="margin-top:12px"><button class="btn primary">Create rule</button></div>
+
+      <!-- review-on-create: compiled plan before approval -->
+      <div style="margin-top:14px;border-top:1px solid var(--rule);padding-top:12px">
+        <b style="font-size:13px">Fee Schedule Variance</b> <span class="chip pos">COMPILED</span>
+        <p style="font-size:12.5px;margin:6px 0">Reads all managed account-months for the advisor… flags
+          rates below the 145 bps standard.</p>
+        <pre>{ "vertex": "phx_dm_pce_account_month", "filters": [ … ], "compute": { … }, "trigger": { "op": "<", "value": 145 } }</pre>
+        <button class="btn" style="margin-top:8px">Approve this plan</button>
+      </div>
+      <!-- the guidance-only outcome (when "No" was chosen) -->
+      <p class="guidance" style="margin-top:10px">Guidance only, not computed — this rule has no query by
+        design; its statement shapes the AI’s attention while investigating, and it can never produce a
+        computed impact figure.</p>
+    </div>
+  </div>
+</div>
+
+<div>
+  <!-- ================= task 6 — retry + attempt compare ================= -->
+  <div class="card">
+    <div class="card-h"><h2>Rules Awaiting Review</h2>
+      <p>Draft rule with retry — every compile attempt is kept and comparable.</p></div>
+    <div class="card-b">
+      <div class="rule">
+        <div class="rule-h">
+          <div class="rule-t">Fee Schedule Variance</div>
+          <div>
+            <span class="chip aigen">Advisor-level</span>
+            <span class="chip derived">MANUALLY WRITTEN-TECH</span>
+            <span class="chip warn">NEEDS DATA</span>
+          </div>
+        </div>
+        <div class="rule-d">An advisor whose BOOK-WIDE average managed fee rate sits below the 145 bps
+          standard managed fee schedule is discounting across the whole book…</div>
+        <div class="eg"><b>Needs data we don’t have:</b> the aggregation system does not support weighted
+          averages (sum of credited over sum of balance) — named exactly, never approximated silently.</div>
+        <div class="note-inline">
+          <input type="text" placeholder="Optional note for the compiler — e.g. “this should be at RPG level, not account”"
+                 value="weight the average by balance across the whole book">
+          <button class="btn primary" style="white-space:nowrap">Ask for another plan</button>
+          <button class="btn">Cancel</button>
+        </div>
+        <div class="attempts">
+          <div class="attempt picked">
+            <b style="font-size:12.5px">Attempt 1</b> <span class="chip pos">COMPILED</span>
+            <span class="chip on">Current plan</span>
+            <div class="when">2026-08-14 18:45 · no note</div>
+            <p style="font-size:12.5px;margin:0 0 6px">Per-account rate vs 145 bps (proxy for the book average).</p>
+            <pre>{ "compute": { "agg": "none", "expr": "(credited_amt / end_balance) * 1200" }, "trigger": { "op": "<", "value": 145 } }</pre>
+          </div>
+          <div class="attempt">
+            <b style="font-size:12.5px">Attempt 2</b> <span class="chip warn">NEEDS_DATA</span>
+            <div class="when">2026-08-14 18:46 · note: “weight the average by balance across the whole book”</div>
+            <p style="font-size:12px;margin:0 0 6px"><b>Needs data:</b> the compute model does not support
+              weighted averages across aggregated fields — the honest reason, shown, not pickable.</p>
+            <button class="btn" disabled style="opacity:.5">Pick this attempt</button>
+          </div>
+        </div>
+        <p class="eg" style="margin-top:8px">Attempts are turn-logged under <code>rule_compile|&lt;rule_key&gt;</code>
+          and appear in the cost trace. Version-bound rules refuse retry — edit first (immutability).</p>
+      </div>
+
+      <!-- promote / demote on a guidance rule -->
+      <div class="rule">
+        <div class="rule-h">
+          <div class="rule-t">September Repricing Watch</div>
+          <div><span class="chip derived">MANUALLY WRITTEN-PRACTICE</span> <span class="chip on">PUBLISHED</span></div>
+        </div>
+        <div class="rule-d">Watch for repricing conversations in September; renegotiated fee schedules often
+          land with the quarter…</div>
+        <p class="guidance">Guidance only, not computed — no query by design; injected into the Insights
+          Miner’s context, never a computed figure.</p>
+        <div style="margin-top:6px">
+          <button class="btn">Generate query (promote)</button>
+          <span class="eg">promote/demote require a reason and mint a new rule-set version
+            (draft-pool rules update fields; no version to mint yet)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+</body>
+</html>

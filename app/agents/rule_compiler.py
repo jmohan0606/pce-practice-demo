@@ -134,12 +134,18 @@ def build_system_prompt() -> str:
     )
 
 
-def build_rule_prompt(rule: dict) -> str:
+def build_rule_prompt(rule: dict, note: str = "") -> str:
+    # Round C (docs/rules) task 6: an operator retry note ("this should be at
+    # RPG level, not account") rides the prompt as additional context.
+    note_block = (f"OPERATOR NOTE (additional context for this attempt — a "
+                  f"human reviewed a previous plan and asks):\n{note.strip()}\n\n"
+                  if (note or "").strip() else "")
     return (
         f"RULE {rule.get('rule_code')} — {rule.get('rule_name')}\n"
         f"grain: {rule.get('grain')}   kind: {rule.get('kind') or 'TRIGGER'}\n\n"
         f"STATEMENT:\n{rule.get('statement') or rule.get('plain_description')}\n\n"
         f"WORKED EXAMPLE:\n{rule.get('worked_example') or '(none given)'}\n\n"
+        + note_block +
         "Produce the plan JSON (or a search action first)."
     )
 
@@ -182,27 +188,52 @@ def _resolve_llm(rule_key: str) -> Callable[[str, dict], str]:
 
 
 def compile_rule_with_agent(rule_key: str,
-                            llm: Callable[[str, dict], str] | None = None) -> dict:
+                            llm: Callable[[str, dict], str] | None = None,
+                            note: str = "", recompile: bool = False) -> dict:
     """Compile one stored rule. Outcomes (all persisted on the rule row):
     - COMPILED: plan validated AND executed against mock data (row count kept)
     - NEEDS_DATA: the agent states what the schema cannot express
     - DRAFT (unchanged) with compile_error: the agent's plans kept failing
       validation — honest failure, never a guessed plan.
+
+    Round C (docs/rules) task 6: EVERY attempt is recorded on the rule's
+    ``compile_attempts`` (never overwritten). ``note`` is operator context
+    passed to the compiler. ``recompile=True`` additionally allows retrying an
+    already-COMPILED draft-pool rule — the new attempt is KEPT alongside the
+    current plan and the rule itself stays untouched until the user PICKS an
+    attempt (store.pick_attempt); a first compile (no current plan) applies
+    its successful attempt immediately. Retries ride the same
+    ``rule_compile|<rule_key>`` turn-log path as first compiles.
     Returns the updated rule dict."""
     store = get_rule_store()
     rule = store.get(rule_key)
     if rule is None:
         raise ValueError(f"unknown rule_key {rule_key!r}")
+    if rule.get("natural_language_only") and not rule.get("plan"):
+        raise ValueError(f"{rule_key} is guidance-only (no plan by design) — "
+                         f"promote it to generate a query")
     if rule.get("status") == "NEEDS_INPUT":
         raise ValueError(f"{rule_key} is NEEDS_INPUT ({rule.get('missing') or rule.get('unclear_notes')}) "
                          f"— supply the missing value before compiling")
-    if rule.get("status") not in ("DRAFT", "NEEDS_DATA"):
+    allowed = rule.get("status") in ("DRAFT", "NEEDS_DATA") \
+        or (recompile and rule.get("status") == "COMPILED" and not rule.get("version_id"))
+    if not allowed:
+        if recompile and rule.get("version_id"):
+            raise ValueError(f"{rule_key} belongs to version {rule['version_id']} — "
+                             f"version-bound rules are immutable; edit the rule to "
+                             f"mint a draft, then retry on the draft")
         raise ValueError(f"{rule_key} is {rule.get('status')} — only DRAFT (or a "
-                         f"NEEDS_DATA retry) can be compiled")
+                         f"NEEDS_DATA retry"
+                         + (", or a COMPILED draft via recompile" if recompile else "")
+                         + ") can be compiled")
+    # a recompile of a rule that already has a good plan records attempts
+    # WITHOUT touching the current plan — the user picks which attempt wins
+    keep_current = bool(recompile and rule.get("status") == "COMPILED"
+                        and rule.get("plan"))
 
     generate = llm or _resolve_llm(rule_key)
     system_prompt = build_system_prompt()
-    transcript = [build_rule_prompt(rule)]
+    transcript = [build_rule_prompt(rule, note=note)]
     max_searches, max_repairs = _budgets()
     searches = 0
     repairs = 0
@@ -233,6 +264,13 @@ def compile_rule_with_agent(rule_key: str,
         unsupported = decoded.get("unsupported")
         if unsupported:
             # schema cannot express it — the honest outcome the client needs to see
+            store.record_compile_attempt(
+                rule_key, note=note, status="NEEDS_DATA", plan=decoded,
+                explanation=decoded.get("explanation"),
+                compile_error=str(unsupported))
+            if keep_current:
+                # the current plan stays; the honest attempt is on the list
+                return store.get(rule_key)
             return store.mark_needs_data(rule_key, str(unsupported),
                                          plan=decoded, explanation=decoded.get("explanation"))
 
@@ -256,7 +294,16 @@ def compile_rule_with_agent(rule_key: str,
                     scope_error = f"plan_by_scope[{scope_name}]: {scope_outcome['error']}"
                     break
         if outcome["ok"] and scope_error is None:
-            return store.mark_compiled(
+            attempt = store.record_compile_attempt(
+                rule_key, note=note, status="COMPILED", plan=decoded,
+                plan_by_scope=plan_by_scope if isinstance(plan_by_scope, dict) else None,
+                explanation=str(decoded.get("explanation") or ""),
+                execution=outcome["execution"])
+            if keep_current:
+                # valid alternative recorded — current plan untouched until the
+                # user picks (POST /{key}/attempts/{n}/pick)
+                return store.get(rule_key)
+            compiled = store.mark_compiled(
                 rule_key, plan=decoded,
                 explanation=str(decoded.get("explanation") or ""),
                 execution=outcome["execution"],
@@ -264,6 +311,8 @@ def compile_rule_with_agent(rule_key: str,
                 plan_by_scope=plan_by_scope if isinstance(plan_by_scope, dict) else None,
                 driver_definition=(str(driver_definition).strip()
                                    if driver_definition else None))
+            store.annotate(rule_key, picked_attempt_no=attempt["attempt_no"])
+            return store.get(rule_key) or compiled
         repairs += 1
         last_error = scope_error or outcome["error"]
         _log.info("rule %s: plan failed validation (%s) — repair attempt %d",
@@ -277,4 +326,8 @@ def compile_rule_with_agent(rule_key: str,
 
     _log.warning("rule %s: compilation failed after %d repair(s): %s",
                  rule_key, repairs, last_error)
+    store.record_compile_attempt(rule_key, note=note, status="FAILED",
+                                 compile_error=last_error)
+    if keep_current:
+        return store.get(rule_key)
     return store.record_compile_failure(rule_key, last_error)

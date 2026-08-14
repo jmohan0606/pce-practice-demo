@@ -19,11 +19,17 @@ from pydantic import BaseModel, Field
 
 from app.rules.compiler import compile_status
 from app.rules.seed import ensure_v0_seed
-from app.rules.service import evaluate_rule, evaluate_rule_set, rule_scopes
+from app.rules.service import (
+    ensure_manual_examples,
+    evaluate_rule,
+    evaluate_rule_set,
+    rule_scopes,
+)
 from app.rules.store import RuleStoreError, get_rule_store
 
 router = APIRouter(prefix="/api/rules", tags=["rules"],
-                   dependencies=[Depends(ensure_v0_seed)])
+                   dependencies=[Depends(ensure_v0_seed),
+                                 Depends(ensure_manual_examples)])
 
 
 def _serialize(rule: dict) -> dict:
@@ -67,7 +73,15 @@ def _serialize(rule: dict) -> dict:
     # Round G: the effective scope set (explicit or derived) is always shown,
     # so the review UI can display and override it.
     out["scopes"] = rule_scopes(rule) if rule.get("plan") else (rule.get("scopes") or [])
-    if rule.get("status") == "NEEDS_INPUT":
+    # Round C (docs/rules) task 5.2: guidance-only rules always serialize the
+    # flag; task 6: the attempt history + picked attempt always serialize.
+    out.setdefault("natural_language_only", False)
+    out.setdefault("compile_attempts", [])
+    out.setdefault("picked_attempt_no", None)
+    if rule.get("natural_language_only") and not rule.get("plan"):
+        # no plan BY DESIGN — never "run the Rule Compiler first"
+        out.update({"compiled": False, "compile_error": None, "plan": None})
+    elif rule.get("status") == "NEEDS_INPUT":
         out.update({"compiled": False,
                     "compile_error": rule.get("missing") or rule.get("unclear_notes")
                     or "needs input",
@@ -110,6 +124,184 @@ def publish(body: PublishRequest | None = None) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"version": version,
             "rules": [_serialize(r) for r in store.version_rules(version["version_id"])]}
+
+
+# ---- Round C (docs/rules) task 5 — manual rule authoring ----
+
+# The only tags a human may author under — the other two are set automatically
+# (DOCUMENT_DERIVED by the extractor, TECH_TEAM_WRITTEN by the v0 seed).
+MANUAL_PROVENANCE_TAGS = ("MANUALLY_WRITTEN_PRACTICE", "MANUALLY_WRITTEN_TECH")
+
+
+class ManualRuleRequest(BaseModel):
+    rule_name: str
+    statement: str
+    provenance: str  # MANUALLY_WRITTEN_PRACTICE | MANUALLY_WRITTEN_TECH only
+    applies_to: str = "ALL"
+    applies_to_key: str | None = None
+    severity: str
+    driver_label: str
+    driver_definition: str = ""
+    generate_query: bool
+    # optional extras beyond the UI contract (defaults are sensible)
+    grain: str = "account"
+    worked_example: str = ""
+
+
+def _slug_rule_code(name: str) -> str:
+    import re as _re
+
+    code = _re.sub(r"[^A-Z0-9]+", "_", str(name).upper()).strip("_")[:40]
+    return code or "MANUAL_RULE"
+
+
+@router.post("/manual")
+def create_manual_rule(body: ManualRuleRequest) -> dict:
+    """Round C (docs/rules) 5.1 — a rule written in plain English, no document.
+    generate_query=true → the Rule Compiler translates the statement into a
+    plan exactly as for document-derived rules (reviewable before approval);
+    false → natural_language_only guidance with NO plan, injected into the
+    Insights Miner's context and labelled 'Guidance only, not computed'."""
+    from app.rules.compiler import GRAINS
+    from app.rules.store import APPLIES_TO, SEVERITIES
+
+    if body.provenance not in MANUAL_PROVENANCE_TAGS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"provenance {body.provenance!r} is not an authorable tag — "
+                   f"manual rules must be one of {', '.join(MANUAL_PROVENANCE_TAGS)} "
+                   f"(DOCUMENT_DERIVED and TECH_TEAM_WRITTEN are set automatically)")
+    if not body.rule_name.strip() or not body.statement.strip():
+        raise HTTPException(status_code=400,
+                            detail="rule_name and statement are both required")
+    if body.applies_to not in APPLIES_TO:
+        raise HTTPException(status_code=400,
+                            detail=f"unknown applies_to {body.applies_to!r} — "
+                                   f"expected one of {', '.join(APPLIES_TO)}")
+    severity = str(body.severity or "").upper()
+    if severity not in SEVERITIES:
+        raise HTTPException(status_code=400,
+                            detail=f"unknown severity {body.severity!r} — "
+                                   f"expected one of {', '.join(SEVERITIES)}")
+    grain = str(body.grain or "account").lower()
+    if grain not in GRAINS:
+        raise HTTPException(status_code=400,
+                            detail=f"unknown grain {body.grain!r} — "
+                                   f"expected one of {', '.join(GRAINS)}")
+    store = get_rule_store()
+    try:
+        rule = store.add_rule({
+            "rule_code": _slug_rule_code(body.rule_name),
+            "rule_name": body.rule_name.strip(),
+            "statement": body.statement.strip(),
+            "worked_example": body.worked_example.strip() or None,
+            "kind": "TRIGGER",
+            "grain": grain,
+            "status": "DRAFT",
+            "provenance": body.provenance,
+            "applies_to": body.applies_to,
+            "applies_to_key": (body.applies_to_key or "").strip() or None,
+            "severity": severity,
+            "driver_label": body.driver_label.strip() or body.rule_name.strip(),
+            "driver_tag": body.driver_label.strip() or body.rule_name.strip(),
+            "driver_definition": body.driver_definition.strip() or None,
+            "natural_language_only": not body.generate_query,
+            "active": True,
+            "confidence": 1.0,
+            "citations": [],
+            "missing": None,
+            "unclear_notes": None,
+        }, version_id=None)
+    except RuleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if body.generate_query:
+        from app.agents.rule_compiler import compile_rule_with_agent
+
+        try:
+            rule = compile_rule_with_agent(rule["rule_key"])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"rule": _serialize(rule)}
+
+
+class LifecycleReasonRequest(BaseModel):
+    reason: str = ""
+    approved_by: str = "operator"
+
+
+@router.post("/{rule_key}/promote")
+def promote(rule_key: str, body: LifecycleReasonRequest) -> dict:
+    """Round C (docs/rules) 5.2 — compile a natural-language-only rule into a
+    computed rule. Version-minting for version-bound rules; reason REQUIRED
+    (it changes whether the rule produces figures)."""
+    from app.rules.service import promote_rule
+
+    if get_rule_store().get(rule_key) is None:
+        raise HTTPException(status_code=404, detail=f"unknown rule_key {rule_key!r}")
+    try:
+        outcome = promote_rule(rule_key, body.reason, changed_by=body.approved_by)
+    except RuleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"rule": _serialize(outcome["rule"]), "version": outcome["version"],
+            "note": outcome.get("note")}
+
+
+@router.post("/{rule_key}/demote")
+def demote(rule_key: str, body: LifecycleReasonRequest) -> dict:
+    """Round C (docs/rules) 5.2 — remove a rule's plan, back to guidance-only.
+    Version-minting for version-bound rules; reason REQUIRED."""
+    from app.rules.service import demote_rule
+
+    if get_rule_store().get(rule_key) is None:
+        raise HTTPException(status_code=404, detail=f"unknown rule_key {rule_key!r}")
+    try:
+        outcome = demote_rule(rule_key, body.reason, changed_by=body.approved_by)
+    except RuleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"rule": _serialize(outcome["rule"]), "version": outcome["version"],
+            "note": outcome.get("note")}
+
+
+# ---- Round C (docs/rules) task 6 — retry query generation ----
+
+class RecompileRequest(BaseModel):
+    note: str = ""
+
+
+@router.post("/{rule_key}/recompile")
+def recompile(rule_key: str, body: RecompileRequest | None = None) -> dict:
+    """Ask the Rule Compiler for ANOTHER plan, optionally with an operator
+    note as context. Every attempt is KEPT on the rule (compile_attempts);
+    an already-COMPILED rule keeps its current plan until the user picks an
+    attempt. Retries turn-log under rule_compile|<key> like first compiles."""
+    from app.agents.rule_compiler import compile_rule_with_agent
+
+    body = body or RecompileRequest()
+    store = get_rule_store()
+    if store.get(rule_key) is None:
+        raise HTTPException(status_code=404, detail=f"unknown rule_key {rule_key!r}")
+    try:
+        rule = compile_rule_with_agent(rule_key, note=body.note, recompile=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"rule": _serialize(rule),
+            "attempts": rule.get("compile_attempts") or []}
+
+
+@router.post("/{rule_key}/attempts/{attempt_no}/pick")
+def pick_attempt(rule_key: str, attempt_no: int) -> dict:
+    """Make attempt N the rule's current plan (re-validated end to end,
+    execution check included, before it is applied). Picking resets approval."""
+    store = get_rule_store()
+    if store.get(rule_key) is None:
+        raise HTTPException(status_code=404, detail=f"unknown rule_key {rule_key!r}")
+    try:
+        rule = store.pick_attempt(rule_key, attempt_no)
+    except RuleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"rule": _serialize(rule)}
 
 
 class ConflictCheckRequest(BaseModel):

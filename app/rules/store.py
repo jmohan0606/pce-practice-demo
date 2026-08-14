@@ -360,13 +360,23 @@ class RuleStore:
     def approve(self, rule_key: str, approved_by: str = "") -> dict:
         """Human approval of a COMPILED draft for the next publish. Only
         COMPILED rules can be approved — the compile step (with its execution
-        check) is the gate; NEEDS_INPUT / NEEDS_DATA carry their reasons."""
+        check) is the gate; NEEDS_INPUT / NEEDS_DATA carry their reasons.
+
+        Round C (docs/rules) task 5.2 — the ONE exception: a
+        ``natural_language_only`` rule (guidance, no plan BY DESIGN) is
+        approvable without a compile. The compile gate exists to protect
+        computed figures; a guidance rule can never produce one — it is
+        skipped by the evaluator and only shapes the Insights Miner's
+        attention. The gate stays fully intact for every other rule."""
         with self._lock:
             rule = self.rules.get(rule_key)
             if rule is None:
                 raise RuleStoreError(f"unknown rule_key {rule_key!r}")
             if rule["version_id"]:
                 raise RuleStoreError(f"{rule_key} already belongs to version {rule['version_id']}")
+            if rule.get("natural_language_only") and not rule.get("plan"):
+                return self._update_rule_fields(rule_key, approved=True,
+                                                approved_by=approved_by, approved_at=_now())
             if rule["status"] == "NEEDS_INPUT":
                 raise RuleStoreError(
                     f"{rule_key} is NEEDS_INPUT ({rule.get('missing') or rule.get('unclear_notes') or 'missing input'}) "
@@ -407,6 +417,12 @@ class RuleStore:
                 # Round C (docs/rules) task 2.1: active state (set_active is the
                 # audited path — it requires the reason and records who/when)
                 "active", "active_reason",
+                # Round C (docs/rules) task 5.2: guidance <-> computed. NOT a
+                # display-only field: flipping it changes whether the rule
+                # produces figures, so the edited draft recompiles (promote) or
+                # sheds its plan (demote). promote_rule/demote_rule in
+                # service.py are the audited paths (reason required).
+                "natural_language_only",
             }
             rejected = sorted(set(changes) - editable)
             if rejected:
@@ -431,10 +447,12 @@ class RuleStore:
                        "approved_by", "approved_at", "created_at", "published_as")
             if not display_only:
                 # a changed statement invalidates the compiled plan —
-                # the new draft recompiles from scratch
+                # the new draft recompiles from scratch (stale compile
+                # attempts from the old statement are dropped with it)
                 dropped += ("plan", "plan_by_scope", "explanation", "compile_error",
                             "needs_data_reason", "compiled_evaluated_rows",
-                            "compiled_matched_count", "compiled_at")
+                            "compiled_matched_count", "compiled_at",
+                            "compile_attempts", "picked_attempt_no")
             draft = {k: v for k, v in original.items() if k not in dropped}
             draft.update(changes)
             draft["status"] = "COMPILED" if display_only else "DRAFT"
@@ -526,12 +544,113 @@ class RuleStore:
                       [d["rule_key"] for d in deleted])
             return deleted
 
+    # ----- Round C (docs/rules) tasks 5/6 — lifecycle metadata + compile attempts -----
+
+    def annotate(self, rule_key: str, **fields) -> dict:
+        """Metadata/flag updates on a rule row IN PLACE (draft-pool fast paths
+        and audit stamps such as promoted_by/at — the set_active draft-pool
+        precedent). Identity and version binding are never touched here;
+        expression content only via the compile/pick paths."""
+        forbidden = {"rule_key", "version_id", "rule_code"} & set(fields)
+        if forbidden:
+            raise RuleStoreError(
+                f"annotate cannot change {', '.join(sorted(forbidden))}")
+        with self._lock:
+            if rule_key not in self.rules:
+                raise RuleStoreError(f"unknown rule_key {rule_key!r}")
+            return self._update_rule_fields(rule_key, **fields)
+
+    def record_compile_attempt(self, rule_key: str, *, note: str = "",
+                               status: str, plan: dict | None = None,
+                               plan_by_scope: dict | None = None,
+                               explanation: str | None = None,
+                               compile_error: str | None = None,
+                               execution: dict | None = None) -> dict:
+        """Round C (docs/rules) task 6 — EVERY Rule Compiler attempt is KEPT on
+        the rule (never overwritten) so attempts can be compared side by side.
+        status is COMPILED | NEEDS_DATA | FAILED. Returns the attempt dict."""
+        if status not in ("COMPILED", "NEEDS_DATA", "FAILED"):
+            raise RuleStoreError(f"unknown attempt status {status!r}")
+        with self._lock:
+            rule = self.rules.get(rule_key)
+            if rule is None:
+                raise RuleStoreError(f"unknown rule_key {rule_key!r}")
+            attempts = [dict(a) for a in (rule.get("compile_attempts") or [])]
+            attempt = {
+                "attempt_no": len(attempts) + 1,
+                "note": (note or "").strip() or None,
+                "plan": plan,
+                "plan_by_scope": plan_by_scope,
+                "explanation": explanation,
+                "status": status,
+                "compile_error": compile_error,
+                "created_at": _now(),
+            }
+            if execution:
+                attempt["evaluated_rows"] = execution.get("evaluated_rows")
+                attempt["matched_count"] = execution.get("matched_count")
+            attempts.append(attempt)
+            self._update_rule_fields(rule_key, compile_attempts=attempts)
+            return dict(attempt)
+
+    def pick_attempt(self, rule_key: str, attempt_no: int) -> dict:
+        """Make attempt ``attempt_no`` the rule's current plan. Draft pool
+        only (version-bound rules are immutable — edit mints a draft first).
+        Only a COMPILED attempt can be picked, and its plan is re-validated
+        (all five checks, incl. execution) before it is applied. Picking
+        resets any prior approval — a human approves the plan they picked."""
+        from app.rules.compiler import derive_scopes, validate_plan
+
+        with self._lock:
+            rule = self.rules.get(rule_key)
+            if rule is None:
+                raise RuleStoreError(f"unknown rule_key {rule_key!r}")
+            if rule["version_id"]:
+                raise RuleStoreError(
+                    f"{rule_key} belongs to version {rule['version_id']} — "
+                    f"version-bound rules are immutable; edit the rule to mint "
+                    f"a draft and pick on the draft")
+            attempts = rule.get("compile_attempts") or []
+            match = next((a for a in attempts
+                          if int(a.get("attempt_no") or 0) == int(attempt_no)), None)
+            if match is None:
+                raise RuleStoreError(
+                    f"no attempt {attempt_no} on {rule_key} — attempts: "
+                    f"{[a.get('attempt_no') for a in attempts] or '(none)'}")
+            if match.get("status") != "COMPILED" or not isinstance(match.get("plan"), dict):
+                raise RuleStoreError(
+                    f"attempt {attempt_no} is {match.get('status')} "
+                    f"({match.get('compile_error') or 'no plan'}) — only a "
+                    f"COMPILED attempt with a plan can be picked")
+            outcome = validate_plan(rule.get("rule_code") or rule_key,
+                                    rule.get("grain") or "", match["plan"])
+            if not outcome["ok"]:
+                raise RuleStoreError(
+                    f"attempt {attempt_no} no longer validates: {outcome['error']}")
+            plan_by_scope = match.get("plan_by_scope") \
+                if isinstance(match.get("plan_by_scope"), dict) else None
+            self.mark_compiled(
+                rule_key, plan=match["plan"],
+                explanation=str(match.get("explanation") or ""),
+                execution=outcome["execution"],
+                scopes=derive_scopes(match["plan"], plan_by_scope),
+                plan_by_scope=plan_by_scope)
+            return self._update_rule_fields(
+                rule_key, picked_attempt_no=int(attempt_no), approved=False)
+
     def publish(self, approved_by: str = "", notes: str = "") -> dict:
         """Mint the next version: carried-forward copies of the latest PUBLISHED
         version's rules (minus ones superseded by an approved edit) plus copies
         of every approved draft. Previous version becomes SUPERSEDED."""
         with self._lock:
-            approved_drafts = [r for r in self.drafts(statuses=("COMPILED",)) if r.get("approved")]
+            # Round C (docs/rules) 5.2: an approved natural-language-only rule
+            # publishes WITHOUT a plan (guidance by design, DRAFT status —
+            # there is nothing to compile); every other draft must be COMPILED.
+            approved_drafts = [
+                r for r in self.drafts(statuses=("COMPILED", "DRAFT"))
+                if r.get("approved")
+                and (r["status"] == "COMPILED"
+                     or (r.get("natural_language_only") and not r.get("plan")))]
             if not approved_drafts:
                 raise RuleStoreError("nothing to publish — no approved drafts")
             previous = self.latest_version("PUBLISHED")

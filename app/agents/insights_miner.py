@@ -145,7 +145,8 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
                           initial: dict,
                           rule_outcomes: list[dict] | None = None,
                           rule_findings: list[dict] | None = None,
-                          residual_amt: float | None = None) -> str:
+                          residual_amt: float | None = None,
+                          nl_guidance: list[dict] | None = None) -> str:
     rule_lines = [
         f"- [{r.get('rule_key')}] {r.get('rule_code')} (driver: {r.get('driver_tag')}): "
         f"{r.get('statement') or r.get('plain_description')} Example: {r.get('worked_example')}"
@@ -194,6 +195,21 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
                if fired_lines else "")
             + f"\n\nRESIDUAL (your task, restated): change_amt minus the rule "
               f"findings' impacts = {residual_amt}.")
+    # Round C (docs/rules) task 5.2: PUBLISHED+active natural-language rules
+    # are guidance only — clearly labelled, never presented as computed rules,
+    # never a source of impact figures.
+    guidance_block = ""
+    if nl_guidance:
+        guidance_lines = [
+            f"- {g.get('rule_name') or g.get('rule_code')}: "
+            f"{g.get('statement') or g.get('plain_description')}"
+            for g in nl_guidance]
+        guidance_block = (
+            "\n\nMANUAL GUIDANCE (guidance only, not computed — these "
+            "natural-language rules have NO query plan by design; let them "
+            "shape your investigation, but NEVER cite one as a computed rule "
+            "finding and NEVER attach an impact figure to one):\n"
+            + "\n".join(guidance_lines))
     return (
         task_head
         + f"ADVISOR: {advisor_sid}  ('all' = the whole cohort book)\n"
@@ -202,6 +218,7 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
         f"MONTH METADATA: {json.dumps(month_meta)}\n\n"
         f"PUBLISHED RULE SET (what matters in this business):\n"
         + "\n".join(rule_lines)
+        + guidance_block
         + rule_block
         + "\n\nQUERY CATALOG (name, typed params — '?' optional, returns):\n"
         + _catalog_lines(catalog)
@@ -341,7 +358,8 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
          llm: Callable[[str, dict], str],
          rule_findings: list[dict] | None = None,
          rule_outcomes: list[dict] | None = None,
-         residual_amt: float | None = None) -> dict:
+         residual_amt: float | None = None,
+         nl_guidance: list[dict] | None = None) -> dict:
     """Run the investigation loop. Rule findings arrive PRE-MATCHED (evaluated
     in code, Round E task 2) and count toward the result; the agent is pointed
     at the residual with >= miner_exploration_reserve queries kept for
@@ -387,7 +405,7 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
         advisor_sid, from_month, to_month, rules, transition, month_meta,
         tools_catalog(), initial,
         rule_outcomes=rule_outcomes, rule_findings=rule_findings,
-        residual_amt=residual_amt)
+        residual_amt=residual_amt, nl_guidance=nl_guidance)
     prefix_estimate = estimate_tokens(system_prompt + opening)
     if prefix_estimate < STATIC_PREFIX_MIN_TOKENS:
         _log.warning("miner %s: static prefix ~%d tokens < %d — the cache "

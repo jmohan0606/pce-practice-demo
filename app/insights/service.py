@@ -143,9 +143,18 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
     store = get_insight_store()
     # Round C (docs/rules) 2.1: an inactive rule feeds NOTHING into a new run —
     # neither evaluation (evaluate_rule_set skips it) nor the miner's context.
-    rules = [r for r in get_rule_store().version_rules(version["version_id"])
-             if r.get("status") in ("PUBLISHED", "SUPERSEDED")
-             and r.get("active") is not False]
+    live_rules = [r for r in get_rule_store().version_rules(version["version_id"])
+                  if r.get("status") in ("PUBLISHED", "SUPERSEDED")
+                  and r.get("active") is not False]
+    # Round C (docs/rules) 5.2: natural-language-only rules are GUIDANCE — no
+    # plan by design, never evaluated, never a computed figure. They ride the
+    # miner's opening as clearly-labelled guidance, NOT the rule list (the two
+    # kinds must never blur: a rule with a plan produces reproducible figures;
+    # a natural-language rule shapes the agent's attention).
+    from app.rules.service import natural_language_only
+
+    nl_guidance = [r for r in live_rules if natural_language_only(r)]
+    rules = [r for r in live_rules if not natural_language_only(r)]
 
     transition = run_catalog_query("advisor_totals", {
         "advisor": advisor_sid, "from_month": from_month, "to_month": to_month,
@@ -173,7 +182,7 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
         mined = mine(advisor_sid=advisor_sid, from_month=from_month, to_month=to_month,
                      rules=rules, transition=transition, tools=tools, llm=miner,
                      rule_findings=rule_findings, rule_outcomes=rule_outcomes,
-                     residual_amt=residual_amt)
+                     residual_amt=residual_amt, nl_guidance=nl_guidance)
         # C3: the Reporter receives FINDINGS ONLY (plus the transition totals,
         # themselves a stored query result on this run) and a text LLM callable.
         # Round E task 5: plus ONE injected capability — document search for
