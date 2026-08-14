@@ -112,6 +112,16 @@ class KnowledgeCatalogRepository:
                 )
         return None
 
+    def set_document_type(self, document_id: str, document_type: str) -> bool:
+        """Round C (docs/rules) 3.1 — category is editable after upload.
+        Returns False when the document is unknown."""
+        with self.connect() as conn:
+            cursor = conn.execute(
+                "UPDATE phx_dm_pce_knowledge_document_catalog SET document_type = ? "
+                "WHERE document_id = ?", (document_type, document_id))
+            conn.commit()
+            return cursor.rowcount > 0
+
     def chunk_ids_for_document(self, document_id: str) -> list[str]:
         return [r["chunk_id"] for r in self.query(
             "SELECT chunk_id FROM phx_dm_pce_knowledge_chunk_catalog WHERE document_id = ?", (document_id,))]

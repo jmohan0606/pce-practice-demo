@@ -11,18 +11,39 @@ from pydantic import BaseModel, Field
 DEFAULT_COLLECTION = "pce_plan_documents"
 
 
+# Round C (docs/rules) 3.1 — the six document categories the upload UI offers.
+# ONLY the extracting categories feed the Rule Extractor (FAQ is included
+# because the client's own 2026 Changes FAQ contains rules); everything else is
+# chunked, embedded and searchable but never produces rules.
+DOCUMENT_CATEGORIES = ("PLAN", "GUIDANCE", "PLAYBOOK", "TRAINING", "FAQ", "OTHER")
+EXTRACTING_CATEGORIES = ("PLAN", "FAQ")
+
+
 class KnowledgeDocumentType(StrEnum):
-    # 5.2: the two types the upload UI offers. Only PLAN documents go to the
-    # Rule Extractor; both are chunked and embedded into Chroma.
+    # Round C (docs/rules) 3.1: the six categories, chosen at upload (default
+    # PLAN) and editable afterwards. Only PLAN and FAQ go to the Rule
+    # Extractor; all six are chunked and embedded into Chroma.
     PLAN = "PLAN"
     GUIDANCE = "GUIDANCE"
+    PLAYBOOK = "PLAYBOOK"
+    TRAINING = "TRAINING"
+    FAQ = "FAQ"
+    OTHER = "OTHER"
+    # Legacy V1 values — kept so pre-Round-C catalog rows still parse.
     COMP_PLAN = "Comp Plan"
     PRACTICE_GUIDELINE = "Practice Guideline"
     COMPLIANCE_POLICY = "Compliance Policy"
-    PLAYBOOK = "Playbook"
     GLOSSARY = "Glossary"
     RESEARCH = "Research"
-    OTHER = "Other"
+
+    @classmethod
+    def _missing_(cls, value: object):  # case-insensitive ("Playbook" -> PLAYBOOK)
+        if isinstance(value, str):
+            folded = value.strip().upper()
+            for member in cls:
+                if member.value.upper() == folded or member.name == folded:
+                    return member
+        return None
 
 
 class KnowledgeDocumentStatus(StrEnum):

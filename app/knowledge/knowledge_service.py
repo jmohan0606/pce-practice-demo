@@ -207,6 +207,38 @@ class KnowledgeManagementService:
             "graph": graph_result,
         }
 
+    # ---------------------------------------------------------------- category
+    def set_document_category(self, document_id: str, category: str) -> dict | None:
+        """Round C (docs/rules) 3.1 — change a document's category after
+        upload. Updates the catalog (source of truth for list_documents) and
+        mirrors the change onto the graph document vertex (best-effort — the
+        catalog stays authoritative). Returns the updated document row, or
+        None for an unknown document_id."""
+        import json as _json
+
+        rows = [r for r in self.catalog.list_documents() if r["document_id"] == document_id]
+        if not rows:
+            return None
+        if not self.catalog.set_document_type(document_id, category):
+            return None
+        row = rows[0]
+        meta = _json.loads(row.get("metadata_json") or "{}")
+        try:
+            self.graph_writer.update_status(
+                document_id=document_id,
+                document_name=row["document_name"],
+                document_type=category,
+                page_count=int(meta.get("page_count") or 0),
+                content_hash=str(meta.get("content_hash") or ""),
+                status=str(row.get("status") or ""),
+                uploaded_at=str(row.get("uploaded_at") or ""),
+            )
+        except Exception as exc:  # noqa: BLE001 — catalog stays authoritative
+            _log.error("graph mirror of category change for %s failed: %s",
+                       document_id, exc)
+        return next((r for r in self.list_documents()
+                     if r["document_id"] == document_id), None)
+
     # ------------------------------------------------------------------ search
     def search(self, request: KnowledgeSearchRequest) -> KnowledgeSearchResponse:
         embedding = self.embedder.embed(request.query)

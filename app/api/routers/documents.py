@@ -3,7 +3,8 @@
 POST   /api/documents/upload                multipart, multiple files
 GET    /api/documents                       list with status and counts
 DELETE /api/documents/{id}                  removes chunks from Chroma AND graph
-POST   /api/documents/{id}/extract-rules    triggers the Rule Extractor (B3)
+PATCH  /api/documents/{id}/category         edit category; extraction_offered
+POST   /api/documents/{id}/extract-rules    triggers the Rule Extractor (B3; PLAN/FAQ only)
 GET    /api/documents/search?q=&top_k=5     retrieval check (chunks + similarity)
 
 The search endpoint is retrieval-only: it NEVER calls an LLM. Below the 0.30
@@ -16,10 +17,16 @@ from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
 
 from app.config.settings import get_settings, resolve_app_path
 from app.knowledge.knowledge_service import KnowledgeManagementService
-from app.knowledge.models import DEFAULT_COLLECTION, KnowledgeIngestionRequest
+from app.knowledge.models import (
+    DEFAULT_COLLECTION,
+    DOCUMENT_CATEGORIES,
+    EXTRACTING_CATEGORIES,
+    KnowledgeIngestionRequest,
+)
 from app.knowledge.parsing import SUPPORTED_SUFFIXES
 from app.knowledge.rag_service import RagGenerationService
 from app.shared.logging import get_logger
@@ -46,16 +53,39 @@ def _counts_for(document_id: str) -> dict:
     return {}
 
 
+def _validated_category(category: str) -> str:
+    """Round C (docs/rules) 3.1 — category is validated EVERYWHERE it enters;
+    unknown category is a 400 naming the valid set."""
+    normalized = str(category or "").strip().upper()
+    if normalized not in DOCUMENT_CATEGORIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown document category {category!r} — valid categories "
+                   f"are {', '.join(DOCUMENT_CATEGORIES)}.")
+    return normalized
+
+
+def _refuse_non_extracting(document_id: str, category: str) -> None:
+    """Only PLAN and FAQ feed the Rule Extractor — every route that can
+    trigger extraction refuses other categories with an honest error naming
+    the category."""
+    if category in EXTRACTING_CATEGORIES:
+        return
+    raise HTTPException(
+        status_code=400,
+        detail=f"Document '{document_id}' is {category} — {category} documents "
+               f"are indexed and searchable but never produce rules. Only "
+               f"{' and '.join(EXTRACTING_CATEGORIES)} documents feed the "
+               f"Rule Extractor.")
+
+
 @router.post("/upload")
 async def upload_documents(files: list[UploadFile] = File(...),
                            document_type: str = Form("PLAN")) -> dict:
-    # 5.2: PLAN | GUIDANCE, chosen by the user at upload (default PLAN). Only
-    # PLAN documents go to the Rule Extractor; both are chunked + embedded.
-    document_type = (document_type or "PLAN").upper()
-    if document_type not in ("PLAN", "GUIDANCE"):
-        raise HTTPException(status_code=422,
-                            detail=f"document_type must be PLAN or GUIDANCE, "
-                                   f"got {document_type!r}")
+    # Round C (docs/rules) 3.1: six categories, chosen at upload (default
+    # PLAN). Only PLAN and FAQ go to the Rule Extractor; all six are chunked
+    # + embedded and searchable.
+    document_type = _validated_category(document_type or "PLAN")
     uploads_dir = resolve_app_path(get_settings().uploads_path)
     uploads_dir.mkdir(parents=True, exist_ok=True)
     results = []
@@ -110,17 +140,33 @@ def delete_document(document_id: str) -> dict:
     return result
 
 
+class CategoryRequest(BaseModel):
+    category: str
+
+
+@router.patch("/{document_id}/category")
+def set_document_category(document_id: str, body: CategoryRequest) -> dict:
+    """Round C (docs/rules) 3.1 — change a document's category after upload.
+    extraction_offered=true iff the NEW category feeds the Rule Extractor
+    (PLAN or FAQ) — the UI then offers to run extraction; nothing runs here."""
+    category = _validated_category(body.category)
+    document = _service().set_document_category(document_id, category)
+    if document is None:
+        raise HTTPException(status_code=404,
+                            detail=f"Unknown document_id '{document_id}'")
+    return {"document": document,
+            "extraction_offered": category in EXTRACTING_CATEGORIES}
+
+
 @router.post("/{document_id}/extract-rules")
 def extract_rules(document_id: str) -> dict:
-    # 5.2: only PLAN documents go to the Rule Extractor.
+    # Round C (docs/rules) 3.1: only PLAN and FAQ feed the Rule Extractor.
     doc_row = _counts_for(document_id)
+    if not doc_row:
+        raise HTTPException(status_code=404,
+                            detail=f"Unknown document_id '{document_id}'")
     doc_type = str(doc_row.get("document_type") or "PLAN").upper()
-    if doc_type == "GUIDANCE":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Document '{document_id}' is GUIDANCE — only PLAN documents "
-                   "go to the Rule Extractor (it is still chunked, embedded and "
-                   "searchable).")
+    _refuse_non_extracting(document_id, doc_type)
     chunks = _service().document_chunks(document_id)
     if not chunks:
         raise HTTPException(status_code=404,
