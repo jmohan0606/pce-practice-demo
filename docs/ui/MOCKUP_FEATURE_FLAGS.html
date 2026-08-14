@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feature Flags — Mockup</title>
+<style>
+:root{
+  --navy:#16365C; --navy-hi:#1E4675; --ink:#1A2430; --slate:#5A6B7D; --slate-2:#8A9AAA;
+  --rule:#E2E7ED; --rule-2:#EFF2F6; --canvas:#F4F6F9; --panel:#FBFCFD;
+  --pos:#157F4C; --pos-bg:#E8F5EE; --pos-br:#B5D9C6;
+  --neg:#B3261E; --neg-bg:#FBECEA; --neg-br:#EFC6C2;
+  --der-bg:#FBF0DC; --der-tx:#8A5A00;
+  --tag-bg:#EDF1F5; --tag-tx:#4A5B6D;
+  --ai:#4C4EA3; --ai-bg:#EEEEF8; --ai-br:#C9CAE8;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+h2,h3{margin:0;font-weight:600;letter-spacing:-.01em}
+.topbar{background:var(--navy);color:#fff;padding:0 24px;height:50px;display:flex;
+  align-items:center;justify-content:space-between}
+.brand{font-weight:600;font-size:16px}
+.topbar .right{font-size:12.5px;opacity:.9}
+.nav{background:#fff;border-bottom:1px solid var(--rule);padding:0 24px;display:flex;gap:4px;
+  overflow-x:auto}
+.nav button{background:none;border:0;border-bottom:2px solid transparent;padding:13px 16px;
+  font:inherit;font-weight:500;color:var(--slate);cursor:pointer;white-space:nowrap}
+.nav button[aria-selected="true"]{color:var(--navy);border-bottom-color:var(--navy);font-weight:600}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 24px 64px}
+.pagehead{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;
+  flex-wrap:wrap;margin:0 2px 16px}
+.pagehead .t{font-size:19px;font-weight:600}
+.pagehead .m{font-size:12.5px;color:var(--slate);margin-top:3px}
+.card{background:#fff;border:1px solid var(--rule);border-radius:6px;margin-bottom:16px}
+.card-h{padding:15px 20px;border-bottom:1px solid var(--rule);display:flex;
+  justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.card-h h2{font-size:16px}
+.card-h p{margin:4px 0 0;color:var(--slate);font-size:12.5px}
+.card-b{padding:16px 20px}
+.card-b.flush{padding:0}
+.ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+select,.btn,input[type=text]{font:inherit;font-size:13px;border:1px solid var(--rule);
+  background:#fff;color:var(--ink);padding:7px 12px;border-radius:4px}
+.btn{cursor:pointer}
+.btn.primary{background:var(--navy);color:#fff;border-color:var(--navy);font-weight:500}
+.btn.sm{padding:3px 9px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;
+  padding:3px 7px;border-radius:3px;letter-spacing:.03em;text-transform:uppercase}
+.chip.on{background:var(--pos-bg);color:var(--pos)}
+.chip.off{background:var(--tag-bg);color:var(--tag-tx)}
+.chip.warn{background:var(--der-bg);color:var(--der-tx)}
+.chip.tag{background:var(--tag-bg);color:var(--tag-tx)}
+
+/* presets */
+.presets{display:flex;gap:10px;flex-wrap:wrap}
+.preset{border:1px solid var(--rule);border-radius:6px;padding:12px 14px;min-width:190px;
+  cursor:pointer;background:#fff}
+.preset:hover{border-color:var(--navy-hi);background:#FAFCFE}
+.preset[aria-pressed="true"]{border:2px solid var(--navy);background:var(--ai-bg);padding:11px 13px}
+.preset .n{font-weight:600;font-size:13.5px}
+.preset .d{font-size:12px;color:var(--slate);margin-top:3px;line-height:1.45}
+.preset .c{font-size:11.5px;color:var(--slate-2);margin-top:6px}
+
+/* flag rows */
+.grp{border-bottom:1px solid var(--rule)}
+.grp:last-child{border-bottom:0}
+.grp-h{padding:11px 18px;background:var(--panel);display:flex;justify-content:space-between;
+  align-items:center;gap:12px;font-weight:600;font-size:12.5px;color:var(--slate);
+  letter-spacing:.02em}
+.row{display:grid;grid-template-columns:52px 1fr 190px 130px;gap:14px;align-items:start;
+  padding:13px 18px;border-bottom:1px solid var(--rule-2)}
+.row:last-child{border-bottom:0}
+.row.child{padding-left:46px;grid-template-columns:52px 1fr 190px 130px;background:#FDFEFF}
+.row.off{background:#FAFBFC}
+.row.off .name{color:var(--slate)}
+.name{font-weight:600;font-size:13.5px}
+.desc{color:var(--slate);font-size:12.5px;margin-top:3px;line-height:1.5}
+.meta{font-size:11.5px;color:var(--slate-2);margin-top:5px}
+.note{font-size:12px;color:var(--der-tx);background:var(--der-bg);border-radius:4px;
+  padding:5px 9px;margin-top:7px;display:inline-block}
+.dep{font-size:11.5px;color:var(--slate);margin-top:5px}
+.dep b{color:var(--ink)}
+
+/* switch */
+.sw{position:relative;width:42px;height:24px;flex-shrink:0;margin-top:2px}
+.sw input{opacity:0;width:0;height:0}
+.track{position:absolute;inset:0;background:#C9D2DC;border-radius:12px;cursor:pointer;
+  transition:background .15s}
+.track::after{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;
+  border-radius:50%;transition:transform .15s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.sw input:checked + .track{background:var(--pos)}
+.sw input:checked + .track::after{transform:translateX(18px)}
+.sw input:focus-visible + .track{outline:2px solid var(--navy);outline-offset:2px}
+.sw input:disabled + .track{opacity:.4;cursor:not-allowed}
+
+.cost{font-size:11.5px;color:var(--slate);text-align:right}
+.cost b{color:var(--ink);font-weight:600}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 20px;
+  background:var(--panel);border-top:1px solid var(--rule);flex-wrap:wrap}
+.count{font-size:12.5px;color:var(--slate)}
+.count b{color:var(--ink)}
+.warnbox{display:flex;gap:10px;align-items:flex-start;background:var(--der-bg);
+  border:1px solid #EDD9AE;border-radius:5px;padding:11px 14px;font-size:12.5px;
+  color:#6B4A08;margin:0 20px 16px;line-height:1.55}
+.hist{font-size:12.5px}
+.hist td{padding:8px 10px;border-bottom:1px solid var(--rule-2)}
+.hist th{text-align:left;font-size:11px;letter-spacing:.03em;color:#DCE4EE;font-weight:600;
+  padding:9px 10px;background:var(--navy)}
+table{width:100%;border-collapse:collapse}
+.modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(520px,94vw);
+  background:#fff;border-radius:8px;box-shadow:0 18px 60px rgba(16,28,44,.26);z-index:31;
+  display:none}
+.modal.on{display:block}
+.scrim{position:fixed;inset:0;background:rgba(16,28,44,.30);z-index:30;display:none}
+.scrim.on{display:block}
+.m-head{padding:15px 20px;border-bottom:1px solid var(--rule);font-weight:600}
+.m-body{padding:18px 20px}
+.m-foot{padding:13px 20px;border-top:1px solid var(--rule);display:flex;justify-content:flex-end;gap:8px}
+label.fld{display:block;font-size:12px;color:var(--slate);margin-bottom:5px}
+input[type=text]{width:100%}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">Practice Management</div>
+  <div class="right">As of 30 Jun 2026</div>
+</div>
+
+<nav class="nav" role="tablist">
+  <button role="tab" aria-selected="false">Practice Management Dashboard</button>
+  <button role="tab" aria-selected="false">iPerform Advisor AI Insights</button>
+  <button role="tab" aria-selected="false">Documents &amp; Rules</button>
+  <button role="tab" aria-selected="false">Rule Versions</button>
+  <button role="tab" aria-selected="false">Trace</button>
+  <button role="tab" aria-selected="true">Settings</button>
+</nav>
+
+<div class="wrap">
+
+  <div class="pagehead">
+    <div>
+      <div class="t">Feature Flags</div>
+      <div class="m">Turn sections and features on or off. Off means the section is hidden
+        <b>and its queries do not run</b> &mdash; nothing is computed for a hidden section.</div>
+    </div>
+    <div class="ctl">
+      <button class="btn">View Change History</button>
+      <button class="btn primary" id="save" disabled>Save Changes</button>
+    </div>
+  </div>
+
+  <!-- ============ PRESETS ============ -->
+  <div class="card">
+    <div class="card-h">
+      <div><h2>Presets</h2><p>Saved configurations. Selecting one sets every flag below; you can then adjust individually.</p></div>
+      <button class="btn sm">Save current as preset&hellip;</button>
+    </div>
+    <div class="card-b">
+      <div class="presets">
+        <button class="preset" aria-pressed="true" onclick="pick(this)">
+          <div class="n">Full</div>
+          <div class="d">Everything on. Use this for internal testing and verification.</div>
+          <div class="c">18 of 18 features on</div>
+        </button>
+        <button class="preset" aria-pressed="false" onclick="pick(this)">
+          <div class="n">Client Demo</div>
+          <div class="d">The agreed demo scope. Trace and dummy CRM data hidden.</div>
+          <div class="c">14 of 18 features on</div>
+        </button>
+        <button class="preset" aria-pressed="false" onclick="pick(this)">
+          <div class="n">Minimal</div>
+          <div class="d">Chart and product table only. Nothing AI-generated.</div>
+          <div class="c">5 of 18 features on</div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ FLAGS ============ -->
+  <div class="card">
+    <div class="card-h">
+      <div><h2>Features</h2><p>Grouped by page. A section turned off hides its sub-features too.</p></div>
+      <div class="ctl">
+        <input type="text" placeholder="Filter features&hellip;" style="width:200px">
+        <select><option>All features</option><option>On only</option><option>Off only</option></select>
+      </div>
+    </div>
+
+    <div class="card-b flush">
+
+      <!-- Practice dashboard -->
+      <div class="grp">
+        <div class="grp-h"><span>Practice Management Dashboard</span><span>6 of 7 on</span></div>
+
+        <div class="row">
+          <label class="sw"><input type="checkbox" checked onchange="dirty()"><span class="track"></span></label>
+          <div>
+            <div class="name">Revenue Bar Chart</div>
+            <div class="desc">Month-over-month bars with transition arrows and AUM. Drives every
+              section below &mdash; turning this off leaves no way to select a transition.</div>
+            <div class="dep"><b>Required by:</b> Product Table, AI Insights, Drivers, Exceptions</div>
+          </div>
+          <div><span class="chip on">On</span></div>
+          <div class="cost">&mdash;</div>
+        </div>
+
+        <div class="row">
+          <label class="sw"><input type="checkbox" checked onchange="dirty()"><span class="track"></span></label>
+          <div>
+            <div class="name">Product Contribution Table</div>
+            <div class="desc">Accounts, trades and revenue per product with month-over-month deltas.</div>
+          </div>
+          <div><span class="chip on">On</span></div>
+          <div class="cost">&mdash;</div>
+        </div>
+
+        <div class="row child">
+          <label class="sw"><input type="checkbox" checked onchange="dirty()"><span class="track"></span></label>
+          <div>
+            <div class="name">Top / Bottom Advisors</div>
+            <div class="desc">Per-product ranking of the ten highest and lowest contributing advisors.</div>
+          </div>
+          <div><span class="chip on">On</span></div>
+          <div class="cost">&mdash;</div>
+        </div>
+
+        <div class="row">
+          <label class="sw"><input type="checkbox" checked onchange="dirty()"><span class="track"></span></label>
+          <div>
+            <div class="name">AI Insights</div>
+            <div class="desc">Generated narrative with rule citations for the selected transition.</div>
+            <div class="meta">Last generated 13 Aug 2026, 09:22 &middot; rule set v1</div>
+          </div>
+          <div><span class="chip on">On</span></div>
+          <div class="cost"><b>~$0.18</b><br>per transition</div>
+        </div>
+
+        <div class="row">
+          <label class="sw"><input type="checkbox" checked onchange="dirty()"><span class="track"></span></label>
+          <div>
+            <div class="name">Drivers</div>
+            <div class="desc">Ranked drivers with evidence, By Driver and By Product views.</div>
+          </div>
+          <div><span class="chip on">On</span></div>
+          <div class="cost">&mdash;</div>
+        </div>
+
+        <div class="row">
+          <label class="sw"><input type="checkbox" checked onchange="dirty()"><span class="track"></span></label>
+          <div>
+            <div class="name">Non-Credited Revenue Analysis</div>
+            <div class="desc">Why revenue did not count, grouped by reason code, with per-cause detail.</div>
+          </div>
+          <div><span class="chip on">On</span></div>
+          <div class="cost">&mdash;</div>
+        </div>
+
+        <div class="row off">
+          <label class="sw"><input type="checkbox" onchange="dirty()"><span class="track"></span></label>
+          <div>
+            <div class="name">Exceptions</div>
+            <div class="desc">Where the plan expects something the data does not show, with severity.</div>
+            <div class="note">Turned off 12 Aug 2026 by J. Mohan &mdash; &ldquo;client said it
+              duplicates the drivers section; revisit after the next review&rdquo;</div>
+          </div>
+          <div><span class="chip off">Off</span></div>
+          <div class="cost">&mdash;</div>
+        </div>
+      </div>
+
+      <!-- Advisor page -->
+      <div class="grp">
+        <div class="grp-h"><span>iPerform Advisor AI Insights</span><span>4 of 5 on</span></div>
+
+        <div class="row">
+          <label class="sw"><input type="checkbox" checked onchange="dirty()"><span class="track"></span></label>
+          <div><div class="name">Advisor Bar Chart &amp; Metrics</div>
+            <div class="desc">Per-advisor revenue, AUM, NCF, account lifecycle counts.</div></div>
+          <div><span class="chip on">On</span></div>
+          <div class="cost">&mdash;</div>
+        </div>
+
+        <div class="row">
+          <label class="sw"><input type="checkbox" checked onchange="dirty()"><span class="track"></span></label>
+          <div><div class="name">Drivers &mdash; Compare Two Transitions</div>
+            <div class="desc">Side-by-side comparison of two month transitions for one advisor.</div></div>
+          <div><span class="chip on">On</span></div>
+          <div class="cost">&mdash;</div>
+        </div>
+
+        <div class="row">
+          <label class="sw"><input type="checkbox" checked onchange="dirty()"><span class="track"></span></label>
+          <div><div class="name">Peer Ranking</div>
+            <div class="desc">Where this advisor sits in the cohort on revenue, growth and discount rate.</div></div>
+          <div><span class="chip on">On</span></div>
+          <div class="cost">&mdash;</div>
+        </div>
+
+        <div class="row">
+          <label class="sw"><input type="checkbox" checked onchange="dirty()"><span class="track"></span></label>
+          <div><div class="name">Coaching &amp; Opportunities</div>
+            <div class="desc">Coaching drawn from guidance documents; opportunities from CRM.</div></div>
+          <div><span class="chip on">On</span></div>
+          <div class="cost"><b>~$0.06</b><br>per advisor</div>
+        </div>
+
+        <div class="row off">
+          <label class="sw"><input type="checkbox" onchange="dirty()"><span class="track"></span></label>
+          <div>
+            <div class="name">CRM Opportunities</div>
+            <div class="desc">Pipeline data joined through the household relationship.</div>
+            <div class="note">Off &mdash; data is placeholder until the CRM feed arrives. Turning
+              this on shows figures marked <b>Dummy Data</b>.</div>
+          </div>
+          <div><span class="chip off">Off</span></div>
+          <div class="cost">&mdash;</div>
+        </div>
+      </div>
+
+      <!-- Global -->
+      <div class="grp">
+        <div class="grp-h"><span>Global</span><span>4 of 6 on</span></div>
+
+        <div class="row">
+          <label class="sw"><input type="checkbox" checked onchange="dirty()"><span class="track"></span></label>
+          <div><div class="name">Drill-Down Panel</div>
+            <div class="desc">Product &rarr; advisor &rarr; account &rarr; transaction chain from any change figure.</div></div>
+          <div><span class="chip on">On</span></div>
+          <div class="cost"><b>~$0.12</b><br>per drill-down</div>
+        </div>
+
+        <div class="row">
+          <label class="sw"><input type="checkbox" checked onchange="dirty()"><span class="track"></span></label>
+          <div><div class="name">Export &mdash; PDF, PowerPoint, Excel, CSV</div>
+            <div class="desc">Export any section exactly as displayed.</div></div>
+          <div><span class="chip on">On</span></div>
+          <div class="cost">&mdash;</div>
+        </div>
+
+        <div class="row">
+          <label class="sw"><input type="checkbox" checked onchange="dirty()"><span class="track"></span></label>
+          <div><div class="name">Tooltips</div>
+            <div class="desc">Hover definitions for metrics, drivers, severities and provenance chips.</div></div>
+          <div><span class="chip on">On</span></div>
+          <div class="cost">&mdash;</div>
+        </div>
+
+        <div class="row">
+          <label class="sw"><input type="checkbox" checked onchange="dirty()"><span class="track"></span></label>
+          <div><div class="name">Chat</div>
+            <div class="desc">Ask questions about the loaded data, with stored conversation context.</div></div>
+          <div><span class="chip on">On</span></div>
+          <div class="cost"><b>~$0.02</b><br>per message</div>
+        </div>
+
+        <div class="row off">
+          <label class="sw"><input type="checkbox" onchange="dirty()"><span class="track"></span></label>
+          <div>
+            <div class="name">Trace &amp; Cost</div>
+            <div class="desc">LLM turn log, token counts and cost per run.</div>
+            <div class="note">Off for client-facing use &mdash; internal diagnostics.</div>
+          </div>
+          <div><span class="chip off">Off</span></div>
+          <div class="cost">&mdash;</div>
+        </div>
+
+        <div class="row">
+          <label class="sw"><input type="checkbox" disabled checked><span class="track"></span></label>
+          <div>
+            <div class="name">Numeric Verification Guardrail</div>
+            <div class="desc">Every figure in generated prose must trace to a query result.</div>
+            <div class="dep"><b>Cannot be turned off.</b> Without it a narrative could contain a
+              figure nobody computed.</div>
+          </div>
+          <div><span class="chip on">Always On</span></div>
+          <div class="cost">&mdash;</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="warnbox">
+      <div><b>A feature that stays off stops being tested.</b> Verification scripts always run with
+        every flag on, so hidden sections cannot break silently &mdash; but a section left off for
+        months will not have been seen by anyone. Review this page before each client session.</div>
+    </div>
+
+    <div class="bar">
+      <div class="count"><b>15</b> of <b>18</b> features on &middot; <b>3</b> off &middot;
+        <span style="color:var(--slate-2)">ceiling 20 &mdash; add a feature flag only when a client
+        has actually asked for something to be removable</span></div>
+      <div class="ctl">
+        <button class="btn">Reset to preset</button>
+        <button class="btn primary" disabled>Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ HISTORY ============ -->
+  <div class="card">
+    <div class="card-h">
+      <div><h2>Change History</h2><p>Every flag change, who made it and why. Notes are required.</p></div>
+    </div>
+    <div class="card-b flush">
+      <table class="hist">
+        <thead><tr><th style="width:15%">When</th><th style="width:20%">Feature</th>
+          <th style="width:9%">Change</th><th style="width:12%">By</th><th>Reason</th></tr></thead>
+        <tbody>
+          <tr><td>12 Aug 2026, 16:40</td><td>Exceptions</td>
+            <td><span class="chip off">Off</span></td><td>J. Mohan</td>
+            <td>Client said it duplicates the drivers section; revisit after the next review</td></tr>
+          <tr><td>11 Aug 2026, 09:15</td><td>CRM Opportunities</td>
+            <td><span class="chip off">Off</span></td><td>J. Mohan</td>
+            <td>Placeholder data &mdash; hide until the real CRM feed arrives</td></tr>
+          <tr><td>11 Aug 2026, 09:14</td><td>Trace &amp; Cost</td>
+            <td><span class="chip off">Off</span></td><td>J. Mohan</td>
+            <td>Internal diagnostics, not for the client session</td></tr>
+          <tr><td>10 Aug 2026, 22:02</td><td>Peer Ranking</td>
+            <td><span class="chip on">On</span></td><td>J. Mohan</td>
+            <td>Added for the advisor page &mdash; client reaction was positive</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- reason modal -->
+<div class="scrim" id="scrim" onclick="closeM()"></div>
+<div class="modal" id="reason">
+  <div class="m-head">Why are you turning this off?</div>
+  <div class="m-body">
+    <p style="margin:0 0 14px;font-size:13px;color:var(--slate)">
+      A note is required. Six weeks from now this is the only record of why the section disappeared.</p>
+    <label class="fld">Reason</label>
+    <input type="text" placeholder="e.g. client said it duplicates the drivers section">
+  </div>
+  <div class="m-foot">
+    <button class="btn" onclick="closeM()">Cancel</button>
+    <button class="btn primary" onclick="closeM()">Turn Off</button>
+  </div>
+</div>
+
+<script>
+function pick(b){
+  document.querySelectorAll('.preset').forEach(p=>p.setAttribute('aria-pressed','false'));
+  b.setAttribute('aria-pressed','true');
+  dirty();
+}
+function dirty(){
+  document.querySelectorAll('.btn.primary[disabled]').forEach(b=>{
+    if(b.textContent.trim()==='Save Changes') b.disabled=false;
+  });
+}
+function closeM(){
+  document.getElementById('reason').classList.remove('on');
+  document.getElementById('scrim').classList.remove('on');
+}
+document.querySelectorAll('.row .sw input:not([disabled])').forEach(i=>{
+  i.addEventListener('change',function(){
+    if(!this.checked){
+      document.getElementById('reason').classList.add('on');
+      document.getElementById('scrim').classList.add('on');
+    }
+  });
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeM();});
+</script>
+</body>
+</html>
