@@ -2,104 +2,120 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  type AdvisorsResponse,
-  type ClassFilter,
+  type ChartView,
+  type DashboardChart,
+  type DashboardTable,
+  type DashboardTableRow,
   type MonthRow,
-  type ProductContribution,
-  type Transition,
-  getAdvisors,
+  getDashboardChart,
+  getDashboardTable,
   getMonths,
-  getProductContribution,
-  getTransitions,
 } from "@/lib/api";
 import DrilldownPanel, { useDrilldownPanel } from "@/components/DrilldownPanel";
 import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
-import ProductTable from "@/components/ProductTable";
-import RevenueBarChart from "@/components/RevenueBarChart";
+import { Delta } from "@/components/Num";
+import TransitionChart from "@/components/chart/TransitionChart";
+import ProductChangeTable, {
+  CLASS_LABELS,
+  groupingOptionsForView,
+} from "@/components/table/ProductChangeTable";
+import ExportMenu from "@/components/table/ExportMenu";
+import TopBottomModal from "@/components/table/TopBottomModal";
 
-const CLASS_OPTIONS: { value: ClassFilter; label: string }[] = [
-  { value: "all", label: "All Products" },
-  { value: "RECURRING", label: "Recurring Only" },
-  { value: "NON_RECURRING", label: "Non-Recurring Only" },
+/** Round A2B — Practice Management Dashboard (Subagent A owns this file).
+ *
+ * Firm-level only: no advisor dropdown anywhere on this page (2.1). One
+ * selected transition drives every section below the chart; the chart itself
+ * refetches only when the view changes (2.5).
+ */
+
+const VIEW_OPTIONS: { value: ChartView; label: string }[] = [
+  { value: "all", label: "All Products — Default" },
+  { value: "split", label: "All Products — Recurring / Non-Recurring" },
+  { value: "rec", label: "Recurring Only" },
+  { value: "nrec", label: "Non-Recurring Only" },
 ];
 
-export default function DashboardPage() {
-  const [advisors, setAdvisors] = useState<AdvisorsResponse | null>(null);
-  // pending filter selections vs the applied ones (Apply commits them)
-  const [advisorSel, setAdvisorSel] = useState("all");
-  const [classSel, setClassSel] = useState<ClassFilter>("all");
-  const [applied, setApplied] = useState<{ advisor: string; cls: ClassFilter }>({
-    advisor: "all",
-    cls: "all",
-  });
+/** The export provider's view names differ from the UI's (providers.py):
+ * rec → recurring, nrec → non_recurring. */
+const EXPORT_VIEW: Record<ChartView, string> = {
+  all: "all",
+  split: "split",
+  rec: "recurring",
+  nrec: "non_recurring",
+};
 
+export default function DashboardPage() {
+  const [view, setView] = useState<ChartView>("all");
+  const [chart, setChart] = useState<DashboardChart | null>(null);
+  const [chartError, setChartError] = useState<string | null>(null);
+  const [selected, setSelected] = useState(0); // index into chart.transitions
   const [months, setMonths] = useState<MonthRow[]>([]);
-  const [transitions, setTransitions] = useState<Transition[]>([]);
-  const [selected, setSelected] = useState(0); // default: the FIRST transition
-  const [contribution, setContribution] = useState<ProductContribution | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [table, setTable] = useState<DashboardTable | null>(null);
+  const [tableError, setTableError] = useState<string | null>(null);
+  const [grouping, setGrouping] = useState<string>(groupingOptionsForView("all")[0]);
+  const [tbRow, setTbRow] = useState<DashboardTableRow | null>(null);
   // Round G 4.2 — drill-down side panel (general component; keyed by scope)
   const { target: drillTarget, openPanel, closePanel } = useDrilldownPanel();
 
+  // month_name lookup (one fetch)
   useEffect(() => {
-    getAdvisors().then(setAdvisors).catch(() => setAdvisors(null));
+    getMonths()
+      .then((r) => setMonths(r.months))
+      .catch(() => setMonths([]));
   }, []);
 
+  // 2.5 — the chart fetches only when the view changes; selecting a
+  // transition never refetches it.
   useEffect(() => {
     let cancelled = false;
-    setError(null);
-    Promise.all([getMonths(applied.advisor), getTransitions(applied.advisor)])
-      .then(([monthsRes, transRes]) => {
+    setChartError(null);
+    getDashboardChart(view)
+      .then((d) => {
         if (cancelled) return;
-        setMonths(monthsRes.months);
-        setTransitions(transRes.transitions);
-        setSelected(0);
+        setChart(d);
+        setSelected((s) => (s < d.transitions.length ? s : 0));
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e?.message || e));
+        if (!cancelled) setChartError(String(e?.message || e));
       });
     return () => {
       cancelled = true;
     };
-  }, [applied]);
+  }, [view]);
 
-  const activeTransition = transitions[selected];
+  // 3.2 — the grouping option set changes with the chart view.
+  useEffect(() => {
+    setGrouping(groupingOptionsForView(view)[0]);
+  }, [view]);
 
+  const activeTransition = chart?.transitions[selected] ?? null;
+
+  // The table fetches on (view, selected transition) change.
   useEffect(() => {
     if (!activeTransition) {
-      setContribution(null);
+      setTable(null);
       return;
     }
     let cancelled = false;
-    getProductContribution(
-      activeTransition.from_month_id,
-      activeTransition.to_month_id,
-      applied.advisor,
-      applied.cls,
-    )
-      .then((data) => {
-        if (!cancelled) setContribution(data);
+    setTableError(null);
+    getDashboardTable(activeTransition.from, activeTransition.to, view)
+      .then((d) => {
+        if (!cancelled) setTable(d);
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e?.message || e));
+        if (!cancelled) setTableError(String(e?.message || e));
       });
     return () => {
       cancelled = true;
     };
-  }, [activeTransition, applied]);
+  }, [activeTransition, view]);
 
   const monthName = useCallback(
     (id: string) => months.find((m) => m.month_id === id)?.month_name || id,
     [months],
   );
-
-  const advisorLabel = useMemo(() => {
-    if (applied.advisor === "all")
-      return `All Advisors${advisors ? ` (${advisors.cohort_count})` : ""}`;
-    const advisor = advisors?.advisors.find((a) => a.advisor_sid === applied.advisor);
-    return advisor ? `${advisor.advisor_sid} · ${advisor.advisor_name || advisor.advisor_sid}` : applied.advisor;
-  }, [applied.advisor, advisors]);
 
   const rangeLabel = useMemo(() => {
     if (!months.length) return "";
@@ -107,49 +123,71 @@ export default function DashboardPage() {
     return `${first}–${months[months.length - 1].month_name}`;
   }, [months]);
 
+  const meta = [
+    "Firm-level credited revenue",
+    table ? `${table.total.advisor_count} advisors` : null,
+    rangeLabel || null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const openDrill = useCallback(
+    (row: DashboardTableRow) => {
+      if (!activeTransition) return;
+      openPanel({
+        scope: "product",
+        scope_key: row.group_id,
+        from: activeTransition.from,
+        to: activeTransition.to,
+        labels: {
+          title: `${row.display_prefix || ""}${row.group_name}`,
+          from: monthName(activeTransition.from),
+          to: monthName(activeTransition.to),
+          sub: CLASS_LABELS[row.class_id],
+        },
+      });
+    },
+    [activeTransition, monthName, openPanel],
+  );
+
   return (
     <section>
-      <PageHeader title="Practice Management Dashboard" meta={`${advisorLabel}${rangeLabel ? ` · ${rangeLabel}` : ""}`}>
-        <select value={advisorSel} onChange={(e) => setAdvisorSel(e.target.value)}>
-          <option value="all">All Advisors{advisors ? ` (${advisors.cohort_count})` : ""}</option>
-          {(advisors?.advisors ?? [])
-            .filter((a) => a.in_cohort)
-            .map((a) => (
-              <option key={a.advisor_sid} value={a.advisor_sid}>
-                {a.advisor_sid} · {a.advisor_name || a.advisor_sid}
-              </option>
-            ))}
-        </select>
-        <select value={classSel} onChange={(e) => setClassSel(e.target.value as ClassFilter)}>
-          {CLASS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-        <button className="btn primary" onClick={() => setApplied({ advisor: advisorSel, cls: classSel })}>
-          Apply
-        </button>
-      </PageHeader>
+      <PageHeader title="Practice Management Dashboard" meta={meta} />
 
       <div className="card">
         <div className="card-h">
           <div>
             <h2>Credited Revenue — Month over Month</h2>
             <p>
-              Arrows show the change between consecutive months. Select an arrow to load the views
-              below. Negative values are shown in parentheses.
+              Select an arrow to focus that transition. Every view below updates. Negative values
+              are shown in parentheses.
             </p>
           </div>
+          <div className="ctl">
+            <select
+              className="sel-strong"
+              value={view}
+              onChange={(e) => setView(e.target.value as ChartView)}
+              aria-label="Product view"
+            >
+              {VIEW_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        {error ? (
-          <EmptyState title="Data Unavailable" message={error} />
-        ) : months.length ? (
-          <RevenueBarChart
-            months={months}
-            transitions={transitions}
+        {chartError ? (
+          <EmptyState title="Data Unavailable" message={chartError} />
+        ) : chart ? (
+          <TransitionChart
+            months={chart.months}
+            transitions={chart.transitions}
+            view={view}
             selected={selected}
             onSelect={setSelected}
+            monthName={monthName}
           />
         ) : (
           <EmptyState title="Loading" message="Fetching monthly revenue…" />
@@ -160,54 +198,79 @@ export default function DashboardPage() {
         <div className="card-h">
           <div>
             <h2>
-              Product Contribution
+              What Is Driving the Change
               {activeTransition
-                ? ` — ${monthName(activeTransition.from_month_id)} → ${monthName(activeTransition.to_month_id)}`
+                ? ` — ${monthName(activeTransition.from)} → ${monthName(activeTransition.to)}`
                 : ""}
             </h2>
             <p>
-              {activeTransition
-                ? `Share is of the ${monthName(activeTransition.to_month_id)} total. Every figure is a query result.`
-                : "Select a transition above."}
+              {activeTransition ? (
+                <>
+                  Product-type contributions to the change of{" "}
+                  <Delta value={activeTransition.change_amt} />{" "}
+                  <Delta kind="pct" value={activeTransition.change_pct} />
+                  {table ? <> across {table.total.advisor_count} advisors</> : null}.
+                </>
+              ) : (
+                "Select a transition above."
+              )}
             </p>
           </div>
-        </div>
-        <div className="card-b flush">
-          {contribution && activeTransition ? (
-            <>
-              <ProductTable
-                data={contribution}
-                fromLabel={monthName(contribution.from_month_id)}
-                toLabel={monthName(contribution.to_month_id)}
-                onDrill={(row, section) =>
-                  openPanel({
-                    scope: "product",
-                    scope_key: row.group_id,
-                    from: contribution.from_month_id,
-                    to: contribution.to_month_id,
-                    labels: {
-                      title: row.group_name,
-                      from: monthName(contribution.from_month_id),
-                      to: monthName(contribution.to_month_id),
-                      sub: section.class_name,
-                    },
-                  })
-                }
+          <div className="ctl">
+            <select
+              value={grouping}
+              onChange={(e) => setGrouping(e.target.value)}
+              aria-label="Table grouping"
+            >
+              {groupingOptionsForView(view).map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+            {activeTransition ? (
+              <ExportMenu
+                section="dashboard_table"
+                params={{
+                  from: activeTransition.from,
+                  to: activeTransition.to,
+                  view: EXPORT_VIEW[view],
+                }}
               />
-              <div className="note">
-                Credited revenue is the sum of post-split credited amount where the reason code is
-                empty. Non-credited rows are held in the graph and available to the agent, but are
-                not included here.
-              </div>
-            </>
+            ) : null}
+          </div>
+        </div>
+        <div className="card-b flush" style={{ overflowX: "auto" }}>
+          {table && activeTransition ? (
+            <ProductChangeTable
+              data={table}
+              grouping={grouping}
+              fromLabel={monthName(activeTransition.from)}
+              toLabel={monthName(activeTransition.to)}
+              onDrill={openDrill}
+              onTopBottom={setTbRow}
+            />
           ) : (
             <EmptyState
-              title={error ? "Data Unavailable" : "Loading"}
-              message={error ?? "Fetching product contribution…"}
+              title={tableError ? "Data Unavailable" : "Loading"}
+              message={tableError ?? "Fetching product contributions…"}
             />
           )}
         </div>
       </div>
+
+      {/* Round A2B Task 5: insights / drivers / noncredited / exceptions sections are composed here by the main thread */}
+
+      {tbRow && activeTransition ? (
+        <TopBottomModal
+          row={tbRow}
+          from={activeTransition.from}
+          to={activeTransition.to}
+          fromLabel={monthName(activeTransition.from)}
+          toLabel={monthName(activeTransition.to)}
+          onClose={() => setTbRow(null)}
+        />
+      ) : null}
 
       <DrilldownPanel target={drillTarget} onClose={closePanel} />
     </section>
