@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rule Set Versions — Mockup (Round C docs/rules, task 7)</title>
+<!--
+  CONTRACT for the Rule Versions screen (frontend/app/rules/page.tsx) as built
+  in Round C (docs/rules) task 7. Captures:
+    7.1  every version — v0 and SUPERSEDED included — expands to full rule
+         detail (statement, worked example, provenance chip, applies_to chip,
+         severity chip, driver label+definition, citation, compiled plan with
+         plain-English explanation) and every rule has "Edit → new version"
+    7.2  the edit dialog (RuleEditDialog.tsx): name/statement/example/driver
+         label (read-time registry, NO version)/driver definition/severity/
+         applies_to; a changed statement offers a recompile checkbox; active
+         state is a separate Deactivate/Reactivate button + ReasonModal
+    2.1  Inactive rendering — amber, with recorded who/when/why — visually
+         distinct from Superseded
+    7.3  ticking two versions renders the comparison card: added / removed /
+         modified with the SPECIFIC fields that differ (client-side diff,
+         matched by rule_code; identity/bookkeeping churn ignored)
+    7.4  the Round H never-fired card stays at the bottom
+-->
+<style>
+:root{
+  --navy:#16365C; --navy-hi:#1E4675; --ink:#1A2430; --slate:#5A6B7D; --slate-2:#8A9AAA;
+  --rule:#E2E7ED; --rule-2:#EFF2F6; --canvas:#F4F6F9; --panel:#FBFCFD;
+  --pos:#157F4C; --pos-bg:#E8F5EE; --pos-br:#B5D9C6;
+  --neg:#B3261E; --neg-bg:#FBECEA; --neg-br:#EFC6C2;
+  --der-bg:#FBF0DC; --der-tx:#8A5A00;
+  --tag-bg:#EDF1F5; --tag-tx:#4A5B6D;
+  --ai:#4C4EA3; --ai-bg:#EEEEF8; --ai-br:#C9CAE8;
+  --sev-crit:#8E1B14; --sev-crit-bg:#F9E5E3; --sev-high:#B3541E; --sev-high-bg:#FBEDE3;
+  --sev-mod:#8A5A00; --sev-mod-bg:#FBF0DC; --sev-low:#2F5E88; --sev-low-bg:#E7EFF7;
+  --sev-info:#4A5B6D; --sev-info-bg:#EDF1F5;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+h2{margin:0;font-weight:600;letter-spacing:-.01em}
+.topbar{background:var(--navy);color:#fff;padding:0 24px;height:50px;display:flex;
+  align-items:center;justify-content:space-between}
+.brand{font-weight:600;font-size:16px}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 24px 64px}
+.pagehead{margin:0 2px 16px}
+.pagehead .t{font-size:19px;font-weight:600}
+.pagehead .m{font-size:12.5px;color:var(--slate);margin-top:3px}
+.card{background:#fff;border:1px solid var(--rule);border-radius:6px;margin-bottom:16px}
+.card-h{padding:15px 20px;border-bottom:1px solid var(--rule);display:flex;
+  justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.card-h h2{font-size:16px}
+.card-h p{margin:4px 0 0;color:var(--slate);font-size:12.5px;max-width:760px}
+.card-b{padding:16px 20px}
+.btn{font:inherit;font-size:13px;border:1px solid var(--rule);background:#fff;color:var(--ink);
+  padding:7px 12px;border-radius:4px;cursor:pointer}
+.btn.primary{background:var(--navy);color:#fff;border-color:var(--navy);font-weight:500}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;
+  padding:3px 7px;border-radius:3px;letter-spacing:.03em;text-transform:uppercase}
+.chip.real{background:var(--pos-bg);color:var(--pos)}
+.chip.derived{background:var(--der-bg);color:var(--der-tx)}
+.chip.tag{background:var(--tag-bg);color:var(--tag-tx)}
+.chip.aigen{background:var(--ai-bg);color:var(--ai)}
+.chip.pos{background:var(--pos-bg);color:var(--pos)}
+.chip.neg{background:var(--neg-bg);color:var(--neg)}
+.chip.warn{background:var(--der-bg);color:var(--der-tx)}
+.chip.on{background:var(--pos-bg);color:var(--pos)}
+.sev{display:inline-flex;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:3px}
+.sev.crit{background:var(--sev-crit-bg);color:var(--sev-crit)}
+.sev.high{background:var(--sev-high-bg);color:var(--sev-high)}
+.sev.low{background:var(--sev-low-bg);color:var(--sev-low)}
+.vers{list-style:none;margin:0;padding:0}
+.vers>li{border:1px solid var(--rule);border-radius:6px;padding:14px 16px;margin-bottom:10px}
+.vers>li.cur{border-color:var(--pos-br);background:#FBFEFC}
+.meta{color:var(--slate);font-size:12px;margin-top:3px}
+.rule{border:1px solid var(--rule);border-radius:5px;padding:15px 16px;margin:10px 0;background:#fff}
+.rule.conflict{border-left:3px solid var(--neg)}
+.rule-h{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.rule-t{font-weight:600;font-size:13.5px}
+.pfx{color:var(--slate-2);font-weight:500;font-size:12px}
+.rule-d{font-size:13px;margin:7px 0 10px;line-height:1.6}
+.eg{background:var(--panel);border:1px solid var(--rule-2);border-radius:4px;
+  font-size:12.5px;padding:8px 10px;margin:6px 0;color:var(--ink)}
+.eg.inactive{border-left:3px solid var(--der-tx)}
+.tech summary{cursor:pointer;font-size:12.5px;color:var(--slate);margin-top:6px}
+.tech pre{font:11px/1.5 ui-monospace,Menlo,Consolas,monospace;background:var(--panel);
+  border:1px solid var(--rule);border-radius:4px;padding:8px 10px;overflow-x:auto}
+.note{background:var(--panel);border:1px solid var(--rule);border-radius:5px;
+  font-size:12.5px;padding:9px 12px;margin-bottom:12px;color:var(--slate)}
+.strike{text-decoration:line-through;color:var(--slate)}
+/* modal (edit dialog) shown inline for the mockup */
+.modal-demo{border:1px solid var(--rule);border-radius:8px;background:#fff;max-width:680px;
+  box-shadow:0 12px 40px rgba(16,28,44,.18);margin:8px 0}
+.m-head{padding:15px 20px;border-bottom:1px solid var(--rule);font-weight:600}
+.m-body{padding:16px 20px;display:grid;gap:10px}
+.m-foot{padding:13px 20px;border-top:1px solid var(--rule);display:flex;justify-content:flex-end;gap:8px}
+label.fld{font-size:12px;color:var(--slate);display:block}
+.fld input[type=text],.fld textarea,.fld select{width:100%;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;
+  border:1px solid var(--rule);border-radius:4px;padding:6px 8px;margin-top:3px;background:#fff}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chk{display:flex;gap:6px;align-items:flex-start;font-size:12px;color:var(--slate)}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="brand">iPerform — PCE Practice Demo</div><div style="font-size:12.5px;opacity:.9">Rule Set Versions</div></div>
+<div class="wrap">
+  <div class="pagehead">
+    <div class="t">Rule Set Versions</div>
+    <div class="m">Every insight records the version that produced it</div>
+  </div>
+
+  <!-- ============ Version list: EVERY version expandable, compare checkboxes ============ -->
+  <div class="card">
+    <div class="card-h">
+      <div>
+        <h2>Rule Set Versions</h2>
+        <p>Expand any version — v0 and superseded ones included — to see every rule it contains.
+           Versions are superseded, never deleted; edits mint a new version. Tick two versions to
+           compare them.</p>
+      </div>
+    </div>
+    <div class="card-b">
+      <ul class="vers">
+        <li class="cur">
+          <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start">
+            <div style="display:flex;gap:10px">
+              <input type="checkbox" checked title="Select two versions to compare" style="margin-top:3px">
+              <div>
+                <b>v4 · Published 2026-08-14T11:02:41Z</b>
+                <div class="meta">7 rules · approved by operator<br>edit of LOST_ACCOUNT</div>
+              </div>
+            </div>
+            <div style="text-align:right;white-space:nowrap">
+              <span class="chip pos">In Use</span>
+              <div style="margin-top:6px"><button class="btn">Collapse</button></div>
+            </div>
+          </div>
+
+          <!-- ============ 7.1 expanded rule rows — the full detail set ============ -->
+          <!-- An INACTIVE rule (2.1): amber Inactive chip + recorded who/when/why -->
+          <div class="rule">
+            <div class="rule-h">
+              <div class="rule-t">Lost Account <span class="pfx">(LOST_ACCOUNT)</span></div>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <span class="chip tag">TECH TEAM WRITTEN</span>          <!-- ProvenanceChip -->
+                <span class="chip aigen">Advisor V000002</span>          <!-- AppliesToChip -->
+                <span class="sev crit">Critical</span>                   <!-- SeverityChip -->
+                <span class="chip warn">Inactive</span>                  <!-- StatusChip: active=false -->
+                <button class="btn">Edit → new version</button>
+                <button class="btn">Reactivate</button>                  <!-- ReasonModal, reason REQUIRED -->
+              </div>
+            </div>
+            <div class="eg inactive"><b>Inactive</b> — not evaluated in new insight runs; still
+              queryable, and prior insights citing it stay valid.<br>
+              Reason: <i>paused while the comp team validates the prior-month logic</i> · by operator · 2026-08-14T10:58:02Z</div>
+            <div class="rule-d">An account with zero credited revenue this month that had credited
+              revenue in the prior month counts as lost.</div>
+            <div class="eg"><b>Driver:</b> Lost Accounts — An account with prior-month revenue and
+              none in the current month.</div>
+            <div class="eg"><b>Excludes accounts matched by:</b> TRANSFER_IN, TRANSFER_OUT</div>
+            <div class="eg">Example — <b>An account with $1,200 in May and $0 in June is lost for June.</b></div>
+            <div class="eg">Rule: <a href="#">Lost Account</a> · Tech team written — no document source</div>
+            <details class="tech" open>
+              <summary>Query this compiles to</summary>
+              <p style="font-size:12.5px;margin:6px 0">Sums the prior month's credited revenue for
+                accounts with zero credited revenue this month; fires when the prior sum is positive.</p>
+              <pre>{
+  "vertex": "account_month",
+  "compute": "sum(prior_credited_amt)",
+  "trigger": "value &gt; 0"
+}</pre>
+            </details>
+          </div>
+
+          <!-- A DOCUMENT_DERIVED rule with a citation -->
+          <div class="rule">
+            <div class="rule-h">
+              <div class="rule-t">Fee Sharing Threshold <span class="pfx">(FEE_SHARING_THRESHOLD)</span></div>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <span class="chip real">DOCUMENT DERIVED</span>
+                <span class="sev high">High</span>
+                <span class="chip on">PUBLISHED</span>
+                <button class="btn">Edit → new version</button>
+                <button class="btn">Deactivate</button>
+              </div>
+            </div>
+            <div class="rule-d">Fee sharing applies once combined production crosses the plan threshold.</div>
+            <div class="eg"><b>Driver:</b> Fee Sharing — Revenue shared under the plan's team split.</div>
+            <div class="eg">Rule: <a href="#">Fee Sharing Threshold</a> · Source:
+              <a href="#">2026 Changes FAQ · p. 13 · Fee Schedules</a></div>
+            <details class="tech"><summary>Query this compiles to</summary></details>
+          </div>
+
+          <!-- A guidance-only rule: PlanView's honest no-plan state -->
+          <div class="rule">
+            <div class="rule-h">
+              <div class="rule-t">Quarterly Billing Awareness <span class="pfx">(QTR_BILLING_NL)</span></div>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <span class="chip derived">MANUALLY WRITTEN-PRACTICE</span>
+                <span class="sev low">Low</span>
+                <span class="chip on">PUBLISHED</span>
+                <button class="btn">Edit → new version</button>
+                <button class="btn">Deactivate</button>
+              </div>
+            </div>
+            <div class="rule-d">Watch for products that bill quarterly — a gap month is timing, not loss.</div>
+            <details class="tech" open>
+              <summary>Query this compiles to</summary>
+              <p style="font-size:12.5px;color:var(--slate);margin:6px 0">Guidance only, not
+                computed — this rule has no query by design; its statement shapes the AI's
+                attention while investigating, and it can never produce a computed impact figure.</p>
+            </details>
+          </div>
+        </li>
+
+        <!-- v0: superseded but STILL fully expandable and editable (7.1) -->
+        <li>
+          <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start">
+            <div style="display:flex;gap:10px">
+              <input type="checkbox" checked style="margin-top:3px">
+              <div>
+                <b>v0 · Published 2026-08-11T18:20:07Z</b>
+                <div class="meta">6 rules · approved by system<br>v0 seed (B3.7)</div>
+              </div>
+            </div>
+            <div style="text-align:right;white-space:nowrap">
+              <span class="chip tag">Superseded</span>
+              <span class="chip derived">v0 Seed</span>
+              <div style="margin-top:6px"><button class="btn">View 6 rules</button></div>
+            </div>
+          </div>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ============ 7.3 Version comparison (VersionCompare.tsx) ============ -->
+  <div class="card">
+    <div class="card-h">
+      <div>
+        <h2>Version Comparison</h2>
+        <p>Rules added, removed and modified between the two selected versions, with the specific
+           fields that differ. Identity churn (rule keys, timestamps, compile stats) is ignored —
+           only meaningful changes show.</p>
+      </div>
+      <button class="btn">Clear selection</button>
+    </div>
+    <div class="card-b">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+        <b style="font-size:13px">v0 → v4</b>
+        <span class="chip pos">2 added</span>
+        <span class="chip neg">1 removed</span>
+        <span class="chip derived">1 modified</span>
+        <span class="chip tag">4 unchanged</span>
+      </div>
+      <div class="rule">
+        <div class="rule-h">
+          <div class="rule-t">Fee Schedule Variance <span class="pfx">(FEE_SCHEDULE_VARIANCE)</span></div>
+          <span class="chip pos">Added</span>
+        </div>
+        <div class="rule-d">An advisor whose book-wide average rate sits below the 145 bps standard.</div>
+      </div>
+      <div class="rule conflict">
+        <div class="rule-h">
+          <div class="rule-t">Retired Example <span class="pfx">(RETIRED_EXAMPLE)</span></div>
+          <span class="chip neg">Removed</span>
+        </div>
+        <div class="rule-d">Superseded logic no longer in the set.</div>
+      </div>
+      <div class="rule">
+        <div class="rule-h">
+          <div class="rule-t">Lost Account <span class="pfx">(LOST_ACCOUNT)</span></div>
+          <span class="chip derived">5 fields changed</span>
+        </div>
+        <div style="margin-top:6px">
+          <div class="eg"><b>severity</b>: <span class="strike">High</span> → <b>CRITICAL</b></div>
+          <div class="eg"><b>applies_to</b>: <span class="strike">ALL</span> → <b>ADVISOR</b></div>
+          <div class="eg"><b>applies_to_key</b>: <span class="strike">—</span> → <b>V000002</b></div>
+          <div class="eg"><b>active</b>: <span class="strike">true</span> → <b>false</b></div>
+          <div class="eg"><b>plan</b> — the compiled query changed
+            <details class="tech"><summary>Before / after plan JSON</summary></details></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 7.2 Edit dialog (RuleEditDialog.tsx), rendered inline ============ -->
+  <div class="card">
+    <div class="card-h"><div><h2>Edit dialog (RuleEditDialog.tsx)</h2>
+      <p>Opens from any rule's "Edit → new version". Saving creates a draft, (re)compiles when the
+         statement changed and the recompile box is ticked, approves and publishes the NEXT
+         version. The driver label alone is a read-time registry — no version mints for a rename.</p></div></div>
+    <div class="card-b">
+      <div class="modal-demo">
+        <div class="m-head">Edit Lost Account (LOST_ACCOUNT) → new version</div>
+        <div class="m-body">
+          <p style="margin:0;font-size:12.5px;color:var(--slate)">Rules are immutable — saving
+            creates a new draft, approves it and publishes the NEXT rule set version. The version
+            you opened is never mutated. The driver label alone is a read-time display registry:
+            renaming it changes every screen immediately without a version.</p>
+          <label class="fld">Rule name<input type="text" value="Lost Account"></label>
+          <label class="fld">Statement (plain English — the Rule Compiler compiles this)
+            <textarea rows="3">An account with zero credited revenue this month that had credited revenue in the prior month counts as lost.</textarea></label>
+          <div class="chk"><input type="checkbox" checked style="margin-top:2px">
+            <span><b>Recompile the plan</b> — the statement changed, which invalidates the compiled
+            query; the Rule Compiler agent generates a new plan before approval. Unchecked, the
+            draft is created but stays uncompiled in the draft pool and no version publishes.</span></div>
+          <label class="fld">Worked example
+            <textarea rows="2">An account with $1,200 in May and $0 in June is lost for June.</textarea></label>
+          <div class="two">
+            <label class="fld">Driver label (display registry — no version)
+              <input type="text" value="Lost Accounts"></label>
+            <label class="fld">Severity
+              <select><option>Critical</option><option>High</option><option>Moderate</option>
+                <option>Low</option><option>Info</option></select></label>
+          </div>
+          <label class="fld">Driver definition
+            <textarea rows="2">An account with prior-month revenue and none in the current month.</textarea></label>
+          <div class="two">
+            <label class="fld">Applies to (which entities SHOULD this rule apply to)
+              <select><option>All (default)</option><option>Practice</option>
+                <option selected>Advisor</option><option>Product</option></select></label>
+            <label class="fld">Advisor SID<input type="text" value="V000002"></label>
+          </div>
+        </div>
+        <div class="m-foot">
+          <button class="btn">Cancel</button>
+          <button class="btn primary">Save as new version</button>
+        </div>
+      </div>
+      <div class="note" style="margin-top:12px">Deactivate / Reactivate is NOT in this dialog — it
+        opens the shared ReasonModal (mandatory reason; Enter confirms, Escape cancels) and calls
+        PATCH /api/rules/{key}/active, which mints a version with who/when/why recorded.</div>
+    </div>
+  </div>
+
+  <!-- ============ 7.4 Round H never-fired card (unchanged) ============ -->
+  <div class="card">
+    <div class="card-h">
+      <div>
+        <h2>Rules That Never Fired</h2>
+        <p>Every rule in the latest published version, evaluated at practice scope and per advisor
+           across every month in the data. Zero matches everywhere means the rule is either wrong
+           or inapplicable to this data.</p>
+      </div>
+      <span class="chip neg">1 Never Fired</span>
+    </div>
+    <div class="card-b">
+      <div class="rule conflict">
+        <div class="rule-h">
+          <div class="rule-t">Departure Exception <span class="pfx">(DEPARTURE_EXCEPTION)</span></div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="chip tag">practice</span><span class="chip tag">advisor</span>
+            <span class="chip neg">0 matches</span>
+          </div>
+        </div>
+        <div class="rule-d">Zero matches across every month and scope — wrong or inapplicable to this data.</div>
+      </div>
+      <div class="note">Checked 6 months (202601 – 202606) across 20 advisors plus the practice scope.</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

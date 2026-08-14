@@ -6,29 +6,44 @@ import {
   type NeverFiredResponse,
   type RuleDetail,
   type RuleVersion,
-  approveRule,
-  compileRule,
-  editRule,
   getNeverFired,
   getRuleVersions,
   getRulesDetailed,
-  publishRules,
 } from "@/lib/api";
+import { RulesApiError, setRuleActive } from "@/lib/rulesApi";
 import Chip from "@/components/Chip";
 import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
+import RuleCitationLine from "@/components/RuleCitation";
+import AppliesToChip from "@/components/rules/AppliesToChip";
+import ProvenanceChip from "@/components/rules/ProvenanceChip";
+import ReasonModal from "@/components/rules/ReasonModal";
+import RuleEditDialog from "@/components/rules/RuleEditDialog";
+import SeverityChip from "@/components/rules/SeverityChip";
+import StatusChip from "@/components/rules/StatusChip";
+import PlanView from "@/components/rules/PlanView";
+import VersionCompare from "@/components/rules/VersionCompare";
 
-/** Rule Set Versions (4.6): expanding a version lists every rule — name, plain
- * description, source citation, compiled query, status. Edit never mutates:
- * it creates a new draft, approves it, and publishes the NEXT version. */
+/** Rule Set Versions — Round C (docs/rules) task 7.
+ * 7.1 EVERY version (v0 and superseded ones included) expands to its full
+ *     rules — statement, worked example, provenance, applies_to scope,
+ *     severity, driver, citation, compiled plan with explanation — and every
+ *     rule is editable; an edit mints a NEW version, never a mutation.
+ * 7.2 Editing runs through RuleEditDialog; active state through ReasonModal
+ *     (mandatory reason, who/when/why recorded).
+ * 7.3 Selecting two versions compares them client-side (VersionCompare).
+ * 7.4 The Round H never-fired card stays. */
 export default function RuleVersionsPage() {
   const [versions, setVersions] = useState<RuleVersion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rulesByVersion, setRulesByVersion] = useState<Record<string, RuleDetail[]>>({});
   const [openVersion, setOpenVersion] = useState<string | null>(null);
   const [editing, setEditing] = useState<RuleDetail | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [togglingActive, setTogglingActive] = useState<RuleDetail | null>(null);
+  const [activeBusy, setActiveBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // 7.3 — the two version ids picked for comparison, oldest-first when shown
+  const [compareSel, setCompareSel] = useState<string[]>([]);
   // Round H 2.4/4.3: rules with zero matches across the whole period
   const [neverFired, setNeverFired] = useState<NeverFiredResponse | null>(null);
   const [neverFiredError, setNeverFiredError] = useState<string | null>(null);
@@ -79,42 +94,62 @@ export default function RuleVersionsPage() {
     }
   };
 
-  const submitEdit = async (rule: RuleDetail, changes: Record<string, unknown>) => {
-    setBusy("editing…");
-    setNotice(null);
-    try {
-      const { rule: draft } = await editRule(rule.rule_key ?? rule.rule_code, changes);
-      // Round E lifecycle: a changed statement invalidates the plan — the Rule
-      // Compiler agent recompiles the new draft before it can be approved.
-      setBusy("compiling the new draft (Rule Compiler agent)…");
-      const { rule: compiled } = await compileRule(draft.rule_key ?? draft.rule_code);
-      if ((compiled.status || "").toUpperCase() !== "COMPILED") {
-        setNotice(
-          `The edited draft did not compile (${compiled.status}): ` +
-            `${compiled.needs_data_reason || compiled.compile_error || "see the draft pool"}. ` +
-            "It stays in Documents & Rules until resolved — no version was published.",
-        );
-        setEditing(null);
-        setBusy(null);
-        return;
-      }
-      setBusy("approving the new draft…");
-      await approveRule(draft.rule_key ?? draft.rule_code);
-      setBusy("publishing the next version…");
-      const { version } = await publishRules("operator", `edit of ${rule.rule_code}`);
-      setNotice(
-        `v${version.version_no} published with the edited rule — the original version is unchanged.`,
-      );
-      setEditing(null);
+  const toggleCompare = (versionId: string) => {
+    setCompareSel((prev) =>
+      prev.includes(versionId)
+        ? prev.filter((v) => v !== versionId)
+        : prev.length >= 2
+          ? [prev[1], versionId] // keep the most recent pick, add the new one
+          : [...prev, versionId],
+    );
+  };
+
+  const afterMutation = (message: string, refresh: boolean) => {
+    setNotice(message);
+    setEditing(null);
+    setTogglingActive(null);
+    if (refresh) {
       setRulesByVersion({});
       setOpenVersion(null);
+      setCompareSel([]);
       reload();
-    } catch (e) {
-      setNotice(`Edit failed: ${String((e as Error)?.message || e)}`);
-    } finally {
-      setBusy(null);
     }
   };
+
+  const submitActive = async (rule: RuleDetail, reason: string) => {
+    const deactivating = rule.active !== false;
+    setActiveBusy(true);
+    try {
+      const { version, note } = await setRuleActive(
+        rule.rule_key ?? rule.rule_code,
+        !deactivating,
+        reason,
+      );
+      afterMutation(
+        version
+          ? `${rule.rule_code} is now ${deactivating ? "inactive" : "active"} — v${version.version_no} ` +
+              "published with the who/when/why recorded; the prior version is unchanged."
+          : note || `${rule.rule_code} updated (draft pool — a version mints at publish).`,
+        true,
+      );
+    } catch (e) {
+      setNotice(
+        `${deactivating ? "Deactivate" : "Reactivate"} failed: ` +
+          String((e as RulesApiError | Error)?.message || e),
+      );
+      setTogglingActive(null);
+    } finally {
+      setActiveBusy(false);
+    }
+  };
+
+  // Resolve the compare pair oldest → newest by version_no
+  const comparePair =
+    compareSel.length === 2 && versions
+      ? ([...compareSel]
+          .map((id) => versions.find((v) => (v.version_id ?? String(v.version_no)) === id))
+          .filter(Boolean) as RuleVersion[]).sort((a, b) => a.version_no - b.version_no)
+      : null;
 
   return (
     <section>
@@ -124,8 +159,9 @@ export default function RuleVersionsPage() {
           <div>
             <h2>Rule Set Versions</h2>
             <p>
-              Expand a version to see every rule it contains. Versions are superseded, never
-              deleted; edits mint a new version.
+              Expand any version — v0 and superseded ones included — to see every rule it
+              contains. Versions are superseded, never deleted; edits mint a new version. Tick two
+              versions to compare them.
             </p>
           </div>
         </div>
@@ -146,34 +182,44 @@ export default function RuleVersionsPage() {
                 return (
                   <li key={versionId} className={current ? "cur" : undefined} style={{ display: "block" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 14, alignItems: "flex-start" }}>
-                      <div>
-                        <b>
-                          v{v.version_no}
-                          {v.published_at ? ` · Published ${v.published_at}` : v.created_at ? ` · ${v.created_at}` : ""}
-                        </b>
-                        <div className="meta">
-                          {[
-                            v.rule_count != null ? `${v.rule_count} rules` : null,
-                            v.approved_by ? `approved by ${v.approved_by}` : null,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ")}
-                          {v.notes ? (
-                            <>
-                              <br />
-                              {v.notes}
-                            </>
-                          ) : null}
+                      <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                        {versions.length > 1 ? (
+                          <input
+                            type="checkbox"
+                            title="Select two versions to compare"
+                            checked={compareSel.includes(versionId)}
+                            onChange={() => toggleCompare(versionId)}
+                            style={{ marginTop: 3 }}
+                          />
+                        ) : null}
+                        <div>
+                          <b>
+                            v{v.version_no}
+                            {v.published_at ? ` · Published ${v.published_at}` : v.created_at ? ` · ${v.created_at}` : ""}
+                          </b>
+                          <div className="meta">
+                            {[
+                              v.rule_count != null ? `${v.rule_count} rules` : null,
+                              v.approved_by ? `approved by ${v.approved_by}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                            {v.notes ? (
+                              <>
+                                <br />
+                                {v.notes}
+                              </>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                       <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                         {current ? (
                           <Chip variant="pos">In Use</Chip>
-                        ) : v.version_no === 0 ? (
-                          <Chip variant="derived">Team Written</Chip>
                         ) : (
                           <Chip variant="tag">Superseded</Chip>
                         )}
+                        {v.version_no === 0 ? <Chip variant="derived">v0 Seed</Chip> : null}
                         <div style={{ marginTop: 6 }}>
                           <button className="btn" onClick={() => toggle(versionId)}>
                             {open ? "Collapse" : `View ${v.rule_count ?? ""} rules`}
@@ -186,14 +232,11 @@ export default function RuleVersionsPage() {
                         <div style={{ marginTop: 12 }}>
                           {rules.map((r) => (
                             <RuleRow
-                              key={r.rule_code}
+                              key={r.rule_key ?? r.rule_code}
                               rule={r}
-                              canEdit={current}
-                              busy={busy}
-                              editing={editing?.rule_code === r.rule_code ? editing : null}
+                              currentVersion={current}
                               onEdit={() => setEditing(r)}
-                              onCancel={() => setEditing(null)}
-                              onSubmit={submitEdit}
+                              onToggleActive={() => setTogglingActive(r)}
                             />
                           ))}
                         </div>
@@ -215,6 +258,37 @@ export default function RuleVersionsPage() {
           )}
         </div>
       </div>
+
+      {/* 7.3 — what changed between two versions, at a glance */}
+      {comparePair && comparePair.length === 2 ? (
+        <div className="card">
+          <div className="card-h">
+            <div>
+              <h2>Version Comparison</h2>
+              <p>
+                Rules added, removed and modified between the two selected versions, with the
+                specific fields that differ. Identity churn (rule keys, timestamps, compile stats)
+                is ignored — only meaningful changes show.
+              </p>
+            </div>
+            <button className="btn" onClick={() => setCompareSel([])}>
+              Clear selection
+            </button>
+          </div>
+          <div className="card-b">
+            <VersionCompare
+              olderVersionId={comparePair[0].version_id ?? String(comparePair[0].version_no)}
+              olderLabel={`v${comparePair[0].version_no}`}
+              newerVersionId={comparePair[1].version_id ?? String(comparePair[1].version_no)}
+              newerLabel={`v${comparePair[1].version_no}`}
+            />
+          </div>
+        </div>
+      ) : compareSel.length === 1 ? (
+        <div className="note" style={{ margin: "0 0 14px" }}>
+          One version selected — tick a second one to compare.
+        </div>
+      ) : null}
 
       {/* Round H 2.4/4.3 — a rule that never fires is either wrong or
           inapplicable; it must be obvious here, not need a code read. */}
@@ -282,58 +356,122 @@ export default function RuleVersionsPage() {
           )}
         </div>
       </div>
+
+      {/* 7.2 — the edit dialog; every save mints a new version */}
+      {editing ? (
+        <RuleEditDialog
+          rule={editing}
+          open={true}
+          onClose={() => setEditing(null)}
+          onDone={afterMutation}
+        />
+      ) : null}
+
+      {/* 2.1/7.2 — deactivate/reactivate with the MANDATORY reason */}
+      {togglingActive ? (
+        <ReasonModal
+          open={true}
+          title={
+            togglingActive.active !== false
+              ? `Deactivate ${togglingActive.rule_code}`
+              : `Reactivate ${togglingActive.rule_code}`
+          }
+          prompt={
+            togglingActive.active !== false ? (
+              <>
+                An inactive rule stops feeding NEW insight generation but stays queryable, and
+                prior insights that cited it stay valid with their version. This mints a new rule
+                set version; who, when and why are recorded.
+              </>
+            ) : (
+              <>
+                Reactivating puts the rule back into new insight generation. It equally changes
+                what the next run produces, so it mints a version and the reason is recorded.
+              </>
+            )
+          }
+          confirmLabel={togglingActive.active !== false ? "Deactivate" : "Reactivate"}
+          busy={activeBusy}
+          onConfirm={(reason) => submitActive(togglingActive, reason)}
+          onCancel={() => setTogglingActive(null)}
+        />
+      ) : null}
     </section>
   );
 }
 
+/** One rule inside an expanded version — the full 7.1 detail set. */
 function RuleRow({
   rule,
-  canEdit,
-  busy,
-  editing,
+  currentVersion,
   onEdit,
-  onCancel,
-  onSubmit,
+  onToggleActive,
 }: {
   rule: RuleDetail;
-  canEdit: boolean;
-  busy: string | null;
-  editing: RuleDetail | null;
+  currentVersion: boolean;
   onEdit: () => void;
-  onCancel: () => void;
-  onSubmit: (rule: RuleDetail, changes: Record<string, unknown>) => void;
+  onToggleActive: () => void;
 }) {
-  const citation = rule.citations?.[0];
   const status = (rule.status || "").toUpperCase();
-  const [form, setForm] = useState({
-    rule_name: rule.rule_name ?? "",
-    statement: rule.statement ?? rule.plain_description ?? "",
-    worked_example: rule.worked_example ?? "",
-  });
+  const inactive = rule.active === false;
   return (
-    <div className={`rule${status === "NEEDS_INPUT" ? " needs" : ""}`}>
+    <div className={`rule${status === "NEEDS_INPUT" ? " needs" : ""}`} style={inactive ? { opacity: 0.85 } : undefined}>
       <div className="rule-h">
         <div>
           <div className="rule-t">
             {rule.rule_name} <span className="pfx">({rule.rule_code})</span>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          {rule.kind ? <Chip variant="tag">{rule.kind}</Chip> : null}
-          <Chip variant={status === "PUBLISHED" ? "pos" : status === "NEEDS_INPUT" ? "derived" : "tag"}>
-            {status || "?"}
-          </Chip>
-          {canEdit ? (
-            <button className="btn" onClick={editing ? onCancel : onEdit} disabled={busy !== null}>
-              {editing ? "Cancel" : "Edit → new version"}
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <ProvenanceChip provenance={rule.provenance} provenanceLabel={rule.provenance_label} />
+          <AppliesToChip appliesTo={rule.applies_to} appliesToKey={rule.applies_to_key} />
+          <SeverityChip severity={rule.severity} />
+          <StatusChip status={rule.status} active={rule.active} activeReason={rule.active_reason} />
+          <button className="btn" onClick={onEdit} title="Editing mints a new version — this one is never mutated">
+            Edit → new version
+          </button>
+          {currentVersion ? (
+            <button
+              className="btn"
+              onClick={onToggleActive}
+              title={
+                inactive
+                  ? "Put the rule back into new insight generation (reason required)"
+                  : "Stop the rule feeding new insight generation without superseding it (reason required)"
+              }
+            >
+              {inactive ? "Reactivate" : "Deactivate"}
             </button>
           ) : null}
         </div>
       </div>
-      {/* 6.3: the rule's plain-English statement */}
+      {/* 2.1 — the recorded who/when/why, distinct from Superseded */}
+      {inactive ? (
+        <div className="eg" style={{ borderLeft: "3px solid var(--amber, #B7791F)", paddingLeft: 8 }}>
+          <b>Inactive</b> — not evaluated in new insight runs; still queryable, and prior insights
+          citing it stay valid.
+          <br />
+          {rule.active_reason ? (
+            <>
+              Reason: <i>{rule.active_reason}</i>
+            </>
+          ) : (
+            "No reason recorded."
+          )}
+          {rule.active_changed_by ? ` · by ${rule.active_changed_by}` : ""}
+          {rule.active_changed_at ? ` · ${rule.active_changed_at}` : ""}
+        </div>
+      ) : null}
+      {/* 7.1: the rule's plain-English statement */}
       <div className="rule-d">{rule.statement || rule.plain_description}</div>
-      {/* Round H task 1/4.3: exclusion is declared ON the rule and shown here —
-          never an implicit mechanism a reader has to find in code */}
+      {/* Driver: label + definition (label is a read-time registry) */}
+      {rule.driver_label ? (
+        <div className="eg">
+          <b>Driver:</b> {rule.driver_label}
+          {rule.driver_definition ? ` — ${rule.driver_definition}` : ""}
+        </div>
+      ) : null}
+      {/* Round H task 1/4.3: exclusion is declared ON the rule and shown here */}
       {rule.exclude_matched_of?.length ? (
         <div className="eg">
           <b>Excludes accounts matched by:</b> {rule.exclude_matched_of.join(", ")}
@@ -344,40 +482,23 @@ function RuleRow({
           Example — <b>{rule.worked_example}</b>
         </div>
       ) : null}
-      {citation ? (
-        <div className="eg">
-          <b>Source:</b> {citation.document_name || rule.document_id || "operator-specified"}
-          {citation.page_no != null ? ` · p.${citation.page_no}` : ""}
-          {citation.section_path ? ` · ${citation.section_path}` : ""}
-          {citation.excerpt ? (
-            <>
-              <br />
-              <span style={{ fontStyle: "italic" }}>&ldquo;{citation.excerpt}&rdquo;</span>
-            </>
-          ) : null}
-        </div>
-      ) : (
-        <div className="eg">
-          <b>Source:</b> {rule.provenance === "OPERATOR_SPECIFIED" ? "operator-specified (no document)" : "no citation recorded"}
-        </div>
-      )}
-      {/* 6.3: the compiled query with its plain-English explanation */}
+      {/* Citation where one exists; a tech-written rule says so explicitly */}
+      <div className="eg">
+        <RuleCitationLine
+          ruleKey={rule.rule_key ?? rule.rule_code}
+          ruleName={rule.rule_name}
+          citation={rule.citations?.[0] ?? null}
+          provenance={rule.provenance}
+        />
+      </div>
+      {/* 7.1: the compiled plan with its plain-English explanation */}
       <details className="tech">
         <summary>Query this compiles to</summary>
-        {rule.explanation ? (
-          <div className="eg" style={{ marginTop: 8, marginBottom: 0 }}>
-            {rule.explanation}
-          </div>
-        ) : null}
-        <pre>
-          {rule.plan
-            ? JSON.stringify(rule.plan, null, 2)
-            : rule.population || rule.compute || rule.trigger
-              ? `population: ${rule.population || "—"}\ncompute:    ${rule.compute || "—"}\ntrigger:    ${rule.trigger || "—"}` +
-                (rule.attribute ? `\nattribute:  ${rule.attribute}` : "")
-              : "no compiled plan"}
-          {rule.compiled === false ? `\n\nDOES NOT COMPILE: ${rule.compile_error ?? "unknown"}` : ""}
-        </pre>
+        <PlanView
+          plan={rule.plan}
+          explanation={rule.explanation}
+          naturalLanguageOnly={rule.natural_language_only === true}
+        />
       </details>
       {rule.needs_data_reason ? (
         <div className="eg">
@@ -387,49 +508,6 @@ function RuleRow({
       {rule.missing ? (
         <div className="eg">
           <b>Needs a value:</b> {rule.missing}
-        </div>
-      ) : null}
-      {editing ? (
-        <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-          {(["rule_name", "statement", "worked_example"] as const).map((field) => (
-            <label key={field} style={{ fontSize: 12, color: "var(--slate)" }}>
-              {field === "statement" ? "statement (plain English — the Rule Compiler compiles this)" : field}
-              <textarea
-                value={form[field]}
-                onChange={(e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))}
-                rows={field === "statement" ? 4 : field === "worked_example" ? 2 : 1}
-                style={{
-                  width: "100%",
-                  font: "12px/1.5 ui-monospace,Menlo,Consolas,monospace",
-                  border: "1px solid var(--rule)",
-                  borderRadius: 4,
-                  padding: "6px 8px",
-                  marginTop: 3,
-                }}
-              />
-            </label>
-          ))}
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <button
-              className="btn primary"
-              disabled={busy !== null}
-              onClick={() => {
-                const changes: Record<string, unknown> = {};
-                if (form.rule_name !== (rule.rule_name ?? "")) changes.rule_name = form.rule_name;
-                if (form.statement !== (rule.statement ?? rule.plain_description ?? ""))
-                  changes.statement = form.statement;
-                if (form.worked_example !== (rule.worked_example ?? ""))
-                  changes.worked_example = form.worked_example;
-                onSubmit(rule, changes);
-              }}
-            >
-              {busy ?? "Save as new version"}
-            </button>
-            <span style={{ fontSize: 12, color: "var(--slate)" }}>
-              Saving creates a new draft, recompiles it with the Rule Compiler, approves it, and
-              publishes the next version — this version is never mutated.
-            </span>
-          </div>
         </div>
       ) : null}
     </div>
