@@ -25,12 +25,46 @@
       version in one call — edit() special-cases display-only changes so the
       compiled plan survives (DECISIONS.md). Stale rule_store.db cleared for
       the corrected seed. verify a/b/c/e/h green.
-- [ ] Task 3 (Subagent A, dispatched): dashboard metric queries + RETAINED_ACCOUNT
-- [ ] Tasks 4+5 (Subagent B, dispatched): 9X non-credited analysis + top/bottom
-- [ ] Task 6 (Subagent C, dispatched): export service (pdf/pptx/xlsx/csv)
-- [ ] Task 7 (main thread, last): 17 checks + regressions + ROUND_A1_COMPLETE.md
-Note: per Round E/G/H precedent, subagents report and the MAIN THREAD verifies
-      then commits each task (subagents never run git or touch this file).
+- [x] Task 3 (Subagent A, verified in main thread, 2c661a0): catalog 33→38
+      (product_month_metrics, product_transition_table with filtered-total
+      share_pct and distinct-account totals, month_aum,
+      advisor_count_by_product, account_lifecycle_counts from rule outcomes —
+      consecutive months only, net_flows null-with-note at group scope) + 5
+      GSQL files; /api/dashboard/table+chart+definitions (definitions imported
+      from glossary); RETAINED_ACCOUNT sixth v0 rule (TECH_TEAM_WRITTEN, INFO,
+      order 35, excludes NEW/NEW_BILLING/TIN) — partition proven (202605:
+      new 8 / lost 10 / retained 177 / tin 0 / tout 0; baseline retained 0
+      with honest notes). Pins widened per precedent (C6-1 38, B3-13/17 six
+      rules exact-provenance, H-8 msg); rule_store.db reseeded to 6 rules.
+- [x] Tasks 4+5 (Subagent B, verified in main thread, 304f256+664ef19): 9X
+      codes via DETERMINISTIC POST-PASS on the committed data (own seeded RNG,
+      no builtin hash(); all 1,948 credited rows byte-identical vs git HEAD —
+      ZERO pin changes; 9E 95 / 9H 77 / 9G 44 / 9D 26 rows; wired into
+      generation for future regens, refuses double application; ingest 46/46);
+      non_credited_by_cause + four per-cause detail queries with the exact
+      documented shapes (eligibility grouped by PRODUCT; household threshold
+      constants in app/shared/reason_codes.py; from_advisor_departed DERIVED);
+      /api/noncredited/summary + /detail/{cause}; product_advisor_ranking +
+      /api/dashboard/product/{group_id}/ranking — dominant_driver_code
+      deterministic from rule outcomes (RETAINED excluded as a stock measure),
+      null never guessed (V000009 +$7,043 → null, demonstrated).
+- [x] Task 6 (Subagent C, verified in main thread, 3fe0ccf + repoint bfce6cc):
+      POST /api/export — provider registry + 4 renderers (pdf/pptx/xlsx/csv),
+      navy-header PDF with definitions footnote, raw-value XLSX (percent as
+      fraction + format), PPTX 18-row cap with honest "showing N of M",
+      traceability footer (source/timestamp/rule-set version) on every file;
+      43/43 check_exports with independent read-back proof. /mnt/skills does
+      not exist here (DECISIONS.md); dashboard provider repointed at
+      product_transition_table by the main thread (the designed swap).
+- [x] Task 7 (main thread): NEW scripts/verify_round_a1.py — 17/17 PASS with
+      actual output in docs/ROUND_A1_COMPLETE.md; verify a/b/c/e/h re-run
+      green (25/25, 19/19, 13/13, 8/8, 9/9) + check_exports 43/43; servers up
+      on :8002 (healthy, 6-rule RSV_v0, 9X live) / :3002 (200); public port
+      visibility still needs the Ports panel (gh token lacks codespace scope).
+Note: per Round E/G/H precedent, subagents reported and the MAIN THREAD
+      re-verified by execution then committed each task (subagents never ran
+      git or touched this file). Session app-LLM cost $0.00 — the whole round
+      is deterministic.
 
 ## Round H (docs/ROUND_H_SPEC.md)
 - [x] Port change (e2eda07, pre-round): app now runs on 8002 (API) / 3002
@@ -360,7 +394,19 @@ Note: per Round E/G/H precedent, subagents report and the MAIN THREAD verifies
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: H (docs/ROUND_H_SPEC.md) — COMPLETE. All 6 tasks done; tasks 2/3/4
+Round: A1 (docs/ROUND_A1_SPEC.md) — COMPLETE. All 7 tasks done;
+      docs/ROUND_A1_COMPLETE.md has the actual output of all 17 checks.
+      verify a/b/c/e/h/a1 green (25/25, 19/19, 13/13, 8/8, 9/9, 17/17),
+      check_exports 43/43. Next: Round A2 (frontend against
+      docs/ui/MOCKUP_ROUND_A_DASHBOARD.html) — remember: bullet-lead driver
+      names must render from driver_code, not prose (Task 1 decision).
+Round A1 carried observations: (1) the ranking's dominant-driver nulls are
+      common on this small data (many advisors have no qualifying rule impact
+      in a group) — expected, the UI copy handles it; (2) exports cap PPTX at
+      18 rows/slide by design; (3) verify_round_a1 A1-3 mints RSV_v1 in its
+      isolated tempdir only — the served store stays at RSV_v0.
+
+Previous round: H (docs/ROUND_H_SPEC.md) — COMPLETE. All 6 tasks done; tasks 2/3/4
       additionally re-verified BY EXECUTION after the mid-round restart;
       docs/ROUND_H_COMPLETE.md has the actual output of all 13 checks plus
       the full scale-test table (--scale 28: 57,657 txns). No limit resized —
