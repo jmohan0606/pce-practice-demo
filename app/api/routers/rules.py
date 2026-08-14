@@ -257,6 +257,48 @@ def set_severity(rule_key: str, body: SeverityRequest) -> dict:
             "version": version}
 
 
+class ActiveRequest(BaseModel):
+    active: bool
+    reason: str = ""
+    approved_by: str = "OPERATOR"
+
+
+@router.patch("/{rule_key}/active")
+def set_active(rule_key: str, body: ActiveRequest) -> dict:
+    """Round C (docs/rules) 2.1 — deactivate/reactivate a rule. Independent of
+    status: an inactive PUBLISHED rule stops feeding new insight generation but
+    remains queryable, and prior insights citing it stay valid with their
+    version. Mints a new rule-set version (it changes what the next generation
+    produces); who/when/why recorded, reason REQUIRED."""
+    store = get_rule_store()
+    if store.get(rule_key) is None:
+        raise HTTPException(status_code=404, detail=f"unknown rule_key {rule_key!r}")
+    try:
+        rule, version = store.set_active(rule_key, body.active, body.reason,
+                                         changed_by=body.approved_by)
+    except RuleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"rule": _serialize(rule), "version": version,
+            "note": (None if version else
+                     "draft rule — fields updated; a version mints at publish")}
+
+
+class DeleteRequest(BaseModel):
+    rule_keys: list[str]
+
+
+@router.post("/delete")
+def delete_rules(body: DeleteRequest) -> dict:
+    """Round C (docs/rules) 2.2 — delete UNAPPROVED rules. The store refuses
+    approved/version-bound rules (a direct API call is refused the same way
+    the numeric guardrail flag is); all-or-nothing."""
+    try:
+        deleted = get_rule_store().delete_rules(body.rule_keys)
+    except RuleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"deleted": deleted, "deleted_count": len(deleted)}
+
+
 class DriverLabelRequest(BaseModel):
     driver_label: str
 

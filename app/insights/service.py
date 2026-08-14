@@ -141,8 +141,11 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
     if version is None:
         raise ValueError(f"unknown rule-set version {version_id!r}")
     store = get_insight_store()
+    # Round C (docs/rules) 2.1: an inactive rule feeds NOTHING into a new run —
+    # neither evaluation (evaluate_rule_set skips it) nor the miner's context.
     rules = [r for r in get_rule_store().version_rules(version["version_id"])
-             if r.get("status") in ("PUBLISHED", "SUPERSEDED")]
+             if r.get("status") in ("PUBLISHED", "SUPERSEDED")
+             and r.get("active") is not False]
 
     transition = run_catalog_query("advisor_totals", {
         "advisor": advisor_sid, "from_month": from_month, "to_month": to_month,

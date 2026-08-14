@@ -57,6 +57,13 @@ class RuleStorePersistence:
                 "persisted_at = datetime('now')",
                 (rule["rule_key"], json.dumps(rule, default=str)))
 
+    def delete_rule(self, rule_key: str) -> None:
+        """Round C (docs/rules) task 2.2 — unapproved rules may be deleted.
+        The STORE enforces the approved-rules-are-never-deleted rule; this
+        layer just removes the row it is told to."""
+        with self.db.transaction() as conn:
+            conn.execute("DELETE FROM rule WHERE rule_key = ?", (rule_key,))
+
     def save_version(self, version: dict) -> None:
         with self.db.transaction() as conn:
             conn.execute(

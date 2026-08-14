@@ -12,7 +12,10 @@ Persistence model (documented decision):
   inside app/rules/ backed by the graph client" option the track allows.
 
 Invariants:
-- Rules are IMMUTABLE — an edit creates a new rule row; nothing is ever deleted.
+- Rules are IMMUTABLE — an edit creates a new rule row. Round C (docs/rules):
+  UNAPPROVED draft-pool rules may be deleted (multi-select in the UI, enforced
+  in ``delete_rules``); approved/version-bound rules can NEVER be deleted, only
+  superseded or deactivated (``set_active`` — version-minting, reason required).
 - publish() mints a new phx_dm_pce_rule_set_version with version_no incremented;
   the previous PUBLISHED version becomes SUPERSEDED. Approved drafts are COPIED
   into the new version (new rule_key); carried-forward rules are copied too.
@@ -401,6 +404,9 @@ class RuleStore:
                 # editable (provenance only between the two MANUAL tags at the
                 # router layer; the store stays permissive for migrations)
                 "applies_to", "applies_to_key", "provenance",
+                # Round C (docs/rules) task 2.1: active state (set_active is the
+                # audited path — it requires the reason and records who/when)
+                "active", "active_reason",
             }
             rejected = sorted(set(changes) - editable)
             if rejected:
@@ -434,6 +440,91 @@ class RuleStore:
             draft["status"] = "COMPILED" if display_only else "DRAFT"
             draft["supersedes_rule_key"] = rule_key
             return self.add_rule(draft, version_id=None)
+
+    # ----- Round C (docs/rules) task 2 — active flag + delete -----
+
+    def set_active(self, rule_key: str, active: bool, reason: str,
+                   changed_by: str = "") -> tuple[dict, dict | None]:
+        """Deactivate (or reactivate) a rule. `active` is independent of
+        status: an inactive PUBLISHED rule is not evaluated in new insight
+        runs but remains queryable, and insights that cited it stay valid
+        with their version. Changing it changes what the next generation
+        produces, so for a version-bound rule it MINTS A NEW VERSION with the
+        who/when/why recorded — a reason is REQUIRED. The compiled plan is
+        preserved (the query itself is unchanged). Returns (rule, version) —
+        version is None for a draft-pool rule (nothing to mint yet)."""
+        reason = str(reason or "").strip()
+        if not reason:
+            raise RuleStoreError(
+                ("a reason is required to reactivate a rule" if active
+                 else "a reason is required to deactivate a rule — record why "
+                      "it is being switched off"))
+        with self._lock:
+            rule = self.rules.get(rule_key)
+            if rule is None:
+                raise RuleStoreError(f"unknown rule_key {rule_key!r}")
+            if bool(rule.get("active", True)) == bool(active):
+                raise RuleStoreError(
+                    f"{rule_key} is already {'active' if active else 'inactive'}")
+            audit = {
+                "active": bool(active), "active_reason": reason,
+                "active_changed_by": changed_by or "operator",
+                "active_changed_at": _now(),
+            }
+            if not rule["version_id"]:
+                return self._update_rule_fields(rule_key, **audit), None
+            draft = self.edit(rule_key, {"active": bool(active),
+                                         "active_reason": reason})
+            self._update_rule_fields(draft["rule_key"],
+                                     active_changed_by=audit["active_changed_by"],
+                                     active_changed_at=audit["active_changed_at"])
+            self.approve(draft["rule_key"], approved_by=changed_by or "operator")
+            version = self.publish(
+                approved_by=changed_by or "operator",
+                notes=f"{'reactivate' if active else 'deactivate'} "
+                      f"{rule.get('rule_code')}: {reason}")
+            published = [r for r in self.version_rules(version["version_id"])
+                         if r["rule_code"] == rule.get("rule_code")]
+            return (published[0] if published else draft), version
+
+    def delete_rules(self, rule_keys: list[str]) -> list[dict]:
+        """Delete UNAPPROVED rules (DRAFT / COMPILED-unapproved / NEEDS_INPUT /
+        NEEDS_DATA / REJECTED, draft pool only). Approved or version-bound
+        rules can NEVER be deleted — only superseded or deactivated — and that
+        is enforced HERE, not in the UI: a direct API call is refused the same
+        way the numeric guardrail flag is. All-or-nothing: the whole request
+        is validated before anything is removed."""
+        if not rule_keys:
+            raise RuleStoreError("no rule keys supplied")
+        with self._lock:
+            to_delete: list[dict] = []
+            for key in rule_keys:
+                rule = self.rules.get(key)
+                if rule is None:
+                    raise RuleStoreError(f"unknown rule_key {key!r}")
+                if (rule.get("version_id") or rule.get("approved")
+                        or rule.get("status") in ("PUBLISHED", "SUPERSEDED")):
+                    raise RuleStoreError(
+                        f"{key} is approved ({rule.get('status')}"
+                        f"{' in ' + rule['version_id'] if rule.get('version_id') else ''}) "
+                        f"— approved rules can never be deleted, only superseded "
+                        f"or deactivated; nothing was deleted")
+                to_delete.append(rule)
+            deleted: list[dict] = []
+            for rule in to_delete:
+                self.rules.pop(rule["rule_key"])
+                self._persist.delete_rule(rule["rule_key"])
+                try:
+                    self._graph().delete_vertices(RULE_VERTEX, [rule["rule_key"]])
+                except Exception as exc:  # noqa: BLE001 — store stays authoritative
+                    _log.error("graph delete of rule %s failed: %s",
+                               rule["rule_key"], exc)
+                deleted.append({"rule_key": rule["rule_key"],
+                                "rule_code": rule.get("rule_code"),
+                                "status": rule.get("status")})
+            _log.info("deleted %d unapproved draft rule(s): %s", len(deleted),
+                      [d["rule_key"] for d in deleted])
+            return deleted
 
     def publish(self, approved_by: str = "", notes: str = "") -> dict:
         """Mint the next version: carried-forward copies of the latest PUBLISHED

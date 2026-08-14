@@ -268,6 +268,11 @@ Context: The Round F DECISIONS entry resolved 145-vs-115 for documents, but no c
 Decision: `app/shared/fee_schedule.py` exports STANDARD_MANAGED_FEE_BPS = 145.0 with its three schedule citations (FAQ p.13, PCA p.3, SAG p.4); generate_mock_data.py and make_test_raw_extracts.py import it. NO constant is exported for 115 by design — it exists only inside labelled worked-example prose (sample PDF §3.2, make_test_pdf), per FAQ p.15.
 Reversible: yes
 
+## 2026-08-14 · Round C (docs/rules) task 2 · Deactivation is a plan-preserving version-minting edit; deletion is store-enforced and all-or-nothing
+Context: Spec 2.1/2.2 — active independent of status, deactivating mints a version with who/when/why; approved rules can never be deleted, enforced in the store.
+Decision: `RuleStore.set_active` does edit→approve→publish in one call (severity-PATCH precedent) with `active`/`active_reason`/`active_changed_by`/`active_changed_at` on the new rule row; the reason is required for BOTH directions (reactivation equally changes what the next generation produces). The compiled plan is preserved (active is in the display-only/plan-preserving set). An inactive rule feeds NOTHING into a new run: `evaluate_rule_set` skips it with "rule is inactive — <reason>" AND the miner's rule-context list filters it; it stays queryable in its version and prior insights citing it stay valid. `delete_rules` is all-or-nothing — the whole selection is validated before anything is removed, so a mixed selection deletes nothing; approved = has version_id OR approved flag OR status PUBLISHED/SUPERSEDED. Deletion removes the durable SQLite row and issues a graph delete_vertices (best-effort, logged).
+Reversible: yes
+
 ## 2026-08-14 · Round A2B · Per-subtask commits collapsed for parallel-dispatched work
 Context: The spec asks for commits after 6.2/6.4/6.7; Subagent C's work arrived complete from the parallel dispatch (Round E tasks 6+7 precedent).
 Decision: One verified commit per task (6 and 7). Batch insight generation (advisor="all", 21 runs, $1.52) was run by the main thread during the round so exceptions/insights/advisor views verify against real stored runs.
