@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rule List Management — Mockup (Round C docs/rules, task 4)</title>
+<!--
+  CONTRACT for the built component frontend/components/rules/RuleListManager.tsx,
+  mounted on the Documents & Rules page by Subagent B. Captures the UI as built:
+
+  · extraction counts line from GET /api/rules/extraction-summary —
+    "N extracted · N compiled · N need a value · N need data we don't have",
+    each bucket expandable (<details>); NEEDS_DATA reasons name the missing field
+  · filters: status, provenance tag, scope (applies_to), severity — options
+    derived from the loaded rules, "" = All
+  · draft pool grouped by status (Compiled / Draft / Need a Value / Need Data),
+    each group header carries a select-all checkbox; every row a checkbox
+  · Published (latest version) group is ALSO selectable so a mixed selection is
+    possible — Delete Selected then DISABLES with an explanatory note (the store
+    refuses approved deletes anyway; all-or-nothing)
+  · Delete Selected -> confirm modal listing exactly what will go (code, name, status)
+  · approved rows carry Deactivate / Reactivate -> shared ReasonModal, reason
+    REQUIRED (API 400s without one); Inactive renders as its own amber chip with
+    the recorded who/when/why under the row
+  · chips are the shared components: StatusChip, ProvenanceChip (glossary
+    provenance.<code> tooltip), AppliesToChip (ALL renders nothing), SeverityChip
+-->
+<style>
+:root{
+  --navy:#16365C; --navy-hi:#1E4675; --ink:#1A2430; --slate:#5A6B7D; --slate-2:#8A9AAA;
+  --rule:#E2E7ED; --rule-2:#EFF2F6; --canvas:#F4F6F9; --panel:#FBFCFD;
+  --pos:#157F4C; --pos-bg:#E8F5EE; --pos-br:#B5D9C6;
+  --neg:#B3261E; --neg-bg:#FBECEA; --neg-br:#EFC6C2;
+  --der-bg:#FBF0DC; --der-tx:#8A5A00;
+  --tag-bg:#EDF1F5; --tag-tx:#4A5B6D;
+  --ai:#4C4EA3; --ai-bg:#EEEEF8; --ai-br:#C9CAE8;
+  --real-bg:#E3EEF9; --real-tx:#1C5B99;
+  --sev-crit:#8E1B14; --sev-crit-bg:#F9E5E3; --sev-high:#B3261E; --sev-high-bg:#FBECEA;
+  --sev-mod:#8A5A00; --sev-mod-bg:#FBF0DC; --sev-low:#4A5B6D; --sev-low-bg:#EDF1F5;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--ink);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:900px;margin:0 auto;padding:20px 24px 64px}
+.card{background:#fff;border:1px solid var(--rule);border-radius:6px;margin-bottom:16px}
+.card-h{padding:15px 20px;border-bottom:1px solid var(--rule)}
+.card-h h2{margin:0;font-size:16px}
+.card-h p{margin:4px 0 0;color:var(--slate);font-size:12.5px}
+.card-b{padding:16px 20px}
+.note{font-size:12.5px;color:var(--slate);padding:12px 16px;background:var(--panel);
+  border:1px solid var(--rule);border-radius:5px;margin-bottom:14px}
+.ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+select,.btn{font:inherit;font-size:13px;border:1px solid var(--rule);background:#fff;
+  color:var(--ink);padding:7px 12px;border-radius:4px}
+.btn{cursor:pointer}
+.btn.primary{background:var(--navy);color:#fff;border-color:var(--navy)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;
+  padding:3px 7px;border-radius:3px;letter-spacing:.03em;text-transform:uppercase}
+.chip.on{background:var(--pos-bg);color:var(--pos)}
+.chip.warn{background:var(--der-bg);color:var(--der-tx)}
+.chip.tag{background:var(--tag-bg);color:var(--tag-tx)}
+.chip.real{background:var(--real-bg);color:var(--real-tx)}
+.chip.derived{background:var(--der-bg);color:var(--der-tx)}
+.chip.aigen{background:var(--ai-bg);color:var(--ai)}
+.sev{display:inline-flex;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:3px}
+.sev.high{background:var(--sev-high-bg);color:var(--sev-high)}
+.sev.mod{background:var(--sev-mod-bg);color:var(--sev-mod)}
+.grouphead{display:flex;gap:10px;align-items:center;padding:6px 0;
+  border-bottom:1px solid var(--rule);margin-bottom:8px;font-size:12.5px}
+.grouphead b{font-size:12.5px}
+.grouphead .n{color:var(--slate);font-size:12px}
+.rule{border:1px solid var(--rule);border-radius:5px;padding:15px 16px;margin-bottom:10px;background:#fff}
+.rule.draft{border-left:3px solid var(--der-tx)}
+.rule.needs{border-left:3px solid var(--slate-2)}
+.rule-h{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.rule-t{font-weight:600;font-size:13.5px}
+.code{font-size:11.5px;color:var(--slate);margin-top:2px}
+.rule-d{font-size:13px;margin:7px 0 10px;line-height:1.6}
+.chips{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.eg{background:var(--panel);border:1px solid var(--rule);border-radius:4px;padding:9px 12px;
+  font-size:12.5px;color:var(--slate);margin-bottom:8px}
+.eg b{color:var(--ink)}
+.rule-f{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.techsrc{font-size:11.5px;color:var(--slate)}
+details.tech{margin:6px 0 4px}
+details.tech summary{font-size:12px;color:var(--slate);cursor:pointer;list-style:none}
+details.tech summary::before{content:"\25B8  ";color:var(--slate-2)}
+details.tech[open] summary::before{content:"\25BE  "}
+.row-sel{display:flex;gap:10px;align-items:flex-start;min-width:0}
+.modal{border:1px solid var(--rule);border-radius:8px;background:#fff;max-width:520px;
+  margin:24px auto;box-shadow:0 12px 40px rgba(16,28,44,.18)}
+.m-head{padding:15px 20px;border-bottom:1px solid var(--rule);font-weight:600}
+.m-body{padding:18px 20px}
+.m-foot{padding:13px 20px;border-top:1px solid var(--rule);display:flex;gap:8px;justify-content:flex-end}
+.fld{display:block;font-size:12px;color:var(--slate);margin-bottom:5px}
+input[type=text]{width:100%;font:inherit;font-size:13px;border:1px solid var(--rule);
+  padding:8px 10px;border-radius:4px}
+.caption{font-size:12px;color:var(--slate);margin:18px 2px 8px;text-transform:uppercase;letter-spacing:.05em}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="caption">Rule list management — as mounted on Documents &amp; Rules</div>
+  <div class="card">
+    <div class="card-h"><h2>Rules</h2><p>Every rule with its provenance, scope and lifecycle controls.</p></div>
+    <div class="card-b">
+
+      <!-- extraction counts line, buckets expandable -->
+      <div class="note">
+        <b>7 extracted · 3 compiled · 1 need a value · 2 need data we don&rsquo;t have</b>
+        <details class="tech"><summary>7 extracted — in the draft pool awaiting review</summary>
+          <div class="eg"><b>FEE_SHARING_THRESHOLD</b> — Fee sharing applies above the stated production threshold.</div>
+        </details>
+        <details class="tech"><summary>3 compiled — plan generated, awaiting approval</summary>
+          <div class="eg"><b>FEE_SHARING_THRESHOLD</b> — Sums credited revenue per advisor-month and triggers above the threshold.</div>
+        </details>
+        <details class="tech"><summary>1 need a value the document does not state</summary>
+          <div class="eg"><b>DEPARTURE_EXCEPTION</b> — The document names an exception window but never states its length. No value has been assumed.</div>
+        </details>
+        <details class="tech" open><summary>2 need data we don't have — each names its missing field</summary>
+          <div class="eg"><b>TEAM_SPLIT_OVERRIDE</b> — needs <b>team_agreement.split_pct effective date history</b>, which the schema does not carry.</div>
+          <div class="eg"><b>HOUSEHOLD_AGGREGATION</b> — needs a <b>household_id</b> on phx_dm_pce_account; no such field exists.</div>
+        </details>
+      </div>
+
+      <!-- filters + delete action -->
+      <div class="ctl">
+        <select><option>All Statuses</option><option>COMPILED</option><option>DRAFT</option><option>NEEDS INPUT</option><option>NEEDS DATA</option><option>PUBLISHED</option></select>
+        <select><option>All Provenance</option><option>DOCUMENT DERIVED</option><option>TECH TEAM WRITTEN</option><option>MANUALLY WRITTEN-PRACTICE</option><option>MANUALLY WRITTEN-TECH</option></select>
+        <select><option>All Scopes</option><option>ALL</option><option>ADVISOR</option><option>PRACTICE</option><option>PRODUCT</option></select>
+        <select><option>All Severities</option><option>High</option><option>Moderate</option></select>
+        <span style="flex:1"></span>
+        <button class="btn" disabled title="Approved rules can never be deleted — only superseded or deactivated. Clear them from the selection.">Delete Selected (3)</button>
+      </div>
+      <div class="note">The selection includes approved rules — approved rules can never be deleted, only superseded or deactivated, so Delete is disabled.</div>
+
+      <!-- draft pool group with select-all -->
+      <div class="grouphead"><input type="checkbox" checked> <b>Compiled — Awaiting Approval</b> <span class="n">2</span></div>
+      <div class="rule draft">
+        <div class="rule-h">
+          <div class="row-sel"><input type="checkbox" checked>
+            <div><div class="rule-t">Fee Sharing Threshold</div><div class="code">FEE_SHARING_THRESHOLD</div></div>
+          </div>
+          <div class="chips"><span class="sev high">High</span><span class="chip real">Document Derived</span><span class="chip real">COMPILED</span></div>
+        </div>
+        <div class="rule-d">Fee sharing applies above the stated production threshold.</div>
+      </div>
+
+      <div class="grouphead"><input type="checkbox"> <b>Need Data We Don&rsquo;t Have</b> <span class="n">2</span></div>
+      <div class="rule needs">
+        <div class="rule-h">
+          <div class="row-sel"><input type="checkbox">
+            <div><div class="rule-t">Team Split Override</div><div class="code">TEAM_SPLIT_OVERRIDE</div></div>
+          </div>
+          <div class="chips"><span class="chip real">Document Derived</span><span class="chip warn">NEEDS DATA</span></div>
+        </div>
+        <div class="eg"><b>Needs data we don&rsquo;t have:</b> needs team_agreement.split_pct effective date history, which the schema does not carry.</div>
+      </div>
+
+      <!-- approved group: selectable (mixed selection disables Delete), deactivate/reactivate -->
+      <div class="grouphead"><input type="checkbox"> <b>Published — Version 6</b> <span class="n">2</span></div>
+      <div class="rule">
+        <div class="rule-h">
+          <div class="row-sel"><input type="checkbox" checked>
+            <div><div class="rule-t">Discount Concentration</div><div class="code">DISCOUNT_CONCENTRATION</div></div>
+          </div>
+          <div class="chips"><span class="sev mod">Moderate</span><span class="chip aigen">Advisor V000002</span><span class="chip tag">Tech Team Written</span><span class="chip on">PUBLISHED</span></div>
+        </div>
+        <div class="rule-d">Flags accounts whose realised rate sits materially below the standard schedule.</div>
+        <div class="rule-f"><span class="techsrc">Version RSV_00006</span><button class="btn">Deactivate</button></div>
+      </div>
+      <div class="rule">
+        <div class="rule-h">
+          <div class="row-sel"><input type="checkbox">
+            <div><div class="rule-t">Lost Account</div><div class="code">LOST_ACCOUNT</div></div>
+          </div>
+          <div class="chips"><span class="chip tag">Tech Team Written</span><span class="chip warn" title="switched off pending review — operator, 2026-08-14">Inactive</span></div>
+        </div>
+        <div class="rule-d">An account with prior-month revenue and none now is a lost account.</div>
+        <div class="eg"><b>Deactivated:</b> switched off pending review — operator, 2026-08-14 16:04:11</div>
+        <div class="rule-f"><span class="techsrc">Version RSV_00006</span><button class="btn">Reactivate</button></div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="caption">Delete confirm — lists exactly what will go</div>
+  <div class="modal">
+    <div class="m-head">Delete 2 Rules?</div>
+    <div class="m-body">
+      <p style="margin:0 0 10px;font-size:13px;color:var(--slate)">These unapproved rules will be permanently removed from the draft pool:</p>
+      <div class="eg"><b>TEAM_SPLIT_OVERRIDE</b> — Team Split Override (NEEDS DATA)</div>
+      <div class="eg"><b>HOUSEHOLD_AGGREGATION</b> — Household Aggregation (NEEDS DATA)</div>
+    </div>
+    <div class="m-foot"><button class="btn">Cancel</button><button class="btn primary">Delete</button></div>
+  </div>
+
+  <div class="caption">Deactivate — shared ReasonModal, reason required (API 400s without one)</div>
+  <div class="modal">
+    <div class="m-head">Deactivate DISCOUNT_CONCENTRATION</div>
+    <div class="m-body">
+      <p style="margin:0 0 14px;font-size:13px;color:var(--slate)">An inactive rule stops feeding new insight runs but remains queryable; prior insights citing it stay valid. This mints a new rule-set version with who, when and why recorded.</p>
+      <label class="fld">Reason</label>
+      <input type="text" placeholder="A reason is required — it becomes the audit record">
+    </div>
+    <div class="m-foot"><button class="btn">Cancel</button><button class="btn primary" disabled>Deactivate</button></div>
+  </div>
+
+</div>
+</body>
+</html>
