@@ -54,6 +54,19 @@ def _serialize(rule: dict) -> dict:
 
     out["provenance_label"] = RULE_PROVENANCE_TAGS.get(
         str(rule.get("provenance") or ""), rule.get("provenance"))
+    # Round C (docs/rules) task 8, FOUND BY OBSERVATION (same defect as the
+    # insights serializer): extractor citations carry chunk/page/section but no
+    # document_name, so the UI's citation line fell back to "No document
+    # citation" on document-derived rules. Resolve it from document_id.
+    if out.get("citations"):
+        from app.api.routers.insights import _document_name
+
+        name = _document_name(rule.get("document_id"))
+        if name:
+            out["citations"] = [
+                ({**c, "document_name": c.get("document_name") or name}
+                 if isinstance(c, dict) else c)
+                for c in out["citations"]]
     # Round H task 1: exclusion is declared ON the rule — always serialized so
     # the rule detail UI can show it (empty list = no exclusions).
     out.setdefault("exclude_matched_of", [])

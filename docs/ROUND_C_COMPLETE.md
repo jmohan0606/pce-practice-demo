@@ -1,285 +1,178 @@
-# Round C Complete (one item blocked on API credits — see "Blocked" below)
+# Round C (docs/rules) — COMPLETE (docs/spec/ROUND_C_DOCS_RULES_SPEC.md)
 
-Built per `docs/spec/ROUND_C_SPEC.md` (supersedes BUILD_PLAN §6). Everything below that
-shows output is ACTUAL output, not a description of it. The full end-to-end transcript is
-`docs/ROUND_C_E2E_OUTPUT.txt`.
+Documents and Rules Management: rule scoping/provenance/lifecycle (main thread,
+tasks 1–2), document categories + rule list UI (Subagent A, tasks 3–4), manual
+authoring + retry (Subagent B, tasks 5–6), Rule Versions screen (Subagent C,
+task 7) — dispatched concurrently with strict file ownership, re-verified by
+execution in the main thread, committed per task. Task 8 ran every check live
+against the servers (headless-chromium for the visual ones).
 
-## Task 0 — both Round B bugs fixed (independent-review findings)
+Session LLM cost ≈ **$3.30** of the $10 ceiling (trace-measured: $4.82 today minus A2B's $1.52) (three seed compiles + one
+manual compile + one retry ≈ $0.23; extraction of two small PLAN .txt docs +
+conflict audit ≈ $0.35; Subagent B's compiles $0.17; one advisor run $0.10; the
+21-run insight regeneration onto RSV_v7 ≈ $2.5).
 
-- **0.1 order-dependent parameter validation**: `evaluate_plan` now validates every
-  parameter declared in the compiled plan BEFORE fetching rows (and the compiler also
-  collects `:params` from attribute expressions). Verified — the same missing
-  `:advisor_sid` errors identically in 202604/202605/202606 (verify_round_b B3-18).
-- **0.2 unfireable LOST_ACCOUNT**: `phx_dm_pce_account_month` gained `prior_end_balance`
-  / `prior_credited_amt` (DDL V11, loading job, mock generator, schema_catalog,
-  SCHEMA_SPEC), and the v0 rule's compute became `sum(prior_credited_amt)`. Verified —
-  10 matches on 202605 mock data, empty-with-reason on the 202604 baseline (B3-19).
-
-```
-verify_round_b.py: 19/19 checks passed   (17 spec checks + B3-18/B3-19 regressions)
-verify_round_a.py: 25/25 checks passed
-```
-
-## Task 1 — real Claude + real local embeddings, proven live
-
-`scripts/check_llm.py` actual output:
+## The checks — what was actually observed
 
 ```
-LLM_MODE=claude  ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
-EMBEDDING_MODE=local  LOCAL_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2  EMBEDDING_DIM=384
-
-LLM client: {'mode': 'claude', 'model': 'claude-sonnet-4-5-20250929'}
-LLM reply: A fee discount sharing rule in an advisor compensation plan specifies how the
-reduction in revenue from client fee discounts is allocated between the advisor and the
-firm (for example, the advisor might absorb 50% of any discount they grant, reducing
-their payout accordingly).
-
-Embedding client: {'mode': 'local', 'model': 'sentence-transformers/all-MiniLM-L6-v2', 'dimensions': 384}
-embedding length: 384  first 5 dims: [0.0053, -0.0047, 0.0031, 0.0212, 0.0433]
-
-OK — live Claude call and live local embedding both verified.
+[ 1] NEW_BILLING edited to applies_to=ADVISOR/V000002, published (RSV_v4):
+     practice run  → skipped=True  "rule applies to advisor V000002 only — not applicable
+                                    to a practice-level evaluation"
+     V000009 run   → skipped=True  "…this evaluation is for V000009"
+     V000002 run   → evaluated=True matched=7          (never an error anywhere)
+[ 2] applies_to vs scopes documented (DECISIONS.md 2026-08-14): the probe rule above IS
+     practice-evaluable by scopes yet ADVISOR-applied — both fields serialize on every rule
+[ 3] browser: v0 expansion shows 6× "TECH TEAM WRITTEN" chips; v7 shows 2× "DOCUMENT
+     DERIVED" and 1× "MANUALLY WRITTEN-PRACTICE"; documents page shows "MANUALLY
+     WRITTEN-TECH" on the seeded examples — all four tags rendered as chips
+[ 4] app/shared/fee_schedule.py: STANDARD_MANAGED_FEE_BPS=145.0 + citations (FAQ p.13,
+     PCA p.3, SAG p.4); importers: generate_mock_data, make_test_raw_extracts,
+     app/rules/service (seed example); every remaining "115" is inside labelled
+     worked-example prose (sample-PDF §3.2, make_test_pdf) — no constant, by design
+[ 5] RETAINED_ACCOUNT deactivated → RSV_v5: new-version evaluation skips it
+     ("rule is inactive — comp team validating retained-count methodology");
+     RSV_v0 still queryable (status PUBLISHED, active true THERE); the stored A2B
+     aggregate run (RSV_v0, 5 findings) served unchanged
+[ 6] the deactivation minted RSV_v5 recording active_changed_by=janagaraj-mohan,
+     active_changed_at=2026-08-14 19:00:57, reason on the rule AND in the version notes;
+     an empty reason is refused: "a reason is required to deactivate a rule …"
+[ 7] POST /api/rules/delete on R_RETAINED_ACCOUNT_RSV_v4 → 400 "…is approved (PUBLISHED
+     in RSV_v4) — approved rules can never be deleted, only superseded or deactivated;
+     nothing was deleted" — refused AT THE STORE (all-or-nothing; a mixed selection
+     deletes nothing, proven in the Task-2 store probe)
+[ 8] browser: scrap draft + published Lost Account selected → "Delete Selected" DISABLED
+     with the note "The selection includes approved rules — approved rules can never be
+     deleted, only superseded or deactivated, so Delete is disabled."; deselect approved →
+     enabled; confirm modal lists exactly what goes; after delete the scrap row is gone
+     from the manager and Lost Account remains
+[ 9] all six categories uploaded (PLAN/GUIDANCE/PLAYBOOK/TRAINING/FAQ/OTHER, each
+     indexed); extract-rules on TRAINING → 400 "TRAINING documents are indexed and
+     searchable but never produce rules. Only PLAN and FAQ documents feed the Rule
+     Extractor."; unknown category → 400 naming the valid set; PATCH →PLAN flips
+     extraction_offered=True and extract-rules then runs (Subagent A's isolated 26/26
+     re-proven by main-thread TestClient probe)
+[10] .txt chunks with page_no=1 and heading-derived section_path ("Fee Schedule Change
+     2026"); .csv = ONE has_table=true markdown chunk; embedding search for the 125 bps
+     sentence returns the .txt at sim 0.84
+[11] the one-line 145→125 .txt (PLAN) extracted → FEE_SCHEDULE_CHANGE_2026 draft;
+     compiled → honest NEEDS_DATA (needs the September effective date) WITH its drafted
+     population stored; Conflict Auditor output, verbatim:
+       conflict_type: OVERLAPPING_POPULATION_TRIGGER
+       new_rule: DRAFT_FEE_SCHEDULE_CHANGE_2026_0013 → existing: R_STANDARD_FEE_RATE_RSV_v7
+       proposed_resolution: SUPERSEDE   (llm_reviewed: true)
+       reasoning: "New rule has explicit effective date (1 September 2026) that is later
+         than existing rule's creation date (2026-08-14). New rule represents a schedule
+         rate change (145 bps → 125 bps) and directly supersedes the constant 145 bps
+         calculation in the existing rule. Both rules target the same population
+         (is_managed = true) at account grain with driver_tag 'Fee Rate'. The new rule's
+         effective date wins per precedence order. Recommend retiring or versioning the
+         existing rule and activating the new rule with temporal gating on the September
+         2026 effective date."
+       new_citation:      fee_schedule_change_2026.txt p.1 "Fee Schedule Change 2026"
+       existing_citation: plan_addendum_2026.txt p.1 "Standard Fee Schedule"
+       note: "proposals only — nothing was applied; a human approves"
+[12] browser: "5 extracted · 3 compiled · 0 need a value · 2 need data we don't have";
+     expanding the needs-data bucket shows the per-rule reason, e.g. FEE_SCHEDULE_VARIANCE
+     "…needs aggregation to compute the book-wide average (sum of credited_amt / sum of
+     end_balance, annualized) and compare it to 145 bps…"
+[13] POST /api/rules/manual generate_query=true ("Large Trade Concentration Watch",
+     MANUALLY_WRITTEN_TECH) → COMPILED with plan, approved=None — reviewable before
+     approval; browser shows it in "Compiled — Awaiting Approval" with the full plan JSON
+[14] the NL rule ("September Campaign Context", MANUALLY_WRITTEN_PRACTICE,
+     generate_query=false) stored with plan=None, compile_error=None; evaluator skips it
+     "guidance only — no plan by design; the statement is injected into the Insights
+     Miner's context instead of being evaluated"; miner opening carries the labelled
+     MANUAL GUIDANCE block (check_manual_rules 17/17); browser shows "Guidance only,
+     not computed"
+[15] the three seeded examples exist as MANUALLY_WRITTEN_TECH drafts and compiled LIVE:
+     BILLABLE_DAYS → COMPILED (honest simplification, no day_of_month() invented);
+     QUARTERLY_BILLING_CYCLE → COMPILED; FEE_SCHEDULE_VARIANCE → NEEDS_DATA naming the
+     ratio-of-aggregates gap; all render editable on the documents page
+[15a] the NL rule published (RSV_v1) → promote (reason recorded) minted RSV_v2 with a
+     compiled plan → demote (reason recorded) minted RSV_v3 back to guidance —
+     version notes carry both reasons verbatim
+[16] recompile with note "try measuring at RPG level rather than account" on
+     FEE_SCHEDULE_VARIANCE: attempt 1 KEPT (original NEEDS_DATA), attempt 2 added —
+     honestly NEEDS_DATA again, naming the operator's RPG request and why the schema
+     cannot link it; browser shows both attempts side by side; 5 rule_compile|<key>
+     rows in the trace with per-run cost (retries ride the same turn-log path)
+[17] browser: v0 expands ("View 6 rules") to full rule detail — statement, worked
+     example, chips, plan; 6 Edit buttons; editing mints a new version (RSV_v4/v5/v6
+     all born from edits this session)
+[18] browser: ticking v6+v7 renders the comparison — "2 ADDED / 0 REMOVED / 0 MODIFIED /
+     7 UNCHANGED" naming Concentration Account Revenue Threshold and Standard Managed
+     Fee Schedule Rate as the additions (bookkeeping churn ignored, zero false positives)
+[19] "Rules That Never Fired" renders: RETAINED_ACCOUNT (deactivated — never evaluated)
+     and SEPTEMBER_CAMPAIGN_CONTEXT (guidance-only), "Checked 3 months across 22
+     advisors plus the practice scope"
+[20] plan_addendum_2026.txt uploaded as PLAN → extracted 2 rules WITH citations →
+     compiled → approved → published (RSV_v7) → CONCENTRATION_ACCOUNT_THRESHOLD fires
+     (187 practice-wide / 13 for V000002) → insights regenerated → the dashboard
+     AI-Insights bullet, verbatim from the rendered DOM:
+       "Concentration Account Revenue Threshold — 187 match(es) in 202605 —
+        CONCENTRATION REVIEW  Rule CONCENTRATION_ACCOUNT_THRESHOLD fired for 187
+        account(s) in 202605. Any account that produces more than 1,000 dollars of
+        credited revenue in a single month is classified as a concentration account and
+        must be flagged for review by the practice supervisor.
+        Rule: Concentration Account Revenue Threshold · plan_addendum_2026.txt · p. 1 ·
+        Account Concentration Review"
+     — the first document→rule→insight→citation chain ever shown end to end in this app
+     (closing Round A2B's carried observation #1). The Standard Fee Schedule bullet cites
+     the same document's p.1 "Standard Fee Schedule" section.
 ```
 
-Notes: `EMBEDDING_MODE=mock` does NOT exist (Round B note corrected in PROGRESS.md);
-local embeddings are a Codespace-only substitute (DECISIONS.md — client uses cdao
-`text-embedding-3-large-1`, whose dimension ROUND_D D0.2 must observe, not assume).
-The persisted Chroma store was rebuilt for the 3072→384 dim change.
-`ANTHROPIC_MAX_TOKENS=16384` — the old hardcoded 1024 truncated real extractor output
-mid-JSON (found in the first e2e run; fixed with a config setting + tolerant fence
-stripping that still fails loudly on truncated JSON).
+## Found & fixed during verification
 
-## Round C build
+1. **Extractor citations carried no `document_name`** — the UI's citation line
+   fell back to "No document citation"/blank on document-derived rules: the
+   exact chain check 20 exists to prove, broken at the last hop. Both citation
+   serializers (`_rule_citation` in the insights router; `_serialize` in the
+   rules router) now resolve the name from the rule's `document_id` via the
+   knowledge catalog. Found only by rendering the page — the API-level data
+   looked complete until the component's contract was checked.
+2. **Conflict audit on an uncompiled draft cannot see populations** — the
+   detector is deterministic over compiled plans, so the 125 bps draft produced
+   zero conflicts until compiled. Not changed (conservative-by-design; drafts
+   compile before publish anyway) but the flow is now documented: extract →
+   compile → audit. The compile itself lands honest NEEDS_DATA (September
+   effective date not in the data) while still storing the drafted population —
+   which is what the auditor overlaps on.
 
-- **C1** `app/graph/queries/catalog.py` — 24 named, typed, parameterised queries; every
-  required parameter validated BEFORE execution; local implementations against the
-  FoundationGraphStore registered on the tiered client; 24 GSQL files in
-  `docs/tigergraph/queries/`. Household traversals filter `is_owner_role = true`;
-  cohort rollups filter `in_cohort = true`.
-- **C2** `app/insights/{store,tools}.py` + `app/agents/insights_miner.py` — JSON-action
-  agent loop; 40-query budget metered in code; EVERY tool call logged to
-  `phx_dm_pce_agent_query_log` (run_id, seq_no, agent_name, query_name, params_json,
-  row_count, latency_ms); evidence rows COPIED from the retained result of the query
-  named by `source_seq` (50 stored / 20 displayed) — the model cannot fabricate
-  evidence; `unanswerable` questions recorded on the run; coverage ratio computed,
-  warned outside 20–200%, stored internally.
-- **C3** `app/agents/insights_reporter.py` — receives findings only. By construction:
-  the module imports `json/logging/re/typing` and nothing else (asserted by AST scan in
-  verify check 9). Every numeric token regex-extracted and checked against the findings
-  (+ the transition totals, themselves stored query results); failure → deterministic
-  template built from the top findings (which self-verifies). Never an unverified figure.
-- **C4** `app/insights/service.py` + `/api/insights` — async daemon-thread batches, one
-  advisor at a time, per-advisor progress, failure isolation;
-  `run_id = advisor|from|to|version` so re-runs supersede (generation increments, prior
-  archived). `advisor="all"` = aggregate book run + one per cohort advisor (DECISIONS.md).
-  Coverage ratio stripped from every API response.
-- **C5** AI Insights + Advisor pages per `mockups.html` — narrative block with the
-  ◆ AI Generated chip, tinted transition cards, findings ranked by |impact| with
-  provenance/driver chips, expandable evidence tables with rule citations, pivot
-  (Ranked / By Driver / By Product) regroups without refetch, KPI row with cohort rank,
-  honest empty states ("No insights generated yet" + Generate — never a bare spinner).
+## Verification suites (final)
 
 ```
-verify_round_c.py: 12/12 checks passed
+verify_round_a 25/25 · verify_round_b 19/19 · verify_round_c 13/13 ·
+verify_round_e 8/8 · verify_round_h 9/9 · verify_round_a1 17/17
+check_manual_rules 17/17 · check_flags 8/8
+npm run build: passes — 8 routes (documents 8.71 kB, rules 7.85 kB)
 ```
 
-## Task 3 — sample plan document
+B3-13 re-pinned (v0 all TECH_TEAM_WRITTEN — Round C rename). No other pin
+changes anywhere.
 
-`docs/sample/comp_plan_2026_sample.pdf` (6 pages, generated by
-`scripts/make_sample_plan_pdf.py`): realistic prose + tables covering the 10% discount
-sharing rule (grid table AND prose), the 115→100 bps worked example, rounding
-(14.4%→14%, 14.50%→15%), the $4MM NNM award, the six-month departed-advisor
-suspension, inherited transfers ≠ lost accounts, mid-period account openings, a
-16-row payout schedule, and a referral cap whose amount is deliberately never stated.
+## Deviations / notes
 
-## Task 4 — end-to-end with real Claude (`scripts/e2e_test.py`)
+- **All six v0 rules are TECH_TEAM_WRITTEN** (spec 1.2 "rename the v0 seed's
+  existing tag" applied to the ex-OPERATOR_SPECIFIED five too — the tag's own
+  definition covers them; DECISIONS.md).
+- **Recompile is draft-pool only** — a version-bound rule 400s ("edit the rule
+  to mint a draft, then retry on the draft"); immutability precedent.
+- **Deactivate/Reactivate is offered on the current version's rows only** in
+  the UI (minting from a stale superseded row would resurrect old content);
+  Edit is available on every version's rows.
+- **The never-fired card lists the guidance-only rule** as "never evaluated" —
+  technically true (it is never evaluated BY DESIGN); a "guidance only" note on
+  that card is a candidate polish item.
+- **reporter_sources/coach treat every non-GUIDANCE category as PLAN search
+  material** (found by Subagent A) — PLAYBOOK/TRAINING/OTHER now count as PLAN
+  sources for reporter/coach retrieval. They are still never extraction inputs.
+  Left as-is this round; deserves an operator ruling (carried observation).
+- The Round-C demo trail deliberately lives in the served store: RSV_v0…v7 with
+  the full deactivate/promote/demote/scope/publish history, the 21-run insight
+  batch regenerated on RSV_v7, and the NEEDS_DATA drafts (incl. the 125 bps
+  conflict draft, deliberately unpublished — the auditor proposes, a human
+  approves).
 
-Full transcript: `docs/ROUND_C_E2E_OUTPUT.txt`. Result: **13 ASSERT PASS, 1 ASSERT FAIL** —
-the one failure is the API running out of credits during steps 8/10 (below), not a code
-defect.
-
-- **Step 1**: 15 chunks, 2 table chunks, pages [1, 2, 3, 5]. ✓
-- **Step 2**: **32 rules extracted by real Claude** (160s) — every one printed in the
-  transcript with expressions, citations and page numbers. Highlights:
-  - `FEE_DISCOUNT_GRID_SHARING` [DRAFT, 0.95] — population
-    `is_managed = true AND month_id = :month`, compute
-    `round((standard_rate_bps - client_rate_bps) / standard_rate_bps * 100)`, trigger
-    `value > 10`, attribute `grid_points = min(value - 10, 10)` — read from the prose
-    AND the rate table, cited p.3 §3.1.
-  - `FEE_DISCOUNT_ROUNDING` [DRAFT, 0.98] cited p.3 §3.3.
-  - `TRAILING_12M_CORE_PAYOUT` and friends honestly NEEDS_INPUT: "current field list
-    does not provide a trailing-12-month credited_amt aggregate".
-  - Uncompilable output kept with the compiler's readable error, e.g.
-    `NNM_AWARD_QUALIFICATION_THRESHOLD`: "ordering comparison '>=' needs a numeric or
-    datetime field but 'month_id' is STRING".
-- **Step 3**: `REFERRAL_NNM_AWARD_CAP` → **NEEDS_INPUT**, unclear_notes: "Cap amount
-  (:threshold) is established annually and not stated in document" — **no invented
-  number**. ✓
-- **Step 4**: 7 conflicts proposed against v0 (SAME_RULE_CODE → SUPERSEDE for the
-  verbatim fee rule; OVERLAPPING_POPULATION_TRIGGER → SUPERSEDE/COEXIST with real
-  reasoning). v0 byte-identical after the audit. ✓
-- **Step 5**: 10 drafts approved, **v1 published with 15 rules**; v0 SUPERSEDED and
-  still returns its 6 rules. ✓
-- **Step 6**: one-advisor run (V000002, 202604→202605) — COMPLETE, **25 queries,
-  budget not hit, 8 findings**, all REAL provenance with evidence rows and source
-  queries. The standout (real Claude, on the rule extracted from the sample PDF):
-
-  > **Grid reduction inconsistently applied to inherited discounted accounts**
-  > (rule R_FEE_DISCOUNT_GRID_SHARING_RSV_v1, Fee Rate, 6 evidence rows): "Six managed
-  > accounts in RPG900 carry fee discounts ranging from 12% to 19% (3–9 points beyond
-  > the 10% threshold). Only one account (3060) shows a recorded 3-point grid reduction
-  > despite a 13% discount; the other five accounts show zero grid reduction even though
-  > 3067 and 3081 have 19% discounts (should be 9-point reductions)."
-
-  The published narrative for this run rendered through the safe path (the
-  code-built template + the miner's finding texts); the numeric guard makes the
-  unverified-LLM-narrative case impossible by construction (C6-5).
-- **Step 7**: **zero unverified figures** in the published narrative/bullets. ✓
-- **Step 9**: agent query log printed in contiguous sequence. ✓ (The step-6 run's own
-  25-row log was superseded by the step-8 re-run of the same key — supersede semantics
-  working exactly as specified, if inconveniently for the transcript.)
-
-### Update (later the same day) — batch run with restored credits, stopped early
-
-After credits were restored, `scripts/e2e_finish.py` ran the remaining steps against
-the LIVE server (so the runs double as the app's data — full transcript in
-`docs/ROUND_C_E2E_FINISH_OUTPUT.txt`):
-
-- v1 published on the server from the sample PDF (8 drafts approved).
-- **The aggregate all-advisors run COMPLETED with real Claude**: 10 findings, 36
-  logged queries in contiguous sequence, budget not hit, and the numeric assertion
-  passed — zero unverified figures. Highlights: the two syndicate allocations
-  ($58,078.21, 93% of the increase), 10 lost accounts (($49,921.13), cited to
-  R_LOST_ACCOUNT_RSV_v1 — the rule fixed in task 0.2), and grid reductions
-  inconsistently applied to 13 discounted accounts (cited to
-  R_FEE_REDUCTION_SHARING_RSV_v1).
-- The 20 per-advisor runs then FAILED: the added credits were consumed by the
-  aggregate run and the account returned "credit balance too low" again. Failure
-  isolation held (every failure recorded with its error; batch never aborted).
-- **The batch was stopped early on operator instruction** — the per-advisor sweep is
-  NOT complete. To finish later: add credits, then `python3 scripts/e2e_finish.py`
-  (v1 publish is skipped when present; supersede replaces the FAILED rows in place).
-
-The AI Insights page now renders the completed aggregate run's real data; the Advisor
-page shows the honest FAILED state for individual advisors.
-
-#### Persisted insight runs, 202604→202605 (21)
-
-| Run | Status | Findings |
-|---|---|---|
-| `all` (aggregate book) | COMPLETE | 10 |
-| V000001 … V000020 (each of the 20) | FAILED — error recorded: "credit balance too low" | 0 |
-
-#### The completed aggregate run — verbatim (real Claude output)
-
-**Narrative:**
-
-> **Credited revenue rose $62,456.40** between the two months.
->
-> The largest identified driver was **Structured Products: One Account, Two Syndicate
-> Allocations Drive 93% of Increase** ($58,078.21).
-
-**Bullets:**
-
-> • **Structured Products: One Account, Two Syndicate Allocations Drive 93% of
-> Increase** — $58,078.21. Account 1597 generated $58,078 in May via two syndicate
-> allocations ($30,636 and $27,442), representing 95% of the May total and 93% of the
-> month-over-month increase. All other accounts contributed the remaining $3,069
-> increase. Syndicate allocations are typically one-time events tied to new issue
-> participation.
->
-> • **Lost Accounts: 10 Accounts with $49,921 April Revenue Went to Zero Balance in
-> May** — ($49,921.13). Ten accounts with substantial April revenue ($49,921 total,
-> 5.7% of April total) dropped to zero balance in May. Top losses: account 2486
-> ($10,871), 2437 ($7,554), 2458 ($6,420), 2451 ($5,735), and 2500 ($5,448). Combined
-> prior balances totaled $11.1M. No transfers were recorded for these accounts,
-> classifying them as lost business under rule R_LOST_ACCOUNT_RSV_v1. This $49,921
-> loss offset roughly 80% of the $62,456 gross increase, meaning the underlying book
-> growth was approximately $112,377.
->
-> • **New Accounts Contributed $16,815 in May Revenue** — $16,815.30. Four new
-> accounts opened in May and generated first-month revenue totaling $16,815. Account
-> 3004 (opened May 6) led with $7,223, followed by 3046 ($6,028), 3018 ($2,987), and
-> 3032 ($578). This represents 27% of the $62,456 total increase, indicating new
-> account acquisition was a meaningful but not dominant driver of the month-over-month
-> growth.
->
-> • **Municipal Bonds: 51% Revenue Increase Driven Entirely by Higher Average
-> Transaction Size** — $14,344.61. Municipal Bonds revenue increased $14,345 (+51.3%)
-> from $27,946 to $42,290. Transaction count remained stable at 30 and distinct
-> accounts held at 28 (both unchanged). Average transaction size jumped from $932 to
-> $1,410 (+51.3%), and maximum transaction rose from $2,347 to $2,637. The entire
-> increase is attributable to higher revenue per transaction, likely driven by larger
-> trade sizes or higher bond yields.
-
-**All 10 findings (provenance · title · impact · evidence rows · rule):**
-
-| # | Prov. | Title | Impact | Evidence | Rule |
-|---|---|---|---|---|---|
-| 1 | REAL | Structured Products: One Account, Two Syndicate Allocations Drive 93% of Increase | $58,078.21 | 20 | — |
-| 2 | DERIVED | Lost Accounts: 10 Accounts with $49,921 April Revenue Went to Zero Balance in May | ($49,921.13) | 10 | R_LOST_ACCOUNT_RSV_v1 |
-| 3 | DERIVED | New Accounts Contributed $16,815 in May Revenue | $16,815.30 | 4 | R_NEW_ACCOUNT_RSV_v1 |
-| 4 | DERIVED | Municipal Bonds: 51% Revenue Increase Driven Entirely by Higher Average Transaction Size | $14,344.61 | 1 | — |
-| 5 | DERIVED | Life & Annuities: Revenue Decline Due to Fewer Transactions and Lower Average Size | ($9,613.82) | 1 | — |
-| 6 | DERIVED | Managed Accounts: Growth Driven by 13 Additional Accounts Offsetting Lower Average Transaction Size | $8,666.33 | 1 | — |
-| 7 | DERIVED | Money Market Funds: Account Count Drop and Lower Average Transaction Size | ($7,331.98) | 1 | — |
-| 8 | DERIVED | Security Based Lending: 25.6% Revenue Increase Driven by Higher Transaction Size | $6,255.36 | 1 | — |
-| 9 | REAL | Lost Account 2486 Contributed $1,434 to Mutual Fund Trails Decline | ($1,433.87) | 10 | R_LOST_ACCOUNT_RSV_v1 |
-| 10 | REAL | Fee Discounts Above Threshold Present But Grid Reductions Inconsistently Applied | null (qualitative) | 13 | R_FEE_REDUCTION_SHARING_RSV_v1 |
-
-**Agent query log** — 36 queries, `budget_hit=false`, seq 1–36 contiguous:
-
-```
-month_meta ×2 → revenue_change_by_product → top_txns ×2 → revenue_by_product
-→ account_txns → accounts_for_month ×2 → accounts_absent → top_txns ×2
-→ product_txn_stats ×4 → top_txns → product_txn_stats ×2 → top_txns
-→ product_txn_stats ×2 → accounts_opened → transfers_in → transfers_out
-→ top_txns → product_txn_stats ×2 → account_txns → fee_reduction_accounts
-→ accounts_zeroed → account_master → account_txns ×2 → top_txns ×2
-```
-
-**Numeric assertion: PASSED** — zero unverified figures; every number in the narrative
-and bullets traces to a finding or the transition totals.
-
-### The original blocker record — steps 8 and 10, and browser-visible generated data
-
-At ~11:52 UTC the Anthropic account ran out of credits
-(`Your credit balance is too low to access the Anthropic API`). Step 8's 21-run batch
-therefore recorded **21 isolated failures, each with its honest error, batch never
-aborted** (the isolation machinery demonstrably works — that part passed), and step 10's
-re-run failed the same way.
-
-**To finish after adding credits** (Plans & Billing on the Anthropic console):
-
-```bash
-python3 scripts/e2e_test.py            # full 10 steps
-# then populate the running app for the browser:
-curl -X POST localhost:8001/api/insights/generate -H 'content-type: application/json' \
-     -d '{"advisor":"all","from_month":"202604","to_month":"202605"}'
-curl -X POST localhost:8001/api/insights/generate -H 'content-type: application/json' \
-     -d '{"advisor":"all","from_month":"202605","to_month":"202606"}'
-```
-
-## Task 5 — servers
-
-Both up and answering:
-
-```
-$ curl localhost:8001/api/health   -> healthy: true, llm mode=claude model=claude-sonnet-4-5-20250929
-$ curl -I localhost:3001           -> HTTP/1.1 200 OK
-```
-
-Forwarded URLs (Codespace `effective-goldfish-9jv9xpx9jx4cp969`):
-
-- API: https://effective-goldfish-9jv9xpx9jx4cp969-8001.app.github.dev
-- App: https://effective-goldfish-9jv9xpx9jx4cp969-3001.app.github.dev
-
-`frontend/.env.local` sets `NEXT_PUBLIC_API_BASE` to the forwarded API URL and the API's
-CORS allows the forwarded frontend origin (auto-derived from `CODESPACE_NAME`).
-**Port visibility**: the session's gh token lacks the `codespace` scope, so the ports
-could not be flipped to Public from here — set both to Public in the Ports panel, or run
-`gh auth refresh -h github.com -s codespace` then
-`gh codespace ports visibility 8001:public 3001:public -c $CODESPACE_NAME`.
-
-Until credits are added the UI shows the dashboard (real graph data) and honest
-"No insights generated yet" empty states; the generate buttons will work as soon as the
-API key has credits again.
+Servers: uvicorn :8002 healthy (RSV_v7 serving, 22 stored insight runs) ·
+next :3002 (forwarded-URL build). Public visibility still needs the Ports panel
+(gh token lacks the codespace scope — carried since Round C-fix).

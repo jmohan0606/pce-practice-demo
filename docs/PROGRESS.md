@@ -1,5 +1,67 @@
 # Build Progress
 
+## Round C docs/rules (docs/spec/ROUND_C_DOCS_RULES_SPEC.md) — documents & rules management
+- [x] Task 1 (main thread, a4ea703): applies_to PRACTICE|ADVISOR|PRODUCT|ALL
+      (+key) filters evaluation BEFORE Round G's scopes — orthogonal axes,
+      each skip has its own reason, never an error; evaluate_rule_set gains
+      group_id (drill-down passes its product group); four-tag provenance
+      (RULE_PROVENANCE_TAGS code→chip label, provenance_label serialized,
+      glossary definitions) with ALL SIX v0 rules renamed TECH_TEAM_WRITTEN
+      (rehydrated stores migrate in place); STANDARD_MANAGED_FEE_BPS=145.0
+      pinned in app/shared/fee_schedule.py with its three schedule citations
+      (no 115 constant by design). B3-13 re-pinned.
+- [x] Task 2 (main thread, 6b7da20): active flag independent of status —
+      set_active = edit→approve→publish in one call, plan preserved, reason
+      REQUIRED both directions, who/when/why on the row AND version notes;
+      inactive rules feed NOTHING into new runs (evaluator skip + miner-context
+      filter) while staying queryable with prior insights valid; delete of
+      UNAPPROVED rules only, enforced AT THE STORE (all-or-nothing);
+      PATCH /{key}/active + POST /delete.
+- [x] Shared foundations (main thread, pre-dispatch): frontend/components/rules/
+      chips + ReasonModal + PlanView + RuleListManager shell as a fixed
+      contract; frontend/lib/rulesApi.ts owns the round's new-endpoint clients
+      — the reason three concurrent subagents produced zero file conflicts.
+- [x] Tasks 3+4 (Subagent A, verified in main thread, 29162a8+d183286): six
+      document categories on document_type (only PLAN+FAQ feed the extractor,
+      refused honestly at the one extraction route; category PATCH with
+      extraction_offered), .txt/.csv parsing (colon/title-case headings; csv =
+      one has_table chunk), 145→125 conflict sample authored; RuleListManager —
+      counts line with expandable reasons, data-derived filters, group
+      select-all, mixed-selection Delete honestly disabled with the store's
+      rule stated.
+- [x] Tasks 5+6 (Subagent B, verified in main thread, 36501ff): POST
+      /api/rules/manual (two MANUAL tags only); generate_query=false →
+      natural_language_only guidance (no plan BY DESIGN, approve()'s one
+      documented exception, evaluator skip, labelled MANUAL GUIDANCE block in
+      the miner opening, "Guidance only, not computed" in the UI);
+      promote/demote version-mint with required reason; three seeded
+      MANUALLY_WRITTEN_TECH examples (BILLABLE_DAYS + QUARTERLY_BILLING_CYCLE
+      compile honestly simplified, FEE_SCHEDULE_VARIANCE lands NEEDS_DATA
+      naming the ratio-of-aggregates gap); recompile-with-note keeps every
+      attempt (append-only, pick re-validates, turn-logged rule_compile|key);
+      check_manual_rules 17/17; B's real LLM spend $0.17.
+- [x] Task 7 (Subagent C, verified in main thread, 61cb6bc): Rule Versions —
+      every version incl. v0/superseded expands to full detail and every rule
+      is editable (closes the client's cannot-see-v0 complaint); RuleEditDialog
+      (recompile is a real choice); VersionCompare client-side diff by
+      rule_code over meaningful fields, churn ignored; Inactive amber with
+      who/when/why, distinct from Superseded; never-fired kept.
+- [x] Task 8 (main thread): ALL checks observed live (headless chromium for the
+      visual ones) — actual output in docs/ROUND_C_COMPLETE.md. Check 11: the
+      one-line 145→125 .txt produced a real OVERLAPPING_POPULATION_TRIGGER /
+      SUPERSEDE proposal with both citations (compile-then-audit; the
+      uncompiled draft honestly has no population to overlap). Check 20: the
+      document→rule→insight→citation chain shown END TO END for the first time
+      — dashboard bullet cites plan_addendum_2026.txt · p.1 · Account
+      Concentration Review (A2B carried observation #1 closed). FOUND+FIXED by
+      observation: extractor citations carried no document_name, so the UI's
+      citation line fell back to "No document citation" on document-derived
+      rules — both citation serializers now resolve it from document_id.
+      21-run insight batch regenerated on RSV_v7. verify a/b/c/e/h/a1 green,
+      check_manual_rules 17/17, check_flags 8/8, npm build 8 routes.
+Note: subagents reported, the MAIN THREAD re-verified by execution then
+      committed each task (subagents never ran git or touched this file).
+
 ## Round A2B (docs/spec/ROUND_A2B_SPEC.md) — dashboard UI + advisor page + coaching + flags
 - [x] Task 1 (main thread, fb08b3d): shared foundations — useGlossary/<Term>
       (session-cached, ONE tooltip source, no hardcoded explanatory strings),
@@ -440,16 +502,28 @@ Note: per Round E/G/H precedent, subagents reported and the MAIN THREAD
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: A2B (docs/spec/ROUND_A2B_SPEC.md) — COMPLETE. All 8 tasks done;
-      docs/ROUND_A2B_COMPLETE.md has the observed output of all 24 checks.
-      verify a/b/c/e/h/a1 green (25/25, 19/19, 13/13, 8/8, 9/9, 17/17),
-      check_flags 8/8, check_exports 43/43, npm build passes (9 routes).
-      Servers up on :8002/:3002 (forwarded-URL build; Ports panel still
-      needed for public visibility).
-Round A2B carried observations: (1) no bullet on the dashboard shows a
-      document citation yet because the served rule set has no
-      document-derived rules — the path is proven by coaching's citations;
-      re-check after a real document extraction publishes rules; (2) the
+Round: C docs/rules (docs/spec/ROUND_C_DOCS_RULES_SPEC.md) — COMPLETE. All 8
+      tasks done; docs/ROUND_C_COMPLETE.md has the observed output of every
+      check, incl. the verbatim conflict-auditor proposal (check 11) and the
+      first-ever document-cited dashboard bullet (check 20). verify
+      a/b/c/e/h/a1 green (25/25, 19/19, 13/13, 8/8, 9/9, 17/17),
+      check_manual_rules 17/17, check_flags 8/8, npm build passes (8 routes).
+      Served store: RSV_v0…v7 demo trail (deactivate/promote/demote/scope/
+      publish), 22 stored insight runs regenerated on RSV_v7, NEEDS_DATA
+      drafts incl. the deliberately-unpublished 125 bps conflict draft.
+Round C carried observations: (1) reporter_sources/coach classify every
+      non-GUIDANCE document category as PLAN search material — PLAYBOOK/
+      TRAINING/OTHER now count as PLAN retrieval sources (never extraction
+      inputs); needs an operator ruling; (2) the never-fired card lists the
+      guidance-only rule as "never evaluated" — true by design, but a
+      "guidance only" note there is a polish candidate; (3) recompile is
+      draft-pool only (immutability); (4) the conflict auditor needs a
+      compiled population — extract → compile → audit is the flow.
+A2B closed observation: check 20 closed A2B's carried observation #1 (a
+      dashboard bullet now carries a real document citation).
+
+Previous round: A2B — COMPLETE (all 24 checks in docs/ROUND_A2B_COMPLETE.md).
+Remaining A2B carried observations: (2) the
       NarrativeText direction heuristics (paren-pct inheritance, decline
       verbs) are pragmatic — if the Reporter ever emits structured spans,
       prefer those; (3) 21 stored insight runs + coaching survive restarts
@@ -488,12 +562,12 @@ SPEC CHANGE (operator, 2026-08-12): advisor_nnm_position DROPPED and every NNM
       recommendations — three months of net flows cannot stand in for an
       annually-measured NNM figure; even labelled, it presents a proxy as a fact.
       AUM and net flows ship; NNM waits for real data.
-Cost: running LLM total ≈ $6.18 project-wide (A2B session ≈ $1.52: 21-run
-      insight batch $1.516 + coach $0.0024). Previous H session ≈ $0.92 of its $10
-      ceiling (cache support $0.01 + cache health $0.14 + forced-limit runs
-      ~$0.10 + scale insight run ×2 $0.36 + scale drill-down $0.12 + small
-      re-runs in verify sweeps ~$0.19).
-Last updated: 2026-08-12 (Round H completion session, after Task 6)
+Cost: running LLM total ≈ $9.5 project-wide. Round C docs/rules session ≈ $3.30 (trace-measured)
+      of its $10 ceiling (Subagent B compiles $0.17 + live seed/manual/retry
+      compiles ≈ $0.23 + two small .txt extractions & conflict audit ≈ $0.35 +
+      one advisor run $0.10 + 21-run RSV_v7 insight batch ≈ $2.5). Previous
+      A2B session ≈ $1.52.
+Last updated: 2026-08-14 (Round C docs/rules completion session, after Task 8)
 Carry-over from Round C: per-advisor sweep still finishable via
       `python3 scripts/e2e_finish.py` once credits allow; port visibility for
       8001/3001 still needs the Ports panel (gh token lacks the codespace scope).

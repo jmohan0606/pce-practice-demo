@@ -68,6 +68,26 @@ def _serialize_finding(finding: dict) -> dict:
     }
 
 
+def _document_name(document_id: str | None) -> str | None:
+    """Resolve a rule's document_id to its display name via the knowledge
+    catalog (cached per process — the catalog is append-mostly)."""
+    if not document_id:
+        return None
+    global _DOC_NAMES
+    if document_id not in _DOC_NAMES:
+        try:
+            from app.knowledge.knowledge_service import KnowledgeManagementService
+
+            _DOC_NAMES = {d.get("document_id"): d.get("document_name")
+                          for d in KnowledgeManagementService().list_documents()}
+        except Exception:  # noqa: BLE001 — a name is display sugar, never invented
+            return None
+    return _DOC_NAMES.get(document_id)
+
+
+_DOC_NAMES: dict = {}
+
+
 def _rule_citation(rule_key: str | None) -> dict | None:
     if not rule_key:
         return None
@@ -75,13 +95,22 @@ def _rule_citation(rule_key: str | None) -> dict | None:
     if rule is None:
         return None
     citations = rule.get("citations") or []
+    citation = dict(citations[0]) if citations else None
+    # Round C (docs/rules) task 8, FOUND BY OBSERVATION: extractor citations
+    # carry chunk/page/section but no document_name, so the UI rendered
+    # "No document citation" on a document-derived rule's finding — the exact
+    # chain check 20 exists to prove. The rule's document_id resolves the name.
+    if citation is not None and not citation.get("document_name"):
+        name = _document_name(rule.get("document_id"))
+        if name:
+            citation["document_name"] = name
     return {"rule_key": rule_key, "rule_code": rule.get("rule_code"),
             "rule_name": rule.get("rule_name"),
             # Round F 5.1: the driver chip's tooltip is the matched rule's
             # plain-English statement; the frontend falls back to its own
             # definition table only when a finding has no rule.
             "statement": rule.get("statement"),
-            "citation": citations[0] if citations else None}
+            "citation": citation}
 
 
 def _serialize_run(run: dict, findings: list[dict]) -> dict:
