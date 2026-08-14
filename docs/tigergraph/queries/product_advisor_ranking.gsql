@@ -1,0 +1,32 @@
+// product_advisor_ranking — Round A1 task 5 (docs/ROUND_A1_SPEC.md).
+// Top N and bottom N cohort advisors for one product group across a
+// transition, ranked by CHANGE AMOUNT (fewer than N returns what exists).
+// This query returns the deterministic revenue/account figures;
+// dominant_driver_code is computed APP-SIDE from rule evaluation outcomes
+// (evaluate_rule_set at advisor scope, monetary impact per driver_code over
+// the advisor's accounts in this group) — deterministic, no LLM, and null
+// when no rule outcome exists. It cannot be computed in GSQL because rule
+// plans are compiled and evaluated by the application's rules engine.
+// Local-tier equivalent: app/graph/queries/noncredited.py::product_advisor_ranking
+CREATE QUERY product_advisor_ranking(STRING group_id, STRING from_month, STRING to_month, INT limit_n) FOR GRAPH phx_dm_pce_practice_demo {
+  SumAccum<DOUBLE> @from_amt; SumAccum<DOUBLE> @to_amt;
+  SetAccum<STRING> @from_accts; SetAccum<STRING> @to_accts;
+  adv = SELECT a FROM phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_of_product)- phx_dm_pce_product:p,
+                     phx_dm_pce_revenue_transaction:x -(phx_dm_pce_txn_by_advisor)- phx_dm_pce_advisor:a
+        WHERE p.group_id == group_id AND a.in_cohort AND x.credited_amt > 0
+          AND (x.month_id == from_month OR x.month_id == to_month)
+        ACCUM CASE WHEN x.month_id == from_month THEN
+                a.@from_amt += x.credited_amt, a.@from_accts += x.acct_key
+              ELSE
+                a.@to_amt += x.credited_amt, a.@to_accts += x.acct_key
+              END;
+  // ORDER BY change desc; the app keeps the first limit_n and last limit_n and
+  // computes change_pct / pct_of_total_change (of the group's total change).
+  ranked = SELECT a FROM adv:a
+           ORDER BY a.@to_amt - a.@from_amt DESC;
+  PRINT ranked[ranked.advisor_sid AS advisor_sid, ranked.advisor_name AS advisor_name,
+               ranked.@from_amt AS from_amt, ranked.@to_amt AS to_amt,
+               ranked.@to_amt - ranked.@from_amt AS change_amt,
+               ranked.@to_accts.size() AS account_count,
+               ranked.@to_accts.size() - ranked.@from_accts.size() AS account_delta];
+}
