@@ -227,6 +227,38 @@ class Settings(BaseSettings):
     # with that measurement, never silently.
     ingestion_max_batch_calls: int = Field(default=500, alias="INGESTION_MAX_BATCH_CALLS_PER_ENTITY")
 
+    # --- Round E chat (ROUND_E_CHAT_SPEC). The chat agent runs on Opus — the
+    # one place a subtle reasoning failure is expensive and hard to spot; the
+    # non-empty model default deliberately makes the role "configured" (coach
+    # precedent) so it never silently inherits the Haiku default. The guardrail
+    # classifier is a cheap, fast tagging pass — Haiku.
+    chat_mode: str = Field(default="", alias="CHAT_MODE")
+    chat_model: str = Field(default="claude-opus-4-6", alias="CHAT_MODEL")
+    chat_deployment: str = Field(default="", alias="CHAT_DEPLOYMENT")
+    chat_api_version: str = Field(default="", alias="CHAT_API_VERSION")
+    chat_temperature: float = Field(default=1.0, alias="CHAT_TEMPERATURE")
+    chat_guardrail_mode: str = Field(default="", alias="CHAT_GUARDRAIL_MODE")
+    chat_guardrail_model: str = Field(default="claude-haiku-4-5-20251001",
+                                      alias="CHAT_GUARDRAIL_MODEL")
+    chat_guardrail_deployment: str = Field(default="", alias="CHAT_GUARDRAIL_DEPLOYMENT")
+    chat_guardrail_api_version: str = Field(default="", alias="CHAT_GUARDRAIL_API_VERSION")
+    chat_guardrail_temperature: float = Field(default=1.0, alias="CHAT_GUARDRAIL_TEMPERATURE")
+    # Chat loop budgets — much tighter than the Miner's 25/35 (spec 3.6: answer
+    # from stored insights and catalogued queries first). Round H rule: every
+    # limit lives here with an env alias and is surfaced when it binds.
+    chat_query_budget: int = Field(default=6, alias="CHAT_QUERY_BUDGET")
+    chat_max_turns: int = Field(default=10, alias="CHAT_MAX_TURNS")
+    chat_max_searches: int = Field(default=4, alias="CHAT_MAX_SEARCHES")
+    chat_rows_shown: int = Field(default=30, alias="CHAT_ROWS_SHOWN")
+    chat_max_input_tokens: int = Field(default=80_000, alias="CHAT_MAX_INPUT_TOKENS")
+    # Layer 1 blocks ONLY at/above this confidence; ambiguity proceeds because
+    # Layer 2 (the tool boundary) contains it — the V2 false-refusal fix.
+    chat_guardrail_block_confidence: float = Field(
+        default=0.8, alias="CHAT_GUARDRAIL_BLOCK_CONFIDENCE")
+    # How many prior messages rehydrate into the agent's context on resume.
+    chat_history_rehydrate_messages: int = Field(
+        default=40, alias="CHAT_HISTORY_REHYDRATE_MESSAGES")
+
     # --- Storage paths ---
     chroma_path: str = Field(default="./chroma", alias="CHROMA_PATH")
     uploads_path: str = Field(default="./data/uploads", alias="UPLOADS_PATH")

@@ -1,5 +1,24 @@
 # Build Progress
 
+## Round E chat (docs/spec/ROUND_E_CHAT_SPEC.md) — conversational chat
+- [x] Task 1 (main thread): Layer 2 tool boundary — app/chat/tools.py ChatTools
+      with EXACTLY four capabilities (run_catalog_query validated-before-
+      execution, search_documents, get_stored_insight, generate_insights the
+      one write); no other method exists — approve/publish/rename/toggle are
+      unreachable at the tool layer, never by prompt. app/chat/verify.py:
+      unverified_figures (reuses the reporter's numeric machinery) +
+      system_prompt_leak literal substring check. New roles chat
+      (CHAT_MODEL=claude-opus-4-6, probed live) + chat_guardrail (Haiku);
+      chat budgets in settings with env aliases (CHAT_QUERY_BUDGET=6,
+      CHAT_MAX_TURNS=10, CHAT_MAX_SEARCHES=4, block threshold 0.8). Two-layer
+      design + do-not-tighten warning recorded in DECISIONS.md.
+- [ ] Task 2 (main thread): Layer 1 detection/tagging
+- [ ] Task 3 (main thread): conversation agent
+- [ ] Tasks 4-5 (Subagent A): conversation store + history
+- [ ] Task 6 (Subagent B): chat panel UI
+- [ ] Task 7 (Subagent C): guardrail trace screen
+- [ ] Task 8 (main thread): 23 live-conversation checks
+
 ## Round C docs/rules (docs/spec/ROUND_C_DOCS_RULES_SPEC.md) — documents & rules management
 - [x] Task 1 (main thread, a4ea703): applies_to PRACTICE|ADVISOR|PRODUCT|ALL
       (+key) filters evaluation BEFORE Round G's scopes — orthogonal axes,

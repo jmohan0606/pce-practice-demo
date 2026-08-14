@@ -38,7 +38,11 @@ _log = get_logger("app.llm.roles")
 ROLES = ("rule_extractor", "rule_compiler", "rule_conflict_auditor",
          "insights_miner", "insights_reporter",
          # Round A2B 6.7 — the Coach (Haiku by default; COACH_* env keys)
-         "coach")
+         "coach",
+         # Round E chat — the conversation agent (Opus by default: the one
+         # place a subtle reasoning failure is expensive; CHAT_* env keys) and
+         # its Layer-1 classifier (Haiku by default; CHAT_GUARDRAIL_* keys).
+         "chat", "chat_guardrail")
 
 _FIELDS = ("mode", "model", "deployment", "api_version")
 
