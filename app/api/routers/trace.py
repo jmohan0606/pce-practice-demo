@@ -63,6 +63,8 @@ def _run_row(run_id: str, run: dict | None, turns: list[dict]) -> dict:
     else:
         kind = ("document_extraction" if run_id.startswith("doc_extract|")
                 else "conflict_audit" if run_id.startswith("conflict_audit|")
+                # Round E task 7: chat turns are logged under chat|<conversation_id>
+                else "chat" if run_id.startswith("chat|")
                 else "other")
         scope = {"kind": kind, "advisor_sid": None, "transition": None,
                  "version_id": None, "status": "LOGGED", "query_count": 0,
@@ -88,6 +90,25 @@ def runs() -> dict:
             rows.append(_run_row(run_id, store.run(run_id), []))
     rows.sort(key=lambda r: (r["started_at"] or "", r["run_id"]), reverse=True)
     return {"runs": rows}
+
+
+@router.get("/guardrail")
+def guardrail(tag: str | None = None) -> dict:
+    """Round E task 7 — the Guardrail tab's feed. Every classification ever
+    made, blocked or not (the log is what demos Layer 1; the tools_called
+    column — 0 for anything blocked outright — is what demos Layer 2).
+
+    ``summary`` and ``total`` always cover the full log; ``?tag=`` filters
+    ``rows`` only, so the count chips stay stable while filtering.
+    """
+    from app.chat.store import get_chat_store
+
+    all_rows = get_chat_store().guardrail_log()
+    summary: dict[str, int] = {}
+    for r in all_rows:
+        summary[r["tag"]] = summary.get(r["tag"], 0) + 1
+    rows = [r for r in all_rows if r["tag"] == tag] if tag else all_rows
+    return {"rows": rows, "summary": summary, "total": len(all_rows)}
 
 
 @router.get("/alltime")

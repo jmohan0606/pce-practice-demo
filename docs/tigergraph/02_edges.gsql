@@ -1,4 +1,4 @@
-// pce-practice-demo — edge DDL (36 directed edge types, each with a reverse edge)
+// pce-practice-demo — edge DDL (40 directed edge types, each with a reverse edge)
 // Source: docs/spec/SCHEMA_SPEC.md §3
 // Target: TigerGraph 4.2.2, GSQL Syntax V1. Run after 01_vertices.gsql, before 03_create_graph.gsql.
 USE GLOBAL
@@ -63,3 +63,6 @@ CREATE DIRECTED EDGE phx_dm_pce_finding_matched_rule (FROM phx_dm_pce_finding, T
 CREATE DIRECTED EDGE phx_dm_pce_evidence_of_finding (FROM phx_dm_pce_evidence_row, TO phx_dm_pce_finding) WITH REVERSE_EDGE="phx_dm_pce_finding_has_evidence";
 CREATE DIRECTED EDGE phx_dm_pce_query_in_run (FROM phx_dm_pce_agent_query_log, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_query";
 CREATE DIRECTED EDGE phx_dm_pce_turn_in_run (FROM phx_dm_pce_agent_turn_log, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_turn";
+
+// chat (Round E, app-written — precedent: phx_dm_pce_turn_in_run)
+CREATE DIRECTED EDGE phx_dm_pce_message_in_conversation (FROM phx_dm_pce_chat_message, TO phx_dm_pce_conversation) WITH REVERSE_EDGE="phx_dm_pce_conversation_has_message";

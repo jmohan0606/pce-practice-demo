@@ -12,6 +12,7 @@ import {
   getMonths,
 } from "@/lib/api";
 import DrilldownPanel, { useDrilldownPanel } from "@/components/DrilldownPanel";
+import { publishChatContext } from "@/lib/chatContext";
 import { Gated, useFlag } from "@/lib/flags";
 import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
@@ -101,6 +102,23 @@ export default function DashboardPage() {
   }, [view]);
 
   const activeTransition = chart?.transitions[selected] ?? null;
+
+  // Round E 6.2 — publish the page's selection to the chat panel (a hint,
+  // never a filter). One call, in the existing selection-change path.
+  useEffect(() => {
+    const name = (id: string) => months.find((m) => m.month_id === id)?.month_name ?? id;
+    publishChatContext(
+      activeTransition
+        ? {
+            page: "dashboard",
+            from_month: activeTransition.from,
+            to_month: activeTransition.to,
+            view,
+            label: `All Advisors · ${name(activeTransition.from)} → ${name(activeTransition.to)}`,
+          }
+        : null,
+    );
+  }, [activeTransition, view, months]);
 
   // The table fetches on (view, selected transition) change.
   useEffect(() => {

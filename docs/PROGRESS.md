@@ -36,9 +36,35 @@
       resolution ('her'→V000013 stated as a step), rule citation link, the V2
       partial-block case (injection blocked + revenue answered, tools 2),
       full block (tools 0, no agent call), ~$0.04/message.
-- [ ] Tasks 4-5 (Subagent A): conversation store + history
-- [ ] Task 6 (Subagent B): chat panel UI
-- [ ] Task 7 (Subagent C): guardrail trace screen
+- [x] Tasks 4+5 (Subagent A, verified in main thread): durable ChatStore —
+      SQLite write-through (data/runtime/chat.db) + rehydrate-on-construction
+      + graph mirror of phx_dm_pce_conversation / phx_dm_pce_chat_message /
+      message_in_conversation edge (runtime upsert IS the loading job, no CSV
+      job — turn-log precedent); schema 29 vertices / 40 edges across DDL /
+      schema_catalog / SCHEMA_SPEC, zero pins widened; restart survival proven
+      across two processes (4 messages + guardrail_log intact, _history()
+      serves the rehydrated rows the agent resolves 'her' against); delete is
+      three-layer and proven; endpoints already matched the Task-5 spec and
+      now run durable; flag-off 409 re-proven; global persistence recorded as
+      the demo simplification (DECISIONS.md).
+- [x] Task 6 (Subagent B, verified in main thread): ChatDock/ChatPanel/
+      ChatMessage/ChatHistory/ChatMarkdown + chatApi (fetch-ReadableStream
+      SSE) + chatContext pub/sub (dashboard + advisor pages publish their
+      selection in one-line effects); 440px docked panel on every page with
+      the floating Ask iPerform pill, localStorage open/conversation
+      persistence, ?chat= deep link; context bar with keyed Clear context and
+      answered-context updates; markdown renderer with app-token tables,
+      NarrativeText figures, SID autolinks, rule:/doc: link schemes; live
+      pulsing reasoning collapsing to 'Show reasoning · N steps · Ns';
+      guardrail block chip with 'Tools called: 0' + partial answers beneath;
+      confirm box prefills the composer; suggestions refresh with context;
+      footer verbatim; global.chat off renders nothing and 409s handled.
+- [x] Task 7 (Subagent C, verified in main thread): GET /api/trace/guardrail
+      (?tag= narrows rows, summary/total always full — honest chips) +
+      Guardrail tab on Trace: When / expandable Message / coloured Tag chip /
+      Confidence / Action / bold Tools called (0 on blocked rows) /
+      Conversation link to /?chat=<id>; summary chips filter; chat scopes in
+      the runs table now kind "chat".
 - [ ] Task 8 (main thread): 23 live-conversation checks
 
 ## Round C docs/rules (docs/spec/ROUND_C_DOCS_RULES_SPEC.md) — documents & rules management

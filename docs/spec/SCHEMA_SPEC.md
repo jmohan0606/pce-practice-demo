@@ -347,12 +347,29 @@ CREATE VERTEX phx_dm_pce_agent_turn_log (PRIMARY_ID turn_id STRING, run_id STRIN
 CREATE VERTEX phx_dm_pce_feature_flag (PRIMARY_ID flag_key STRING, enabled BOOL,
   updated_at STRING, updated_by STRING, note_reason STRING, note_at STRING)
   WITH primary_id_as_attribute="true";
+
+-- Round E chat (Tasks 4–5) — conversations and messages (app-written; the
+-- ChatStore's runtime upsert is its loading job — precedent
+-- phx_dm_pce_agent_turn_log). Global persistence for now: every user sees
+-- every conversation (demo simplification, DECISIONS.md). Durable copy lives
+-- in the app's SQLite (data/runtime/chat.db); the graph carries the
+-- schema-catalogued subset (guardrail_json / extra_json are SQLite-only).
+CREATE VERTEX phx_dm_pce_conversation (PRIMARY_ID conversation_id STRING, title STRING,
+  created_at DATETIME, updated_at DATETIME, message_count INT)
+  WITH primary_id_as_attribute="true";
+
+CREATE VERTEX phx_dm_pce_chat_message (PRIMARY_ID message_id STRING, conversation_id STRING,
+  seq_no INT, role STRING, text STRING, tool_calls_json STRING, guardrail_tag STRING,
+  guardrail_confidence DOUBLE, reasoning_steps_json STRING, latency_ms INT,
+  tokens_in INT, tokens_out INT, est_cost_usd DOUBLE, created_at DATETIME)
+  WITH primary_id_as_attribute="true";
 ```
 
 `rule_key = version_id ||'|'|| rule_code`. `run_id = advisor_sid ||'|'|| from_month_id ||'|'||
 to_month_id ||'|'|| version_id`. `turn_id = run_id ||'|'|| seq_no` (extractor / conflict-auditor
 turns use the synthetic run ids `doc_extract|<document_id>` / `conflict_audit|<scope>` — no
-`phx_dm_pce_turn_in_run` edge instance exists for those). Every per-entity key embeds its
+`phx_dm_pce_turn_in_run` edge instance exists for those). `message_id =
+conversation_id ||'|'|| seq_no`. Every per-entity key embeds its
 scope — R16, applied at design time.
 
 ---
@@ -420,9 +437,12 @@ CREATE DIRECTED EDGE phx_dm_pce_finding_matched_rule (FROM phx_dm_pce_finding, T
 CREATE DIRECTED EDGE phx_dm_pce_evidence_of_finding (FROM phx_dm_pce_evidence_row, TO phx_dm_pce_finding) WITH REVERSE_EDGE="phx_dm_pce_finding_has_evidence";
 CREATE DIRECTED EDGE phx_dm_pce_query_in_run (FROM phx_dm_pce_agent_query_log, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_query";
 CREATE DIRECTED EDGE phx_dm_pce_turn_in_run (FROM phx_dm_pce_agent_turn_log, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_turn";
+
+-- chat (Round E, app-written)
+CREATE DIRECTED EDGE phx_dm_pce_message_in_conversation (FROM phx_dm_pce_chat_message, TO phx_dm_pce_conversation) WITH REVERSE_EDGE="phx_dm_pce_conversation_has_message";
 ```
 
-**27 vertices (17 source-loaded + 10 app-written) · 39 edge types.** Drop order is the reverse of create order.
+**29 vertices (17 source-loaded + 12 app-written) · 40 edge types.** Drop order is the reverse of create order.
 
 ---
 

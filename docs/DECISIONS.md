@@ -309,6 +309,19 @@ WARNING TO FUTURE SESSIONS: the temptation will be to "tighten" Layer 1 (lower t
 Also: the chat agent runs on Opus (CHAT_MODEL=claude-opus-4-6, probed live) — the one place a subtle reasoning failure is expensive; the guardrail classifier runs on Haiku (a fast tagging pass). All other roles keep their current models.
 Reversible: yes (but read the warning first)
 
+## 2026-08-14 · Round E chat task 4 · Chat persistence is global; chat vertices have no CSV loading job
+Context (Subagent A, verified in main thread): spec Task 4 orders global persistence and the two chat vertices.
+Decision: Every user sees every conversation — a deliberate demo simplification; per-user scoping comes later. phx_dm_pce_conversation / phx_dm_pce_chat_message (+ phx_dm_pce_message_in_conversation edge, reverse conversation_has_message) are app-written vertices: the ChatStore's runtime upsert is their loading job, no CSV loading job exists (turn-log precedent). The durable copy lives in data/runtime/chat.db (SQLite write-through, rehydrate-on-construction, PCE_CHAT_DB_PATH overridable); guardrail_json/extra_json are SQLite-only, the graph mirrors the catalogued subset. Delete is three-layer (in-process, SQLite one-transaction, graph best-effort) — proven by probe. Schema now 29 vertices / 40 edges; no verify pins widened (2a/2b already >=).
+Reversible: yes
+
+## 2026-08-14 · Round E chat task 6 · Chat UI conventions: lazy conversation creation, scoped CSS, keyed Clear-context
+Decision (Subagent B, verified in main thread): conversations are created lazily on first send (the ✚ button only clears the current id) so empty conversations never pile up; all chat CSS is scoped under .chatpanel/.chat-dock with the mockup's --warn/--block tokens mapped to existing --der-*/--sev-crit* tokens (no new root variables); "Clear context" is keyed to the current context identity — it suppresses page_context until the page selection next CHANGES, and the bar label switches to the answered context when an answer event carries one (spec 3.4); the flag's loading state renders nothing (a moment of absence beats a flash of chat UI that the flag then removes). Deep link: any route with ?chat=<conversation_id> opens the panel on that conversation (the guardrail trace's Conversation links use it).
+Reversible: yes
+
+## 2026-08-14 · Round E chat task 7 · Guardrail trace: filter narrows rows, never the counts
+Decision (Subagent C, verified in main thread): GET /api/trace/guardrail?tag= filters rows server-side but summary/total always cover the FULL log, so the count chips stay stable and honest while a filter is active. The endpoint passes guardrail_log() through unmodified — tools_called is derived in ONE place (the store). Tag colours reuse the existing chip palette (attack tags red; SOCIAL_ENGINEERING amber — deception, not code; CLEAN grey-green; OFF_TOPIC neutral). Chat scopes in the runs table carry kind "chat" ("chat conversation" label).
+Reversible: yes
+
 ## 2026-08-14 · Round A2B · Per-subtask commits collapsed for parallel-dispatched work
 Context: The spec asks for commits after 6.2/6.4/6.7; Subagent C's work arrived complete from the parallel dispatch (Round E tasks 6+7 precedent).
 Decision: One verified commit per task (6 and 7). Batch insight generation (advisor="all", 21 runs, $1.52) was run by the main thread during the round so exceptions/insights/advisor views verify against real stored runs.

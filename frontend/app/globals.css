@@ -369,3 +369,118 @@ label.fld{display:block;font-size:12px;color:var(--slate);margin-bottom:5px}
   background:#fff;color:var(--ink);padding:7px 12px;border-radius:4px}
 input.filter{font:inherit;font-size:13px;border:1px solid var(--rule);background:#fff;
   color:var(--ink);padding:7px 12px;border-radius:4px}
+
+/* ============================================================ Round E — CHAT
+   Chat panel (docs/ui/MOCKUP_CHAT.html), scoped under .chatpanel / .chat-dock.
+   Mockup's --warn/--block map to the existing --der-* / --sev-crit* tokens. */
+.chatpanel{position:fixed;top:0;right:0;bottom:0;width:440px;max-width:100vw;z-index:60;
+  border-left:1px solid var(--rule);background:#fff;display:flex;flex-direction:column;
+  box-shadow:-4px 0 18px rgba(16,28,44,.08)}
+@media(min-width:1100px){body.chat-open{padding-right:440px}}
+.chatpanel .chat-h{padding:12px 16px;border-bottom:1px solid var(--rule);display:flex;
+  justify-content:space-between;align-items:center;gap:10px}
+.chatpanel .chat-h .t{font-weight:600;font-size:14px}
+.chatpanel .chat-h .btns{display:flex;gap:6px}
+.chatpanel .iconbtn{background:none;border:1px solid var(--rule);border-radius:4px;width:28px;
+  height:28px;cursor:pointer;color:var(--slate);font-size:14px;line-height:1;padding:0}
+.chatpanel .iconbtn:hover{background:var(--rule-2);color:var(--ink)}
+.chatpanel .scope{padding:9px 16px;background:var(--ai-bg);border-bottom:1px solid var(--ai-br);
+  font-size:12px;color:var(--ai);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.chatpanel .scope b{font-weight:600}
+.chatpanel .scope button{background:none;border:0;color:var(--ai);font:inherit;font-size:11.5px;
+  cursor:pointer;text-decoration:underline;padding:0;white-space:nowrap}
+.chatpanel .stream{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+.chatpanel .msg{display:flex;flex-direction:column;gap:6px;max-width:100%}
+.chatpanel .msg.user{align-items:flex-end}
+.chatpanel .bubble{padding:9px 13px;border-radius:12px;font-size:13.5px;line-height:1.55;max-width:92%}
+.chatpanel .msg.user .bubble{background:var(--navy);color:#fff;border-bottom-right-radius:4px;
+  white-space:pre-wrap}
+.chatpanel .msg.bot .bubble{background:var(--panel);border:1px solid var(--rule);
+  border-bottom-left-radius:4px;max-width:100%}
+.chatpanel .msg.bot .bubble.err{background:var(--neg-bg);border-color:var(--neg-br)}
+.chatpanel .bubble p{margin:0 0 9px}
+.chatpanel .bubble p:last-child{margin:0}
+.chatpanel .bubble ul,.chatpanel .bubble ol{margin:0 0 9px;padding-left:20px}
+.chatpanel .bubble b{font-weight:600}
+/* reasoning — collapsed */
+.chatpanel .reason{border:1px solid var(--rule);border-radius:8px;background:#FCFCFE;
+  font-size:12.5px;overflow:hidden}
+.chatpanel .reason summary{padding:7px 11px;cursor:pointer;color:var(--slate);list-style:none;
+  display:flex;align-items:center;gap:7px}
+.chatpanel .reason summary::-webkit-details-marker{display:none}
+.chatpanel .reason summary::before{content:"\25B8";color:var(--slate-2);font-size:10px}
+.chatpanel .reason[open] summary::before{content:"\25BE"}
+.chatpanel .reason .steps{padding:2px 11px 10px 27px;color:var(--slate);display:flex;
+  flex-direction:column;gap:5px;font-size:12px}
+.chatpanel .reason .steps div::before{content:"\2713 ";color:var(--pos);font-weight:700}
+/* reasoning — live */
+.chatpanel .live{border:1px solid var(--ai-br);background:var(--ai-bg);border-radius:8px;
+  padding:9px 12px;font-size:12.5px;color:var(--ai);display:flex;flex-direction:column;gap:5px}
+.chatpanel .live .now{display:flex;align-items:center;gap:7px;font-weight:600}
+.chatpanel .dot{width:7px;height:7px;border-radius:50%;background:var(--ai);flex-shrink:0;
+  animation:chatpulse 1.1s ease-in-out infinite}
+@keyframes chatpulse{0%,100%{opacity:.3}50%{opacity:1}}
+.chatpanel .live .done{color:var(--slate);padding-left:14px}
+.chatpanel .live .done::before{content:"\2713 ";color:var(--pos)}
+/* data table inside a message */
+.chatpanel .mt{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 2px;
+  border:1px solid var(--rule);border-radius:6px;overflow:hidden}
+.chatpanel .mt th{background:var(--navy);color:#E8EEF6;text-align:left;padding:6px 9px;
+  font-size:10.5px;font-weight:600;letter-spacing:.02em}
+.chatpanel .mt th.num{text-align:right}
+.chatpanel .mt td{padding:6px 9px;border-bottom:1px solid var(--rule-2)}
+.chatpanel .mt tr:last-child td{border-bottom:0}
+/* guardrail */
+.chatpanel .gr{border-radius:8px;padding:9px 12px;font-size:12.5px;line-height:1.5}
+.chatpanel .gr.block{background:var(--sev-crit-bg);border:1px solid #E9BDB7;color:var(--sev-crit)}
+.chatpanel .gr .hd{font-weight:700;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;
+  margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.chatpanel .gr .meta{font-size:11.5px;opacity:.85;margin-top:5px}
+.chatpanel .tagchip{display:inline-flex;font-size:10px;font-weight:700;padding:2px 6px;
+  border-radius:3px;letter-spacing:.03em;text-transform:uppercase;background:rgba(0,0,0,.07)}
+/* confirm-before-substituting box */
+.chatpanel .confirm{border:1px solid #EDD9AE;background:var(--der-bg);border-radius:8px;
+  padding:10px 12px;font-size:12.5px;color:var(--der-tx);line-height:1.5}
+.chatpanel .confirm .btns{display:flex;gap:7px;margin-top:9px}
+.chatpanel .cbtn{font:inherit;font-size:12px;padding:4px 11px;border-radius:4px;cursor:pointer;
+  border:1px solid var(--der-tx);background:#fff;color:var(--der-tx)}
+.chatpanel .cbtn.yes{background:var(--der-tx);color:#fff}
+/* suggestions / composer / footer */
+.chatpanel .suggest{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 10px}
+.chatpanel .suggest button{font:inherit;font-size:12px;padding:5px 11px;border-radius:14px;
+  border:1px solid var(--rule);background:#fff;color:var(--slate);cursor:pointer}
+.chatpanel .suggest button:hover{border-color:var(--navy-hi);color:var(--navy)}
+.chatpanel .suggest button:disabled{opacity:.55;cursor:default}
+.chatpanel .composer{border-top:1px solid var(--rule);padding:11px 14px;display:flex;gap:8px;
+  align-items:flex-end}
+.chatpanel .composer textarea{flex:1;font:inherit;font-size:13.5px;border:1px solid var(--rule);
+  border-radius:8px;padding:9px 11px;resize:none;height:64px;line-height:1.5}
+.chatpanel .composer textarea:focus{outline:2px solid var(--ai);outline-offset:-1px;
+  border-color:var(--ai)}
+.chatpanel .sendbtn{background:var(--navy);color:#fff;border:0;border-radius:8px;width:38px;
+  height:38px;cursor:pointer;font-size:16px;flex-shrink:0}
+.chatpanel .sendbtn:disabled{opacity:.5;cursor:default}
+.chatpanel .foot{padding:7px 16px 10px;font-size:11px;color:var(--slate-2);text-align:center;
+  line-height:1.5}
+.chatpanel .chat-note{font-size:12.5px;color:var(--slate);background:var(--panel);
+  border:1px solid var(--rule);border-radius:8px;padding:10px 12px;line-height:1.55}
+/* history drawer */
+.chatpanel .chat-hist{flex:1;overflow-y:auto}
+.chatpanel .chat-hist-h{padding:11px 16px;border-bottom:1px solid var(--rule);display:flex;
+  justify-content:space-between;align-items:center;font-size:13px}
+.chatpanel .chat-hist .chat-note{margin:14px 16px}
+.chatpanel .chat-hist-row{display:flex;gap:8px;align-items:center;padding:10px 16px;
+  border-bottom:1px solid var(--rule-2)}
+.chatpanel .chat-hist-row.cur{background:var(--ai-bg)}
+.chatpanel .chat-hist-row .open{flex:1;background:none;border:0;font:inherit;text-align:left;
+  cursor:pointer;display:flex;flex-direction:column;gap:2px;padding:0;min-width:0}
+.chatpanel .chat-hist-row .t{font-weight:600;font-size:13px;color:var(--ink)}
+.chatpanel .chat-hist-row .p{font-size:12px;color:var(--slate);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:330px}
+.chatpanel .chat-hist-row .w{font-size:11px;color:var(--slate-2)}
+/* floating pill (panel closed) */
+.chat-dock{position:fixed;right:22px;bottom:22px;background:var(--navy);color:#fff;border:0;
+  border-radius:26px;padding:12px 20px;font:inherit;font-weight:600;font-size:13.5px;
+  cursor:pointer;box-shadow:0 6px 20px rgba(16,28,44,.28);display:flex;gap:8px;
+  align-items:center;z-index:60}
+/* ========================================================== end Round E chat */

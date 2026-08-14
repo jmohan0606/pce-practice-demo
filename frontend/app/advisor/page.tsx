@@ -9,6 +9,7 @@ import PageHeader from "@/components/PageHeader";
 import { FindingRow, LimitNotice } from "@/components/InsightPanel";
 import { Delta, Money } from "@/components/Num";
 import { Gated } from "@/lib/flags";
+import { publishChatContext } from "@/lib/chatContext";
 import { arrow, money, percent } from "@/lib/format";
 import {
   type Finding,
@@ -160,6 +161,22 @@ function AdvisorBody({ sid, advisor }: { sid: string; advisor: AdvisorListRow | 
     (id: string) => months.find((m) => m.month_id === id)?.month_name ?? id,
     [months],
   );
+
+  // Round E 6.2 — publish the selected advisor + transition to the chat panel
+  // (a hint, never a filter). One call, in the existing selection-change path.
+  useEffect(() => {
+    const who = advisor?.advisor_name?.trim() ? `${advisor.advisor_name.trim()} (${sid})` : sid;
+    publishChatContext({
+      page: "advisor",
+      advisor_sid: sid,
+      advisor_name: advisor?.advisor_name || "",
+      from_month: transition?.from_month_id,
+      to_month: transition?.to_month_id,
+      label: transition
+        ? `${who} · ${monthName(transition.from_month_id)} → ${monthName(transition.to_month_id)}`
+        : who,
+    });
+  }, [sid, advisor, transition, monthName]);
 
   // chart props per the shared TransitionChart contract — advisor-scoped
   // months/transitions; AUM from the advisor summary, null when absent

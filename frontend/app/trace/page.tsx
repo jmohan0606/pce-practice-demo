@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
+import GuardrailTab from "@/components/trace/GuardrailTab";
 
 const cost = (v: number | null | undefined) =>
   v === null || v === undefined ? "—" : `$${v.toFixed(4)}`;
@@ -28,6 +29,17 @@ const duration = (ms: number) => {
   if (m) return `${m}m ${s}s`;
   return `${s}s`;
 };
+
+/** Round E chat task 7 — how a synthetic scope's kind reads in the runs table.
+ * chat|<conversation_id> scopes are labelled "chat conversation", same style
+ * as document extraction / conflict audit. */
+const KIND_LABEL: Record<string, string> = {
+  insight_run: "insight run",
+  document_extraction: "document extraction",
+  conflict_audit: "conflict audit",
+  chat: "chat conversation",
+};
+const kindLabel = (kind: string) => KIND_LABEL[kind] || kind.replace(/_/g, " ");
 
 /** Round H 4.2 — the limit names a run hit. limits_hit is authoritative; the
  * legacy budget flags cover runs recorded before limits_json existed, so an
@@ -48,6 +60,8 @@ export default function TracePage() {
   const [allTime, setAllTime] = useState<TraceAllTime | null>(null);
   const [detail, setDetail] = useState<TraceRunDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Round E chat task 7: Cost & Trace vs the Guardrail classification log
+  const [tab, setTab] = useState<"runs" | "guardrail">("runs");
 
   const reload = useCallback(() => {
     getTraceRuns().then((r) => setRuns(r.runs)).catch((e) => setError(String(e?.message || e)));
@@ -69,6 +83,22 @@ export default function TracePage() {
     <section>
       <PageHeader title="Cost &amp; Trace" meta="Token spend per run and per turn · figures from provider usage counts, never estimated" />
 
+      {/* Round E chat task 7: tab switch — Runs (the existing cost views) vs
+          the Guardrail classification log */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        <button className={tab === "runs" ? "btn primary" : "btn"} onClick={() => setTab("runs")}>
+          Runs
+        </button>
+        <button
+          className={tab === "guardrail" ? "btn primary" : "btn"}
+          onClick={() => setTab("guardrail")}
+        >
+          Guardrail
+        </button>
+      </div>
+
+      {tab === "guardrail" ? <GuardrailTab /> : (
+      <>
       {/* Round E task 7: All Time — every run since inception, the number to
           watch. Cache read and cache write stay SEPARATE: a combined number
           once hid a run writing 1.5x more than it read. */}
@@ -222,7 +252,7 @@ export default function TracePage() {
                         {r.run_id}
                       </td>
                       <td>{r.advisor_sid ?? "—"}</td>
-                      <td>{r.transition ?? r.kind.replace("_", " ")}</td>
+                      <td>{r.transition ?? kindLabel(r.kind)}</td>
                       <td>{r.version_id ?? "—"}</td>
                       <td>{r.turns}</td>
                       <td>{r.query_count}</td>
@@ -374,6 +404,8 @@ export default function TracePage() {
           </div>
         </div>
       ) : null}
+      </>
+      )}
     </section>
   );
 }

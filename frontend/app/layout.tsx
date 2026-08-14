@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "../styles/tokens.css";
 import "./globals.css";
 import TopNav from "@/components/TopNav";
+import ChatDock from "@/components/chat/ChatDock";
 
 export const metadata: Metadata = {
   title: "Practice Management",
@@ -14,6 +15,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         <TopNav />
         <div className="wrap">{children}</div>
+        <ChatDock />{/* Round E — chat on every page, gated by global.chat */}
       </body>
     </html>
   );
