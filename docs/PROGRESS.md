@@ -1,5 +1,37 @@
 # Build Progress
 
+## Round A1 (docs/ROUND_A1_SPEC.md) — backend + data layer only, no UI
+- [x] Task 1 (main thread, 8e00dd8): driver identity split from label —
+      driver_code (stable slug) STORED on findings (phx_dm_pce_finding
+      driver_tag→driver_code across DDL/schema_catalog/SCHEMA_SPEC; legacy
+      persisted findings migrate at rehydration), driver_label resolved at
+      READ time via a durable registry (RuleStore.set_driver_label, SQLite
+      driver_label table) so PATCH /api/rules/{key}/driver-label renames
+      every historical finding's displayed name with no regeneration;
+      driver_definition on rules (seed-authored for tech-written, compiler-
+      drafted for document-derived — never overwrites a human's);
+      GET /api/drivers + GET /api/glossary (app/shared/glossary.py = the one
+      tooltip source: metrics, drivers, severity levels, provenance chips,
+      9X causes from app/shared/reason_codes.py). Prose-frozen-names limit
+      recorded in DECISIONS.md. verify a/b/c/e/h green.
+- [x] Task 2 (main thread, bc78f1f): severity CRITICAL|HIGH|MODERATE|LOW|INFO
+      + severity_reason on rules — extractor-assigned from provision language
+      (invalid/absent lands honestly at INFO saying so), seeded on the five v0
+      rules per the spec table; findings inherit the producing rule's severity
+      (no rule → INFO, "observation"); /api/insights/exceptions now serializes
+      severity, includes non-rule observation rows, filters ?severity= and
+      sorts Critical→Info then |impact| (+ spec-path alias GET /api/exceptions
+      ?from=&to=&severity=); PATCH /api/rules/{key}/severity mints a new
+      version in one call — edit() special-cases display-only changes so the
+      compiled plan survives (DECISIONS.md). Stale rule_store.db cleared for
+      the corrected seed. verify a/b/c/e/h green.
+- [ ] Task 3 (Subagent A, dispatched): dashboard metric queries + RETAINED_ACCOUNT
+- [ ] Tasks 4+5 (Subagent B, dispatched): 9X non-credited analysis + top/bottom
+- [ ] Task 6 (Subagent C, dispatched): export service (pdf/pptx/xlsx/csv)
+- [ ] Task 7 (main thread, last): 17 checks + regressions + ROUND_A1_COMPLETE.md
+Note: per Round E/G/H precedent, subagents report and the MAIN THREAD verifies
+      then commits each task (subagents never run git or touch this file).
+
 ## Round H (docs/ROUND_H_SPEC.md)
 - [x] Port change (e2eda07, pre-round): app now runs on 8002 (API) / 3002
       (frontend) — 8001/3001 taken by another app. .env(+example),
