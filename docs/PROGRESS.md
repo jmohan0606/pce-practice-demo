@@ -65,7 +65,27 @@
       Confidence / Action / bold Tools called (0 on blocked rows) /
       Conversation link to /?chat=<id>; summary chips filter; chat scopes in
       the runs table now kind "chat".
-- [ ] Task 8 (main thread): 23 live-conversation checks
+- [x] Task 8 (main thread): ALL 23 checks ran as REAL conversations against
+      the live servers (real Opus agent, real Haiku classifier; headless
+      chromium for the visual ones) — verbatim exchanges in
+      docs/ROUND_E_CHAT_COMPLETE.md (the spec's ROUND_E_COMPLETE.md name is
+      taken by the earlier insights round; overwriting it would have destroyed
+      that record). Check 5: injection tagged+blocked with the chip stating no
+      tool could return a prompt anyway AND the revenue half answered (tools
+      1). Check 9: answered directly, zero confirmation friction. Check 14's
+      turn log shows the numeric gate observably rejecting a first draft and
+      repairing it (check 12: 0 unverified figures across all 14 answers).
+      Check 19 resolved 'she' + 'the top managed accounts advisor you listed
+      earlier' from the rehydrated transcript across TWO backend restarts.
+      Check 22 (CHAT_QUERY_BUDGET=2): the agent says the budget bound and
+      offers narrower options. Check 23: injected TimeoutError stated in the
+      answer, ERROR row in the query log. FOUND+FIXED by observation: ###
+      headings/--- rendered literally; navy-on-navy advisor links in message
+      table headers. Timings honest: 7.5–11.4s no-tool/single-query, 43–66s
+      multi-query fan-outs. Verify a/b/c/e/h/a1 green + check_flags 8/8 +
+      check_manual_rules 17/17; npm build 8 routes. Session chat spend ≈ $1.0
+      of $12. Tasks 4–7 landed in one verified commit c489c80 (parallel-
+      dispatch collapse precedent).
 
 ## Round C docs/rules (docs/spec/ROUND_C_DOCS_RULES_SPEC.md) — documents & rules management
 - [x] Task 1 (main thread, a4ea703): applies_to PRACTICE|ADVISOR|PRODUCT|ALL
@@ -569,7 +589,27 @@ Note: per Round E/G/H precedent, subagents reported and the MAIN THREAD
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: C docs/rules (docs/spec/ROUND_C_DOCS_RULES_SPEC.md) — COMPLETE. All 8
+Round: E chat (docs/spec/ROUND_E_CHAT_SPEC.md) — COMPLETE. All 8 tasks done;
+      docs/ROUND_E_CHAT_COMPLETE.md carries the verbatim exchange of every
+      check. The two-layer guardrail design (tool boundary is the protection,
+      classifier stays lenient — DO NOT TIGHTEN, see DECISIONS.md warning) is
+      live: the V2 story-wrapped injection is blocked while its legitimate
+      half is answered, and plain questions get zero refusal friction. Chat
+      runs on claude-opus-4-6 (CHAT_MODEL); classifier on Haiku; all other
+      roles unchanged. Durable chat store (data/runtime/chat.db + graph mirror,
+      29V/40E schema) survives restarts with full-context resumption proven.
+      Servers: uvicorn :8002 / next :3002 on this round's code; public
+      visibility still needs the Ports panel (carried limitation).
+Round E chat carried observations: (1) multi-query answers run 43–66s (Opus
+      latency × fan-out) — a snappier model or capped-table instruction is a
+      polish candidate if the demo needs it; (2) "toggle the feature flag"
+      blocks at Layer 1 as JAILBREAK 0.85 — defensible but arguably the
+      agent's no-such-tool refusal reads better; threshold/prompt tweak
+      candidate; (3) consent messages ("yes, go ahead") can classify OFF_TOPIC
+      at low confidence — harmless under leniency, worth a classifier example
+      if the trace log tidiness matters.
+
+Previous round: C docs/rules (docs/spec/ROUND_C_DOCS_RULES_SPEC.md) — COMPLETE. All 8
       tasks done; docs/ROUND_C_COMPLETE.md has the observed output of every
       check, incl. the verbatim conflict-auditor proposal (check 11) and the
       first-ever document-cited dashboard bullet (check 20). verify

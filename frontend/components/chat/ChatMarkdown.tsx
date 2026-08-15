@@ -104,6 +104,8 @@ export function ChatInline({ text, keyBase = "k" }: { text: string; keyBase?: st
 
 type Block =
   | { type: "p"; lines: string[] }
+  | { type: "h"; text: string }
+  | { type: "hr" }
   | { type: "table"; header: string[]; rows: string[][] }
   | { type: "list"; ordered: boolean; items: string[] };
 
@@ -124,6 +126,17 @@ function parseBlocks(text: string): Block[] {
   while (i < lines.length) {
     const line = lines[i];
     if (!line.trim()) {
+      i++;
+      continue;
+    }
+    const headingMatch = /^\s*#{1,6}\s+(.*)$/.exec(line);
+    if (headingMatch) {
+      blocks.push({ type: "h", text: headingMatch[1].replace(/\*\*/g, "") });
+      i++;
+      continue;
+    }
+    if (/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+      blocks.push({ type: "hr" });
       i++;
       continue;
     }
@@ -174,6 +187,18 @@ export default function ChatMarkdown({ text }: { text: string }) {
   return (
     <>
       {blocks.map((b, bi) => {
+        if (b.type === "h") {
+          return (
+            <p className="mdh" key={bi}>
+              <b>
+                <ChatInline text={b.text} keyBase={`h${bi}`} />
+              </b>
+            </p>
+          );
+        }
+        if (b.type === "hr") {
+          return <hr className="mdhr" key={bi} />;
+        }
         if (b.type === "table") {
           const numCols = b.header.map((_, c) => b.rows.length > 0 && b.rows.every((r) => !r[c] || isNumeric(r[c])));
           return (
