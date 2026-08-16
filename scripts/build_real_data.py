@@ -137,6 +137,79 @@ RAW_CONTRACT: dict[str, list[str]] = {
 # extract CSVs; contracted here by prefix so a missing file fails loudly.
 NNM_RAW_PREFIXES = tuple(sorted(parse_nnm.CATEGORY_BY_PREFIX))
 
+# Round 1 (schema freeze) task 5 — THREE source kinds land in ONE directory
+# (data/real/_raw/), each detected by filename pattern:
+#   raw_*.csv                        the chunked PostgreSQL extracts
+#   ECNNM_/NBNNM_/YINNM_/FSNNM_*.txt the four NNM files, ORIGINAL names kept
+#                                    (the category prefix is the identity)
+#   crm_opportunities.csv            the CRM opportunity export, original name
+# The transaction table may arrive as extract_chunked.py chunks
+# (raw_txn_<month>_b<batch>.csv) instead of one raw_revenue_transaction.csv;
+# every chunk is contract-checked and they concatenate in sorted order.
+TXN_CHUNK_GLOB = "raw_txn_*_b*.csv"
+CRM_EXPORT_NAME = "crm_opportunities.csv"
+CRM_LEGACY_NAME = "raw_crm_opportunity.csv"
+
+
+def detect_sources(raw_dir: Path) -> dict:
+    """Detect the three source kinds by filename pattern; fail loudly on an
+    ambiguous or incomplete drop BEFORE anything is read."""
+    txn_chunks = sorted(raw_dir.glob(TXN_CHUNK_GLOB))
+    txn_single = raw_dir / "raw_revenue_transaction.csv"
+    if txn_chunks and txn_single.exists():
+        raise ColumnMismatchError(
+            f"both raw_revenue_transaction.csv AND {len(txn_chunks)} "
+            f"raw_txn_*_b*.csv chunks exist in {raw_dir} — ambiguous: remove "
+            f"one form (the chunks are extract_chunked.py's output)")
+    crm_new = raw_dir / CRM_EXPORT_NAME
+    crm_legacy = raw_dir / CRM_LEGACY_NAME
+    if crm_new.exists() and crm_legacy.exists():
+        raise ColumnMismatchError(
+            f"both {CRM_EXPORT_NAME} and {CRM_LEGACY_NAME} exist in {raw_dir} "
+            f"— ambiguous: keep the original export name {CRM_EXPORT_NAME}")
+    if not crm_new.exists() and not crm_legacy.exists():
+        raise ColumnMismatchError(
+            f"CRM opportunity export missing from {raw_dir}: expected "
+            f"{CRM_EXPORT_NAME} (the export's original name; contracted "
+            f"columns: {RAW_CONTRACT[CRM_LEGACY_NAME]})")
+    # Three of four NNM files present would otherwise load silently incomplete
+    # — build_advisor_nnm re-checks, but the drop is validated up front here.
+    present = {f.name[:5].upper() for f in raw_dir.glob("*NNM_*.txt")}
+    missing = [p for p in NNM_RAW_PREFIXES if p not in present]
+    if missing:
+        raise ColumnMismatchError(
+            f"NNM category file(s) missing from {raw_dir}: {missing} — all "
+            f"four of {list(NNM_RAW_PREFIXES)} are required (original "
+            f"filenames, e.g. ECNNM_20260630.txt); three of four would load "
+            f"silently incomplete, so the build refuses to start")
+    return {
+        "txn_chunks": txn_chunks,
+        "crm_file": (crm_new if crm_new.exists() else crm_legacy).name,
+        "nnm_files": sorted(f.name for f in raw_dir.glob("*NNM_*.txt")),
+    }
+
+
+def read_txn_raw(raw_dir: Path, txn_chunks: list[Path]) -> list[dict]:
+    """The transaction extract: one file, or extract_chunked.py's chunks
+    concatenated in sorted order — each chunk enforces the full contract."""
+    if not txn_chunks:
+        return read_raw(raw_dir, "raw_revenue_transaction.csv")
+    expected = RAW_CONTRACT["raw_revenue_transaction.csv"]
+    rows: list[dict] = []
+    for path in txn_chunks:
+        with path.open(encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            header = [h.strip() for h in (reader.fieldnames or [])]
+            missing = [c for c in expected if c not in header]
+            if missing:
+                raise ColumnMismatchError(
+                    f"transaction chunk '{path.name}' is missing contracted "
+                    f"column(s) {missing} — found columns {header}")
+            rows.extend({(k or "").strip(): (v or "").strip()
+                         for k, v in row.items() if k} for row in reader)
+    print(f"transaction extract: {len(txn_chunks)} chunk file(s) -> {len(rows)} rows")
+    return rows
+
 
 def read_raw(raw_dir: Path, filename: str) -> list[dict]:
     """Read one raw extract, enforcing RAW_CONTRACT loudly (never partial)."""
@@ -850,7 +923,32 @@ def write_csv(path: Path, columns: list[str], rows: list[dict]) -> int:
 
 
 def build(raw_dir: Path, out_dir: Path, seed: int = 42) -> dict:
-    raw = {name: read_raw(raw_dir, name) for name in RAW_CONTRACT}
+    # Round 1 task 5 — detect the three source kinds by filename pattern
+    # BEFORE reading anything; an incomplete or ambiguous drop fails here.
+    sources = detect_sources(raw_dir)
+    print(f"source detection: PostgreSQL extracts raw_*.csv "
+          f"({'single transaction file' if not sources['txn_chunks'] else str(len(sources['txn_chunks'])) + ' transaction chunks'}), "
+          f"NNM files {sources['nnm_files']}, CRM export {sources['crm_file']}")
+    raw = {}
+    for name in RAW_CONTRACT:
+        if name == "raw_revenue_transaction.csv":
+            raw[name] = read_txn_raw(raw_dir, sources["txn_chunks"])
+        elif name == CRM_LEGACY_NAME and sources["crm_file"] != CRM_LEGACY_NAME:
+            # the export keeps its original name; the contract is unchanged
+            expected = RAW_CONTRACT[CRM_LEGACY_NAME]
+            path = raw_dir / sources["crm_file"]
+            with path.open(encoding="utf-8-sig", newline="") as f:
+                reader = csv.DictReader(f)
+                header = [h.strip() for h in (reader.fieldnames or [])]
+                missing = [c for c in expected if c not in header]
+                if missing:
+                    raise ColumnMismatchError(
+                        f"CRM export '{sources['crm_file']}' is missing "
+                        f"contracted column(s) {missing} — found columns {header}")
+                raw[name] = [{(k or "").strip(): (v or "").strip()
+                              for k, v in row.items() if k} for row in reader]
+        else:
+            raw[name] = read_raw(raw_dir, name)
     print(f"raw contract satisfied: {len(raw)} files read from {raw_dir}")
 
     meta_rows = sorted(raw["raw_month_meta.csv"], key=lambda r: r["month_id"])

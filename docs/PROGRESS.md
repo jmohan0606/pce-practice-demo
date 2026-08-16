@@ -49,6 +49,28 @@
       seeded constants, all 13 app-written vertices with their writers, and
       the edge rule; script-checked that every one of the 31 DDL vertices
       appears (missing: NONE).
+- [x] Task 5 (main thread): three source kinds in ONE directory
+      (data/real/_raw): raw_*.csv PostgreSQL extracts, the four NNM .txt
+      files under ORIGINAL names, crm_opportunities.csv.
+      build_real_data.detect_sources() detects by filename pattern BEFORE
+      reading — 3-of-4 NNM refuses to start (proven verbatim), ambiguous
+      duplicates refuse, txn table accepted as extract_chunked chunks
+      (per-chunk contract, sorted concat — 6-chunk build ALL 12 VALIDATIONS
+      PASSED, identical totals to the single-file build).
+      scripts/extract_chunked.py: month × advisor-batch (default 200) chunks
+      for the trade table + 11 single-table chunks, SQL from
+      generate_extraction_sql.templates() (one source of truth; txn template
+      date bounds re-scoped per month, count asserted), checkpoint JSON with
+      plan fingerprint, --dry-run offline plan, resume DEFAULT/--restart
+      explicit, atomic .part writes, clean token-expiry exit with the resume
+      instruction (stub-connection proven: fail at chunk 14/17 → rerun runs
+      exactly the 3 remaining). NEW scripts/validate_raw_extracts.py V-1..
+      V-10 over all three kinds (chunk-gap + checkpoint row cross-check,
+      contracts, NNM parse, CRM, key normalization, reason_cd spelling,
+      month agreement, unmapped product codes with counts, the $33k/advisor/
+      month sanity anchor naming proc_dt/team-join when out) — 11 PASS on
+      the fabricated drop ($33,200 measured); gap and row-mismatch
+      corruptions both FAIL loudly (proven).
 
 ## Round F2 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md) — real CRM data, NNM, plan-unlocked rules
 - [x] Task 1 (main thread, d5eb45c): discovery AUTHORED, not run — no client
