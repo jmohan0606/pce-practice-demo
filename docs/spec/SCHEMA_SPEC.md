@@ -410,7 +410,26 @@ CREATE VERTEX phx_dm_pce_chat_message (PRIMARY_ID message_id STRING, conversatio
   guardrail_confidence DOUBLE, reasoning_steps_json STRING, latency_ms INT,
   tokens_in INT, tokens_out INT, est_cost_usd DOUBLE, created_at DATETIME)
   WITH primary_id_as_attribute="true";
+
+-- Round 1 (schema freeze) — resumable long-running work (app-written; the
+-- JobStore's runtime upsert is its loading job, data/runtime/jobs.db durable).
+-- Each stage writes its output before the next begins; an interrupted job
+-- resumes at its recorded stage without repeating earlier ones. resume_token
+-- is opaque JSON: enough to restart the CURRENT stage (per-item within
+-- extract and investigate_residual — the slow stages; per-stage elsewhere).
+-- Resume is EXPLICIT (a Resume action; never automatic — auto-resume could
+-- double-spend). kind: document_ingest | insight_generation | data_load;
+-- status: RUNNING | INTERRUPTED | COMPLETE | FAILED.
+CREATE VERTEX phx_dm_pce_job (PRIMARY_ID job_id STRING, kind STRING,
+  scope_key STRING, stage STRING, stage_index INT, stage_total INT,
+  items_done INT, items_total INT, status STRING, resume_token STRING,
+  error STRING, started_at DATETIME, updated_at DATETIME,
+  completed_at DATETIME) WITH primary_id_as_attribute="true";
 ```
+
+Job stages per kind: `document_ingest` = parse → chunk → embed → extract →
+compile → audit; `insight_generation` = evaluate_rules → investigate_residual
+→ narrate → persist; `data_load` = one stage per entity.
 
 `rule_key = version_id ||'|'|| rule_code`. `run_id = advisor_sid ||'|'|| from_month_id ||'|'||
 to_month_id ||'|'|| version_id`. `turn_id = run_id ||'|'|| seq_no` (extractor / conflict-auditor
@@ -491,9 +510,13 @@ CREATE DIRECTED EDGE phx_dm_pce_turn_in_run (FROM phx_dm_pce_agent_turn_log, TO 
 
 -- chat (Round E, app-written)
 CREATE DIRECTED EDGE phx_dm_pce_message_in_conversation (FROM phx_dm_pce_chat_message, TO phx_dm_pce_conversation) WITH REVERSE_EDGE="phx_dm_pce_conversation_has_message";
+
+-- jobs (Round 1 schema freeze, app-written)
+CREATE DIRECTED EDGE phx_dm_pce_job_for_document (FROM phx_dm_pce_job, TO phx_dm_pce_document) WITH REVERSE_EDGE="phx_dm_pce_document_has_job";
+CREATE DIRECTED EDGE phx_dm_pce_job_for_run (FROM phx_dm_pce_job, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_job";
 ```
 
-**30 vertices (18 source-loaded + 12 app-written) · 42 edge types.** Drop order is the reverse of create order.
+**31 vertices (18 source-loaded + 13 app-written) · 44 edge types.** Drop order is the reverse of create order.
 
 ---
 

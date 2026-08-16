@@ -446,6 +446,25 @@
         "est_cost_usd": "DOUBLE",
         "created_at": "DATETIME"
       }
+    },
+    "phx_dm_pce_job": {
+      "primary_id": "job_id",
+      "attributes": {
+        "job_id": "STRING",
+        "kind": "STRING",
+        "scope_key": "STRING",
+        "stage": "STRING",
+        "stage_index": "INT",
+        "stage_total": "INT",
+        "items_done": "INT",
+        "items_total": "INT",
+        "status": "STRING",
+        "resume_token": "STRING",
+        "error": "STRING",
+        "started_at": "DATETIME",
+        "updated_at": "DATETIME",
+        "completed_at": "DATETIME"
+      }
     }
   },
   "edges": {
@@ -658,6 +677,16 @@
       "from": "phx_dm_pce_chat_message",
       "to": "phx_dm_pce_conversation",
       "reverse": "phx_dm_pce_conversation_has_message"
+    },
+    "phx_dm_pce_job_for_document": {
+      "from": "phx_dm_pce_job",
+      "to": "phx_dm_pce_document",
+      "reverse": "phx_dm_pce_document_has_job"
+    },
+    "phx_dm_pce_job_for_run": {
+      "from": "phx_dm_pce_job",
+      "to": "phx_dm_pce_insight_run",
+      "reverse": "phx_dm_pce_run_has_job"
     }
   }
 }

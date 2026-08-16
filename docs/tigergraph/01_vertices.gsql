@@ -1,5 +1,5 @@
-// pce-practice-demo — vertex DDL (30 vertices)
-// Source: docs/spec/SCHEMA_SPEC.md §1 (18 source-loaded) + §2 (12 app-written)
+// pce-practice-demo — vertex DDL (31 vertices)
+// Source: docs/spec/SCHEMA_SPEC.md §1 (18 source-loaded) + §2 (13 app-written)
 // Target: TigerGraph 4.2.2, GSQL Syntax V1. Run in global scope before 02_edges.gsql.
 USE GLOBAL
 
@@ -128,7 +128,7 @@ CREATE VERTEX phx_dm_pce_advisor_nnm (PRIMARY_ID nnm_id STRING,
 WITH primary_id_as_attribute="true";
 
 // ---------------------------------------------------------------------------
-// §2 App-written vertices (12) — empty at load
+// §2 App-written vertices (13) — empty at load
 // ---------------------------------------------------------------------------
 
 CREATE VERTEX phx_dm_pce_document (PRIMARY_ID document_id STRING, document_name STRING,
@@ -208,3 +208,19 @@ CREATE VERTEX phx_dm_pce_chat_message (PRIMARY_ID message_id STRING, conversatio
   guardrail_confidence DOUBLE, reasoning_steps_json STRING, latency_ms INT,
   tokens_in INT, tokens_out INT, est_cost_usd DOUBLE, created_at DATETIME)
   WITH primary_id_as_attribute="true";
+
+// Round 1 (schema freeze) — resumable long-running work (app-written; the
+// JobStore's runtime upsert is its loading job — turn-log precedent). Each
+// stage writes its output before the next begins; an interrupted job resumes
+// at its recorded stage without repeating earlier ones. resume_token is
+// opaque: enough to restart the CURRENT stage. Resume is EXPLICIT (a Resume
+// action, Round 3 UI) — never automatic, which could double-spend.
+// kind: document_ingest (parse→chunk→embed→extract→compile→audit) |
+// insight_generation (evaluate_rules→investigate_residual→narrate→persist) |
+// data_load (one stage per entity).
+// status: RUNNING | INTERRUPTED | COMPLETE | FAILED.
+CREATE VERTEX phx_dm_pce_job (PRIMARY_ID job_id STRING, kind STRING,
+  scope_key STRING, stage STRING, stage_index INT, stage_total INT,
+  items_done INT, items_total INT, status STRING, resume_token STRING,
+  error STRING, started_at DATETIME, updated_at DATETIME,
+  completed_at DATETIME) WITH primary_id_as_attribute="true";

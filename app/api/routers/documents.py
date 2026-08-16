@@ -159,7 +159,7 @@ def set_document_category(document_id: str, body: CategoryRequest) -> dict:
 
 
 @router.post("/{document_id}/extract-rules")
-def extract_rules(document_id: str) -> dict:
+def extract_rules(document_id: str, resume: bool = False) -> dict:
     # Round C (docs/rules) 3.1: only PLAN and FAQ feed the Rule Extractor.
     doc_row = _counts_for(document_id)
     if not doc_row:
@@ -177,7 +177,7 @@ def extract_rules(document_id: str) -> dict:
     #   extract_rules_for_document(document_id: str, chunks: list[dict]) -> list[dict]
     # where each chunk dict carries chunk_id, text, page_no, section_path, has_table.
     try:
-        from app.agents.rule_extractor import extract_rules_for_document
+        from app.agents.rule_extractor import extract_with_job
     except ImportError as exc:
         raise HTTPException(
             status_code=503,
@@ -186,9 +186,18 @@ def extract_rules(document_id: str) -> dict:
                    "It is being built in parallel and will be wired at integration time.",
         ) from exc
     extractor_chunks = [{**c, "text": c["chunk_text"]} for c in chunks]
-    draft_rules = extract_rules_for_document(document_id=document_id, chunks=extractor_chunks)
+    # Round 1 (schema freeze): extraction runs under a phx_dm_pce_job with
+    # per-window resume; ?resume=1 restarts an INTERRUPTED job at its recorded
+    # window (resume is explicit, never automatic).
+    try:
+        result = extract_with_job(document_id, extractor_chunks, resume=resume)
+    except ValueError as exc:  # nothing-to-resume — a request error, not a 500
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"document_id": document_id, "chunk_count": len(chunks),
-            "draft_rules": draft_rules}
+            "job": {k: result["job"].get(k) for k in
+                    ("job_id", "status", "stage", "stage_index", "stage_total",
+                     "items_done", "items_total")},
+            "draft_rules": result["rules"]}
 
 
 @router.get("/search")

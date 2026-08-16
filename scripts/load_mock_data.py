@@ -34,8 +34,20 @@ def main() -> None:
     if "--fresh" in sys.argv:
         print("clearing checkpoints:", service.clear_checkpoints()["cleared_entities"], "entities")
 
+    # Round 1 (schema freeze) task 2 — the load runs under a phx_dm_pce_job of
+    # kind data_load, ONE STAGE PER ENTITY. The ingestion checkpoints are the
+    # real resume mechanism (a rerun resumes at the first incomplete entity);
+    # the job row makes that progress observable.
+    from app.shared.jobs import get_job_store
+
+    configs = list_entity_configs()
+    jobs = get_job_store()
+    job = jobs.begin_job("data_load", "manifest",
+                         stages=[c.entity_name for c in configs])
+
     failed: list[str] = []
-    for config in list_entity_configs():
+    for config in configs:
+        jobs.update(job["job_id"], stage=config.entity_name)
         calls = 0
         while True:
             calls += 1
@@ -56,7 +68,9 @@ def main() -> None:
                 break
 
     if failed:
+        jobs.fail(job["job_id"], f"{len(failed)} entities failed to load: {failed}")
         raise RuntimeError(f"{len(failed)} entities failed to load: {failed}")
+    jobs.complete(job["job_id"])
 
     report = verify_counts_against_manifest(get_graph_client())
     print(f"\nmanifest verification: ok={report['ok']} "

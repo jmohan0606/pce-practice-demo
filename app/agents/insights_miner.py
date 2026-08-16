@@ -359,7 +359,8 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
          rule_findings: list[dict] | None = None,
          rule_outcomes: list[dict] | None = None,
          residual_amt: float | None = None,
-         nl_guidance: list[dict] | None = None) -> dict:
+         nl_guidance: list[dict] | None = None,
+         on_turn: Callable[[int, int], None] | None = None) -> dict:
     """Run the investigation loop. Rule findings arrive PRE-MATCHED (evaluated
     in code, Round E task 2) and count toward the result; the agent is pointed
     at the residual with >= miner_exploration_reserve queries kept for
@@ -468,6 +469,14 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
     max_prompt_tokens = limits.max_run_input_tokens
 
     while not done and turns < max_turns:
+        # Round 1 (schema freeze): per-item progress for the job row — the
+        # investigate_residual stage reports turns done / turn cap. Progress
+        # reporting must never affect the run.
+        if on_turn is not None:
+            try:
+                on_turn(turns, max_turns)
+            except Exception:  # noqa: BLE001
+                _log.exception("on_turn progress hook failed — ignored")
         if wrapup_left is None \
                 and getattr(llm, "prompt_tokens_total", 0) >= max_prompt_tokens:
             budget_hit_tokens = True

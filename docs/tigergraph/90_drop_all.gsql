@@ -5,6 +5,8 @@ USE GLOBAL
 DROP GRAPH phx_dm_pce_practice_demo
 
 // edges — reverse of 02_edges.gsql
+DROP EDGE phx_dm_pce_job_for_run
+DROP EDGE phx_dm_pce_job_for_document
 DROP EDGE phx_dm_pce_message_in_conversation
 DROP EDGE phx_dm_pce_turn_in_run
 DROP EDGE phx_dm_pce_query_in_run
@@ -49,6 +51,7 @@ DROP EDGE phx_dm_pce_group_in_class
 DROP EDGE phx_dm_pce_product_in_group
 
 // vertices — reverse of 01_vertices.gsql
+DROP VERTEX phx_dm_pce_job
 DROP VERTEX phx_dm_pce_chat_message
 DROP VERTEX phx_dm_pce_conversation
 DROP VERTEX phx_dm_pce_feature_flag

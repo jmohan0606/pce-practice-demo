@@ -220,36 +220,51 @@ def _resolve_llm(document_id: str) -> Callable[[str, dict], str]:
 
 def extract_rules_for_document(document_id: str, chunks: list[dict],
                                llm: Callable[[str, dict], str] | None = None,
-                               persist: bool = True) -> list[dict]:
+                               persist: bool = True,
+                               start_window: int = 0,
+                               known_codes: set[str] | None = None,
+                               on_window: Callable[[int, int], None] | None = None) -> list[dict]:
     """Extract draft rules from one document's chunks. `llm` overrides the
     transport for deterministic tests; `persist=True` stores results in the
     rule store's draft pool. Rules with `missing` set land as NEEDS_INPUT;
-    everything else is DRAFT awaiting the Rule Compiler."""
+    everything else is DRAFT awaiting the Rule Compiler.
+
+    Round 1 (schema freeze): each window's rules persist AS THE WINDOW
+    COMPLETES (not at the end), so an interruption loses at most one window.
+    `start_window` resumes at that window (earlier windows' rules are already
+    stored — never repeated); `known_codes` seeds the duplicate filter with
+    codes persisted by a prior pass; `on_window(done, total)` is called after
+    each window persists — the JobStore's per-item progress hook."""
     generate = llm or _resolve_llm(document_id)
     system_prompt = build_system_prompt()
     windows = build_windows(chunks)
-    _log.info("extracting rules for %s: %d chunks in %d window(s)",
-              document_id, len(chunks), len(windows))
+    _log.info("extracting rules for %s: %d chunks in %d window(s), from window %d",
+              document_id, len(chunks), len(windows), start_window)
 
+    store = get_rule_store() if persist else None
     extracted: list[dict] = []
-    seen_codes: set[str] = set()
+    seen_codes: set[str] = set(known_codes or ())
     for index, window in enumerate(windows):
+        if index < start_window:
+            continue
         window_ids = {c.get("chunk_id") for c in window}
         prompt = build_window_prompt(document_id, window)
+        window_rules: list[dict] = []
+        entries: list | None = None
         try:
             raw = generate(prompt, {"system_prompt": system_prompt})
             tag = getattr(generate, "tag_last", None)
             if callable(tag):
                 tag("extract_window", f"window_{index:02d}")
+            parsed = parse_llm_response(raw)
+            if isinstance(parsed, str):
+                window_rules.append(_needs_input_stub(document_id, parsed, index, window))
+            else:
+                entries = parsed
         except Exception as exc:  # noqa: BLE001 — honest failure per window
-            extracted.append(_needs_input_stub(
+            window_rules.append(_needs_input_stub(
                 document_id, f"LLM call failed: {type(exc).__name__}: {exc}", index, window))
-            continue
-        entries = parse_llm_response(raw)
-        if isinstance(entries, str):
-            extracted.append(_needs_input_stub(document_id, entries, index, window))
-            continue
-        for entry in entries:
+        for entry in entries or []:
             error = validate_entry(entry, window_ids)
             if error is not None:
                 stub = _needs_input_stub(document_id, f"invalid extractor entry: {error}",
@@ -257,7 +272,7 @@ def extract_rules_for_document(document_id: str, chunks: list[dict],
                 if isinstance(entry, dict) and entry.get("rule_code"):
                     stub["rule_code"] = str(entry["rule_code"])
                     stub["rule_name"] = str(entry.get("rule_name") or stub["rule_name"])
-                extracted.append(stub)
+                window_rules.append(stub)
                 continue
             rule = dict(entry)
             # lenient coercion — never a reason to drop a stated rule
@@ -313,9 +328,74 @@ def extract_rules_for_document(document_id: str, chunks: list[dict],
             if rule["rule_code"] in seen_codes:  # overlap window duplicate
                 continue
             seen_codes.add(rule["rule_code"])
-            extracted.append(rule)
+            window_rules.append(rule)
 
-    if persist:
-        store = get_rule_store()
-        extracted = [store.add_rule(rule, version_id=None) for rule in extracted]
+        # Round 1: this window's output is WRITTEN before the next window
+        # begins — an interruption loses at most the in-flight window, and a
+        # resume at start_window=N never repeats windows 0..N-1.
+        if store is not None:
+            window_rules = [store.add_rule(rule, version_id=None)
+                            for rule in window_rules]
+        extracted.extend(window_rules)
+        if on_window is not None:
+            on_window(index + 1, len(windows))
+
     return extracted
+
+
+def extract_with_job(document_id: str, chunks: list[dict],
+                     llm: Callable[[str, dict], str] | None = None,
+                     resume: bool = False) -> dict:
+    """Round 1 (schema freeze) task 2 — extraction under a phx_dm_pce_job.
+
+    Reopens the document's ingest job (or creates one) at stage ``extract``
+    with per-window item progress; ``resume_token = {"next_window": N}`` after
+    every completed window. An interruption (the process dying, a
+    KeyboardInterrupt — anything that escapes the extractor's own per-window
+    error handling) marks the job INTERRUPTED; calling again with
+    ``resume=True`` restarts at the recorded window WITHOUT repeating earlier
+    ones (their rules are already persisted; the duplicate filter is seeded
+    from the draft pool). Resume is explicit — never automatic.
+
+    Returns {"job": job_dict, "rules": rules_from_this_pass}.
+    """
+    from app.rules.store import get_rule_store as _rules
+    from app.shared.jobs import get_job_store
+
+    jobs = get_job_store()
+    job = jobs.latest_for("document_ingest", document_id)
+    start_window = 0
+    if resume:
+        if job is None or job.get("status") != "INTERRUPTED":
+            raise ValueError(
+                f"nothing to resume for {document_id}: "
+                + ("no job exists" if job is None
+                   else f"latest job is {job['status']}, not INTERRUPTED"))
+        token = job.get("resume_token") or {}
+        if isinstance(token, str):
+            token = json.loads(token or "{}")
+        start_window = int(token.get("next_window") or 0)
+    if job is None:
+        job = jobs.begin_job("document_ingest", document_id)
+    total = len(build_windows(chunks))
+    job = jobs.update(job["job_id"], stage="extract",
+                      items_done=start_window, items_total=total,
+                      resume_token={"next_window": start_window})
+
+    def _on_window(done: int, total_windows: int) -> None:
+        jobs.update(job["job_id"], items_done=done, items_total=total_windows,
+                    resume_token={"next_window": done})
+
+    known = {r.get("rule_code") for r in _rules().drafts()
+             if r.get("document_id") == document_id} if start_window else None
+    try:
+        rules = extract_rules_for_document(
+            document_id, chunks, llm=llm, persist=True,
+            start_window=start_window, known_codes=known, on_window=_on_window)
+    except BaseException as exc:  # noqa: BLE001 — incl. KeyboardInterrupt/kill paths
+        current = jobs.get(job["job_id"]) or job
+        jobs.interrupt(job["job_id"], resume_token=current.get("resume_token"),
+                       error=f"extraction interrupted: {type(exc).__name__}: {exc}")
+        raise
+    finished = jobs.complete(job["job_id"])
+    return {"job": finished, "rules": rules}

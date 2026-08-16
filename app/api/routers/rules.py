@@ -351,6 +351,12 @@ def check_conflicts(body: ConflictCheckRequest | None = None) -> dict:
     else:
         drafts = store.drafts()
     conflicts = audit_conflicts(drafts)
+    # Round 1 (schema freeze): the audit is the last document_ingest stage —
+    # record it on each involved document's job (per-stage granularity).
+    from app.shared.jobs import touch_document_stage
+
+    for doc_id in sorted({r.get("document_id") for r in drafts if r.get("document_id")}):
+        touch_document_stage(doc_id, "audit")
     return {"draft_count": len(drafts), "conflicts": conflicts,
             "note": "proposals only — nothing was applied; a human approves"}
 

@@ -160,15 +160,31 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
         "advisor": advisor_sid, "from_month": from_month, "to_month": to_month,
     })["rows"][0]
 
+    # Round 1 (schema freeze) task 2 — one phx_dm_pce_job row per generation.
+    # Stages: evaluate_rules → investigate_residual (per-item: miner turns) →
+    # narrate → persist. Each stage's output is written before the next
+    # begins; a FAILED job carries the error the run recorded.
+    from app.shared.jobs import get_job_store
+
+    jobs = get_job_store()
+    job = jobs.begin_job("insight_generation",
+                         f"{advisor_sid}|{from_month}->{to_month}")
+
     # Round E task 2 (PROVISIONAL — DECISIONS.md): rules evaluate in code before
     # the agent loop; the agent is pointed at the residual.
-    rule_findings, rule_outcomes = evaluate_published_rules(
-        advisor_sid, from_month, to_month, version)
+    try:
+        rule_findings, rule_outcomes = evaluate_published_rules(
+            advisor_sid, from_month, to_month, version)
+    except Exception as exc:
+        jobs.fail(job["job_id"], f"{type(exc).__name__}: {exc}")
+        raise
     rule_impacts = sum(f["impact_amt"] for f in rule_findings
                        if f["impact_amt"] is not None)
     residual_amt = round(float(transition.get("change_amt") or 0.0) - rule_impacts, 2)
 
     run = store.begin_run(advisor_sid, from_month, to_month, version["version_id"])
+    jobs.update(job["job_id"], stage="investigate_residual",
+                scope_key=run["run_id"], run_id=run["run_id"])
     tools = MinerTools(run["run_id"])
     try:
         from app.llm.usage import wrap_llm
@@ -182,7 +198,10 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
         mined = mine(advisor_sid=advisor_sid, from_month=from_month, to_month=to_month,
                      rules=rules, transition=transition, tools=tools, llm=miner,
                      rule_findings=rule_findings, rule_outcomes=rule_outcomes,
-                     residual_amt=residual_amt, nl_guidance=nl_guidance)
+                     residual_amt=residual_amt, nl_guidance=nl_guidance,
+                     on_turn=lambda done, total: jobs.update(
+                         job["job_id"], items_done=done, items_total=total))
+        jobs.update(job["job_id"], stage="narrate")
         # C3: the Reporter receives FINDINGS ONLY (plus the transition totals,
         # themselves a stored query result on this run) and a text LLM callable.
         # Round E task 5: plus ONE injected capability — document search for
@@ -192,6 +211,7 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
 
         reported = report(mined["findings"], transition, reporter,
                           search_documents=build_reporter_search(run["run_id"]))
+        jobs.update(job["job_id"], stage="persist")
         agent_findings = [f for f in mined["findings"] if f.get("origin") != "rule"]
         agent_impacts = sum(abs(f["impact_amt"]) for f in agent_findings
                             if f["impact_amt"] is not None)
@@ -213,9 +233,11 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
         completed["residual_amt"] = residual_amt
         completed["residual_explained_pct"] = residual_explained_pct
         completed["exploration_reserved"] = mined.get("exploration_reserved")
+        jobs.complete(job["job_id"])
         return completed
     except Exception as exc:  # noqa: BLE001 — honest failure recorded on the run
         _log.exception("insight run %s failed", run["run_id"])
+        jobs.fail(job["job_id"], f"{type(exc).__name__}: {exc}")
         return store.fail_run(run["run_id"], f"{type(exc).__name__}: {exc}")
 
 

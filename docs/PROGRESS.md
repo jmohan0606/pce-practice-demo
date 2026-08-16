@@ -14,6 +14,22 @@
       "NOT STATED" — null honest, nothing invented (scripted-LLM proven). All
       eight fields plan-preserving-editable + always serialized on the rules
       API. Suites a/b/c/e/h green.
+- [x] Task 2 (main thread): phx_dm_pce_job + job_for_document/job_for_run in
+      every schema place (31V/44E) — app/shared/jobs.py JobStore (durable
+      data/runtime/jobs.db + graph mirror; runtime upsert IS the loading job,
+      turn-log precedent). Wired: document ingest (parse→chunk→embed then
+      COMPLETE-at-embed; extract REOPENS the job per-window with
+      resume_token={next_window} — extract_with_job persists EACH window
+      before the next, so an interruption loses at most one window and resume
+      repeats none, PROVEN: interrupt at window 2 of 3 → INTERRUPTED
+      {next_window:2} → resume made exactly 1 LLM call; compile/audit
+      per-stage touches), insight generation (evaluate_rules→
+      investigate_residual with per-turn items→narrate→persist, run_id edge,
+      FAILED carries the error), data_load (load_mock/real_data: one stage
+      per entity; ingestion checkpoints are the real resume). Resume is
+      EXPLICIT: GET/POST /api/jobs + /{id}/resume (?resume=1 on
+      extract-rules). All suites green (a25 b19 c13 e8 h9 a1-17, flags 8,
+      manual 17, nnm 19).
 
 ## Round F2 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md) — real CRM data, NNM, plan-unlocked rules
 - [x] Task 1 (main thread, d5eb45c): discovery AUTHORED, not run — no client

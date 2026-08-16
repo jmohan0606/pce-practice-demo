@@ -190,6 +190,23 @@ def _resolve_llm(rule_key: str) -> Callable[[str, dict], str]:
 def compile_rule_with_agent(rule_key: str,
                             llm: Callable[[str, dict], str] | None = None,
                             note: str = "", recompile: bool = False) -> dict:
+    """Round 1 wrapper: run the compile, then record the ``compile`` stage on
+    the source document's ingest job (per-stage granularity; a rule with no
+    document_id — tech-written/manual — has no ingest job to touch)."""
+    document_id = (get_rule_store().get(rule_key) or {}).get("document_id")
+    try:
+        return _compile_rule_with_agent(rule_key, llm=llm, note=note,
+                                        recompile=recompile)
+    finally:
+        if document_id:
+            from app.shared.jobs import touch_document_stage
+
+            touch_document_stage(document_id, "compile")
+
+
+def _compile_rule_with_agent(rule_key: str,
+                             llm: Callable[[str, dict], str] | None = None,
+                             note: str = "", recompile: bool = False) -> dict:
     """Compile one stored rule. Outcomes (all persisted on the rule row):
     - COMPILED: plan validated AND executed against mock data (row count kept)
     - NEEDS_DATA: the agent states what the schema cannot express

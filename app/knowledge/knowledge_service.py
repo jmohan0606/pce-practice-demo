@@ -105,6 +105,15 @@ class KnowledgeManagementService:
             )
 
         document_id = f"DOC_{uuid4().hex[:12]}"
+        # Round 1 (schema freeze) task 2 — one phx_dm_pce_job row per ingest.
+        # The upload pipeline covers parse→chunk→embed of the six
+        # document_ingest stages; extract/compile/audit are demand-driven and
+        # REOPEN this job later (rule_extractor.extract_with_job / the compile
+        # path), so a job COMPLETE at stage embed reads honestly as "indexed;
+        # extraction not yet requested".
+        from app.shared.jobs import get_job_store
+
+        job = get_job_store().begin_job("document_ingest", document_id)
         document = KnowledgeDocument(
             document_id=document_id,
             document_name=source_path.name,
@@ -122,9 +131,10 @@ class KnowledgeManagementService:
         self._record_status(document, base_meta)
 
         try:
-            # parsed
+            # parsed (parse_document ran above — its output is in hand)
             document.status = KnowledgeDocumentStatus.PARSED
             self._record_status(document, base_meta)
+            get_job_store().update(job["job_id"], stage="chunk")
 
             # chunked
             chunks = self.chunker.chunk(document_id, parsed.blocks)
@@ -135,6 +145,8 @@ class KnowledgeManagementService:
             })
             document.status = KnowledgeDocumentStatus.CHUNKED
             self._record_status(document, base_meta)
+            get_job_store().update(job["job_id"], stage="embed",
+                                   items_total=len(chunks))
 
             # embedded
             knowledge_chunks = [_to_knowledge_chunk(c, collection, document) for c in chunks]
@@ -168,6 +180,9 @@ class KnowledgeManagementService:
             document.status = KnowledgeDocumentStatus.INDEXED
             self._record_status(document, {**base_meta, "indexed_count": indexed,
                                            "uploaded_at": uploaded_at})
+            get_job_store().update(job["job_id"], items_done=indexed,
+                                   items_total=len(chunks))
+            get_job_store().complete(job["job_id"])
             for chunk in knowledge_chunks:
                 self.catalog.save_chunk(chunk.chunk_id, chunk.document_id, chunk.chunk_index,
                                         chunk.chunk_summary, chunk.metadata)
@@ -178,6 +193,7 @@ class KnowledgeManagementService:
         except Exception as exc:
             document.status = KnowledgeDocumentStatus.FAILED
             self._record_status(document, {**base_meta, "error": f"{type(exc).__name__}: {exc}"})
+            get_job_store().fail(job["job_id"], f"{type(exc).__name__}: {exc}")
             _log.error("ingest failed for %s: %s", source_path.name, exc)
             raise
 

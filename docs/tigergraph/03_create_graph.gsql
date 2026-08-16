@@ -1,4 +1,4 @@
-// pce-practice-demo — graph creation (30 vertex types + 42 edge types)
+// pce-practice-demo — graph creation (31 vertex types + 44 edge types)
 // Reverse edges are implied by the WITH REVERSE_EDGE clauses in 02_edges.gsql.
 // Run after 01_vertices.gsql and 02_edges.gsql.
 USE GLOBAL
@@ -23,7 +23,7 @@ CREATE GRAPH phx_dm_pce_practice_demo (
   phx_dm_pce_advisor_flow_month,
   phx_dm_pce_opportunity,
   phx_dm_pce_advisor_nnm,
-  // vertices — app-written (12)
+  // vertices — app-written (13)
   phx_dm_pce_document,
   phx_dm_pce_document_chunk,
   phx_dm_pce_rule_set_version,
@@ -36,6 +36,7 @@ CREATE GRAPH phx_dm_pce_practice_demo (
   phx_dm_pce_feature_flag,
   phx_dm_pce_conversation,
   phx_dm_pce_chat_message,
+  phx_dm_pce_job,
   // edges — product chain
   phx_dm_pce_product_in_group,
   phx_dm_pce_group_in_class,
@@ -90,5 +91,8 @@ CREATE GRAPH phx_dm_pce_practice_demo (
   phx_dm_pce_query_in_run,
   phx_dm_pce_turn_in_run,
   // edges — chat (app-written)
-  phx_dm_pce_message_in_conversation
+  phx_dm_pce_message_in_conversation,
+  // edges — jobs (app-written, Round 1 schema freeze)
+  phx_dm_pce_job_for_document,
+  phx_dm_pce_job_for_run
 )
