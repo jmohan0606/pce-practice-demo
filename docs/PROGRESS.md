@@ -71,6 +71,18 @@
       month sanity anchor naming proc_dt/team-join when out) — 11 PASS on
       the fabricated drop ($33,200 measured); gap and row-mismatch
       corruptions both FAIL loudly (proven).
+- [x] Task 6 (main thread): docs/CLIENT_ENV_RUNBOOK.md — Phases 0–6,
+      numbered, exact command + correct-result + what-to-do-when-not at
+      every step; Phase 3.1 states the exact file placement of all three
+      source kinds in data/real/_raw (original NNM filenames, load-bearing);
+      Phase 4 is the HARD REVIEW GATE ("STOP HERE", wait for explicit
+      go-ahead); token-expiry resume procedure stated verbatim; 46-query
+      catalog count corrected from the spec's 38; both embedded snippets
+      (46/46 catalog sweep, monthly-total reconciliation) EXECUTED here and
+      proven (reconciliation matches to the cent). NEW
+      prompts/COPILOT_SIZING_AND_RATE.md (Part A row-count SQL incl. the
+      cohort.txt query extraction needs; Part B measured-ingestion-rate
+      procedure with the p95×1.2 projection rule).
 
 ## Round F2 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md) — real CRM data, NNM, plan-unlocked rules
 - [x] Task 1 (main thread, d5eb45c): discovery AUTHORED, not run — no client
