@@ -43,6 +43,12 @@
       SP-4 naming the missing attribute (proven). Manifest +
       generate_mock_data untouched BY THE CHECKLIST'S OWN RULE (both
       additions are app-written — no CSV load).
+- [x] Task 4 (main thread): docs/spec/SOURCE_TO_VERTEX_MATRIX.md — THREE
+      source kinds (PostgreSQL tables, the four NNM .txt files, the CRM
+      .csv), the derived vertices named (monthly_revenue/rpg/household),
+      seeded constants, all 13 app-written vertices with their writers, and
+      the edge rule; script-checked that every one of the 31 DDL vertices
+      appears (missing: NONE).
 
 ## Round F2 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md) — real CRM data, NNM, plan-unlocked rules
 - [x] Task 1 (main thread, d5eb45c): discovery AUTHORED, not run — no client
