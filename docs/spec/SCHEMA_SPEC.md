@@ -49,7 +49,7 @@ April is the **baseline month** — no prior month exists, so lost-account detec
 
 ---
 
-## 1. Source-loaded vertices (16) — Copilot extracts these
+## 1. Source-loaded vertices (18) — Copilot extracts these
 
 ### V1 · `phx_dm_pce_month`
 ```sql
@@ -270,22 +270,57 @@ Required, not optional: inflows, outflows and net flows are the only source for 
 (`Total Annual NNM >= $4MM x Award Rate x Effective Grid Rate`), which is one of the two central
 formulas in the comp plans.
 
-### V14 · `phx_dm_pce_opportunity` — CRM pipeline (DUMMY data)
+### V14 · `phx_dm_pce_opportunity` — CRM pipeline (real Salesforce extract shape, Round F2)
 ```sql
 CREATE VERTEX phx_dm_pce_opportunity (PRIMARY_ID opportunity_id STRING, eci_id STRING,
-  advisor_sid STRING, stage STRING, status STRING, amount DOUBLE,
-  product_group STRING, open_dt DATETIME, expected_close_dt DATETIME,
-  close_dt DATETIME, source STRING, data_source STRING)
+  advisor_sid STRING, advisor_sid_raw STRING, advisor_valid BOOL,
+  account_record_type STRING, product_service_type STRING, stage_name STRING,
+  stage_group STRING, amount DOUBLE, actual_assets DOUBLE,
+  anticipated_investment_dt DATETIME, created_dt DATETIME,
+  last_modified_dt DATETIME, date_of_last_contact DATETIME, days_to_close INT,
+  is_stalled BOOL, comments STRING, ai_read STRING, ai_read_confidence DOUBLE,
+  ai_read_evidence STRING, ai_read_model STRING, data_source STRING)
 WITH primary_id_as_attribute="true";
 ```
-CSV `opportunity_id,eci_id,advisor_sid,stage,status,amount,product_group,open_dt,expected_close_dt,close_dt,source,data_source`
+CSV `opportunity_id,eci_id,advisor_sid,advisor_sid_raw,advisor_valid,account_record_type,product_service_type,stage_name,stage_group,amount,actual_assets,anticipated_investment_dt,created_dt,last_modified_dt,date_of_last_contact,days_to_close,is_stalled,comments,ai_read,ai_read_confidence,ai_read_evidence,ai_read_model,data_source`
 
-CRM pipeline, joined through ECI (`eci_id` → `phx_dm_pce_household`). `status` ∈
-`WON | LOST | PENDING`. **Populated with DUMMY data until a real CRM feed exists:
-`data_source = 'DUMMY'` on every row**, and any finding that uses opportunity data carries a
-visible Dummy Data chip in the UI (the honesty pattern V2 used for MARKET and NET_FLOW).
+CRM pipeline matching the REAL extract (`45f440b6…csv`, 308,534 rows firm-wide; filtered to the
+cohort at build — see `docs/spec/CRM_AND_PLAN_FINDINGS.md` §1). Joined through ECI
+(`eci_id` = `eci__c` → `phx_dm_pce_household`); `advisor_sid` = `ownersid__c` with any
+`_CWM_INVALID`-style suffix stripped — the original stays in `advisor_sid_raw` and
+`advisor_valid=false` marks it (counted and reported at validation, never dropped, never silently
+joined). `amount` is the Salesforce standard Amount — the **forecast pipeline value**;
+`actual_assets` (`actual_assets__c`, a custom field) is the **assets that landed**; the two are
+NEVER summed (working interpretation, DECISIONS.md 2026-08-16). `stage_name` carries the source's
+15 stages; `stage_group` is derived `EARLY | MID | LATE | CLOSING`. **The source has NO Won/Lost
+stage and none is invented** — outcome hints live only in free text. `days_to_close` is often
+negative (past the anticipated close) → `is_stalled = days_to_close < 0`. `comments` is the raw
+free text kept verbatim; `ai_read` / `ai_read_confidence` / `ai_read_evidence` / `ai_read_model`
+are the ONE-TIME ingestion LLM interpretation of it — descriptive only, never drives any figure,
+rule, filter or total; `ai_read_evidence` is the exact substring the reading came from; "no
+signal" rows leave `ai_read` empty. `data_source = 'CRM'`.
 Edges: `phx_dm_pce_opportunity_for_household → household`,
 `phx_dm_pce_opportunity_by_advisor → advisor`.
+
+### V15s · `phx_dm_pce_advisor_nnm` — NNM by category (Round F2)
+```sql
+CREATE VERTEX phx_dm_pce_advisor_nnm (PRIMARY_ID nnm_id STRING,
+  advisor_sid STRING, month_id STRING, category STRING, category_source STRING,
+  mtd_nnm DOUBLE, ytd_nnm DOUBLE, entry_dt DATETIME, as_of_dt DATETIME)
+WITH primary_id_as_attribute="true";
+```
+CSV `nnm_id,advisor_sid,month_id,category,category_source,mtd_nnm,ytd_nnm,entry_dt,as_of_dt`
+
+`nnm_id = advisor_sid ||'|'|| month_id ||'|'|| category`. Loaded from the four pipe-delimited NNM
+files (`ECNNM_*/NBNNM_*/YINNM_*/FSNNM_*.txt`): an `H<date>` header carries the as-of date, the `D`
+column-header line names `Entry_Dt|StandardID|Month_Year|MTD_NNM|YTD_NNM`, and data rows prefix the
+entry date with `D` (parser: `scripts/parse_nnm.py`). `category` ∈ `EC | NB | YI | FS`;
+`category_source` keeps the raw file prefix because **only EC is confirmed by the plan document**
+("Existing Client Annual NNM Flows" — PCA p.4); NB/YI/FS are inferred from filenames and
+correctable without re-parsing. Values can be NEGATIVE in both NNM columns — real, not an error.
+The YTD position for an advisor is the LATEST month's `ytd_nnm`, never a sum of MTD rows, and is
+never annualised or extrapolated.
+Edges: `phx_dm_pce_nnm_by_advisor → advisor`, `phx_dm_pce_nnm_in_month → month`.
 
 ---
 
@@ -422,9 +457,13 @@ CREATE DIRECTED EDGE phx_dm_pce_team_secondary (FROM phx_dm_pce_team_agreement, 
 CREATE DIRECTED EDGE phx_dm_pce_flow_by_advisor (FROM phx_dm_pce_advisor_flow_month, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_has_flow";
 CREATE DIRECTED EDGE phx_dm_pce_flow_in_month (FROM phx_dm_pce_advisor_flow_month, TO phx_dm_pce_month) WITH REVERSE_EDGE="phx_dm_pce_month_has_flow";
 
--- opportunity (CRM pipeline — DUMMY data, joined through ECI)
+-- opportunity (CRM pipeline — real extract shape since Round F2, joined through ECI)
 CREATE DIRECTED EDGE phx_dm_pce_opportunity_for_household (FROM phx_dm_pce_opportunity, TO phx_dm_pce_household) WITH REVERSE_EDGE="phx_dm_pce_household_has_opportunity";
 CREATE DIRECTED EDGE phx_dm_pce_opportunity_by_advisor (FROM phx_dm_pce_opportunity, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_has_opportunity";
+
+-- advisor NNM (Round F2)
+CREATE DIRECTED EDGE phx_dm_pce_nnm_by_advisor (FROM phx_dm_pce_advisor_nnm, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_has_nnm";
+CREATE DIRECTED EDGE phx_dm_pce_nnm_in_month (FROM phx_dm_pce_advisor_nnm, TO phx_dm_pce_month) WITH REVERSE_EDGE="phx_dm_pce_month_has_nnm";
 
 -- rules & insights (app-written)
 CREATE DIRECTED EDGE phx_dm_pce_chunk_of_document (FROM phx_dm_pce_document_chunk, TO phx_dm_pce_document) WITH REVERSE_EDGE="phx_dm_pce_document_has_chunk";
@@ -442,7 +481,7 @@ CREATE DIRECTED EDGE phx_dm_pce_turn_in_run (FROM phx_dm_pce_agent_turn_log, TO 
 CREATE DIRECTED EDGE phx_dm_pce_message_in_conversation (FROM phx_dm_pce_chat_message, TO phx_dm_pce_conversation) WITH REVERSE_EDGE="phx_dm_pce_conversation_has_message";
 ```
 
-**29 vertices (17 source-loaded + 12 app-written) · 40 edge types.** Drop order is the reverse of create order.
+**30 vertices (18 source-loaded + 12 app-written) · 42 edge types.** Drop order is the reverse of create order.
 
 ---
 

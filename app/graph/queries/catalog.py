@@ -1366,3 +1366,17 @@ def run_catalog_query(query_name: str, params: dict | None = None) -> dict:
     result = get_graph_client().run_query(query_name, checked)
     rows = result.get("results") or []
     return {"rows": rows, "row_count": len(rows)}
+
+
+# ------------------------------------------------------------------- Round F2
+# CRM and NNM query extensions live in their own modules (crm_catalog.py owned
+# by the CRM workstream, nnm_catalog.py by the NNM workstream) so parallel
+# work never edits this file. Each module registers its @mock_query
+# implementations on import and contributes catalog entries here. This import
+# sits at the END of the module so every shared helper above is available to
+# the extension modules.
+from app.graph.queries import crm_catalog as _crm_catalog  # noqa: E402
+from app.graph.queries import nnm_catalog as _nnm_catalog  # noqa: E402
+
+CATALOG.update(_crm_catalog.EXTRA_CATALOG)
+CATALOG.update(_nnm_catalog.EXTRA_CATALOG)

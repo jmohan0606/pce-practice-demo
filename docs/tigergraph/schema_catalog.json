@@ -229,15 +229,40 @@
         "opportunity_id": "STRING",
         "eci_id": "STRING",
         "advisor_sid": "STRING",
-        "stage": "STRING",
-        "status": "STRING",
+        "advisor_sid_raw": "STRING",
+        "advisor_valid": "BOOL",
+        "account_record_type": "STRING",
+        "product_service_type": "STRING",
+        "stage_name": "STRING",
+        "stage_group": "STRING",
         "amount": "DOUBLE",
-        "product_group": "STRING",
-        "open_dt": "DATETIME",
-        "expected_close_dt": "DATETIME",
-        "close_dt": "DATETIME",
-        "source": "STRING",
+        "actual_assets": "DOUBLE",
+        "anticipated_investment_dt": "DATETIME",
+        "created_dt": "DATETIME",
+        "last_modified_dt": "DATETIME",
+        "date_of_last_contact": "DATETIME",
+        "days_to_close": "INT",
+        "is_stalled": "BOOL",
+        "comments": "STRING",
+        "ai_read": "STRING",
+        "ai_read_confidence": "DOUBLE",
+        "ai_read_evidence": "STRING",
+        "ai_read_model": "STRING",
         "data_source": "STRING"
+      }
+    },
+    "phx_dm_pce_advisor_nnm": {
+      "primary_id": "nnm_id",
+      "attributes": {
+        "nnm_id": "STRING",
+        "advisor_sid": "STRING",
+        "month_id": "STRING",
+        "category": "STRING",
+        "category_source": "STRING",
+        "mtd_nnm": "DOUBLE",
+        "ytd_nnm": "DOUBLE",
+        "entry_dt": "DATETIME",
+        "as_of_dt": "DATETIME"
       }
     },
     "phx_dm_pce_document": {
@@ -560,6 +585,16 @@
       "from": "phx_dm_pce_opportunity",
       "to": "phx_dm_pce_advisor",
       "reverse": "phx_dm_pce_advisor_has_opportunity"
+    },
+    "phx_dm_pce_nnm_by_advisor": {
+      "from": "phx_dm_pce_advisor_nnm",
+      "to": "phx_dm_pce_advisor",
+      "reverse": "phx_dm_pce_advisor_has_nnm"
+    },
+    "phx_dm_pce_nnm_in_month": {
+      "from": "phx_dm_pce_advisor_nnm",
+      "to": "phx_dm_pce_month",
+      "reverse": "phx_dm_pce_month_has_nnm"
     },
     "phx_dm_pce_chunk_of_document": {
       "from": "phx_dm_pce_document_chunk",

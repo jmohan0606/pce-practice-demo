@@ -1,10 +1,10 @@
-// pce-practice-demo — graph creation (29 vertex types + 40 edge types)
+// pce-practice-demo — graph creation (30 vertex types + 42 edge types)
 // Reverse edges are implied by the WITH REVERSE_EDGE clauses in 02_edges.gsql.
 // Run after 01_vertices.gsql and 02_edges.gsql.
 USE GLOBAL
 
 CREATE GRAPH phx_dm_pce_practice_demo (
-  // vertices — source-loaded (17)
+  // vertices — source-loaded (18)
   phx_dm_pce_month,
   phx_dm_pce_revenue_class,
   phx_dm_pce_product_group,
@@ -22,6 +22,7 @@ CREATE GRAPH phx_dm_pce_practice_demo (
   phx_dm_pce_account_transfer,
   phx_dm_pce_advisor_flow_month,
   phx_dm_pce_opportunity,
+  phx_dm_pce_advisor_nnm,
   // vertices — app-written (12)
   phx_dm_pce_document,
   phx_dm_pce_document_chunk,
@@ -71,9 +72,12 @@ CREATE GRAPH phx_dm_pce_practice_demo (
   // edges — flows
   phx_dm_pce_flow_by_advisor,
   phx_dm_pce_flow_in_month,
-  // edges — opportunity (dummy CRM pipeline)
+  // edges — opportunity (CRM pipeline, real extract shape since Round F2)
   phx_dm_pce_opportunity_for_household,
   phx_dm_pce_opportunity_by_advisor,
+  // edges — advisor NNM (Round F2)
+  phx_dm_pce_nnm_by_advisor,
+  phx_dm_pce_nnm_in_month,
   // edges — rules & insights (app-written)
   phx_dm_pce_chunk_of_document,
   phx_dm_pce_rule_in_version,

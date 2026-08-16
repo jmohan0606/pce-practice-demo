@@ -16,6 +16,8 @@ DROP EDGE phx_dm_pce_run_uses_version
 DROP EDGE phx_dm_pce_rule_cites_chunk
 DROP EDGE phx_dm_pce_rule_in_version
 DROP EDGE phx_dm_pce_chunk_of_document
+DROP EDGE phx_dm_pce_nnm_in_month
+DROP EDGE phx_dm_pce_nnm_by_advisor
 DROP EDGE phx_dm_pce_opportunity_by_advisor
 DROP EDGE phx_dm_pce_opportunity_for_household
 DROP EDGE phx_dm_pce_flow_in_month
@@ -59,6 +61,7 @@ DROP VERTEX phx_dm_pce_rule
 DROP VERTEX phx_dm_pce_rule_set_version
 DROP VERTEX phx_dm_pce_document_chunk
 DROP VERTEX phx_dm_pce_document
+DROP VERTEX phx_dm_pce_advisor_nnm
 DROP VERTEX phx_dm_pce_opportunity
 DROP VERTEX phx_dm_pce_advisor_flow_month
 DROP VERTEX phx_dm_pce_account_transfer
