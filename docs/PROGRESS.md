@@ -83,6 +83,18 @@
       prompts/COPILOT_SIZING_AND_RATE.md (Part A row-count SQL incl. the
       cohort.txt query extraction needs; Part B measured-ingestion-rate
       procedure with the p95×1.2 projection rule).
+- [x] Task 7 (main thread): NEW scripts/verify_round_1.py — 12/12 PASS, run
+      twice (repeatable; the R1-5 probe now isolates the knowledge catalog
+      too). All 10 spec checks with actual output in
+      docs/ROUND_1_COMPLETE.md, including the LIVE Sonnet extraction over
+      the real plan document proposing exception config with page citations
+      (DISCOUNT_SHARING_THRESHOLD_TRIGGER: denom 'managed accounts', scope
+      'products billed on the Standard Managed 145 bps Fee Schedule', src
+      'Page 3, Section 3…'; unstated → null + NOT STATED — ≈$0.08, the
+      session's only LLM spend). Regression all green (a25 b19 c13 e8 h9
+      a1-17, flags 8, manual 17, nnm 19, parity, npm build 8 routes).
+      Servers restarted on this round's code (:8002 healthy with /api/jobs,
+      :3002 200); public visibility still needs the Ports panel (carried).
 
 ## Round F2 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md) — real CRM data, NNM, plan-unlocked rules
 - [x] Task 1 (main thread, d5eb45c): discovery AUTHORED, not run — no client
@@ -749,7 +761,26 @@ Note: per Round E/G/H precedent, subagents reported and the MAIN THREAD
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: F2 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md) — COMPLETE. All 7 tasks done;
+Round: 1 (docs/spec/ROUND_1_SCHEMA_FREEZE_SPEC.md) — COMPLETE. THE SCHEMA IS
+      FROZEN at 31 vertices / 44 edges: a client environment installs fresh
+      (01→02→03) or migrates from F2 (migrations/001_exceptions_and_jobs.gsql,
+      additive-only, one GLOBAL SCHEMA_CHANGE JOB) and verify_schema_parity.py
+      proves the two paths identical. Rounds 2 (behaviour: exception
+      evaluation over the eight new rule fields, aggregate-first queries,
+      evidence without cap, AI-Insights-cross-cutting) and 3 (UI: both review
+      batches, Documents & Rules redesign, job progress) need NO further
+      migration — checked against REVIEW_COMMENTS_BATCH1/2 item by item
+      (ROUND_1_COMPLETE.md "Deviations / notes"). The one deliberately-open
+      schema item stays job_code on the advisor vertex, blocked on the
+      operator running discovery_job_code.sql — if confirmed, it is one
+      additive migration file, no reinstall. Client-load deliverables ready:
+      CLIENT_ENV_RUNBOOK.md (Phase 4 = hard review gate),
+      COPILOT_SIZING_AND_RATE.md, extract_chunked.py (checkpointed,
+      token-expiry-safe), validate_raw_extracts.py (three source kinds),
+      build_real_data.py source detection over data/real/_raw.
+Round 1 session LLM spend ≈ $0.08 of the $6 ceiling.
+
+Previous round: F2 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md) — COMPLETE. All 7 tasks done;
       docs/ROUND_F2_COMPLETE.md carries the actual output of all 19 checks.
       The round's principle held: the client's grid rate table, discount
       sharing table and NNM award rates live ONLY in documents — the new
