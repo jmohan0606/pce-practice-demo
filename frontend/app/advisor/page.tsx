@@ -25,9 +25,13 @@ import {
   type AdvisorPeerRanking,
   type AdvisorSummary,
   type CoachingResult,
+  type NnmCategory,
+  type NnmResponse,
   type OpportunitiesResponse,
+  type OpportunityDetailRow,
   generateCoaching,
   getAdvisorList,
+  getAdvisorNnm,
   getAdvisorPeerRanking,
   getAdvisorSummary,
   getCoaching,
@@ -250,6 +254,7 @@ function AdvisorBody({ sid, advisor }: { sid: string; advisor: AdvisorListRow | 
               <EmptyState title="No months loaded for this advisor" />
             )}
             <MetricsStrip summary={summary} transition={transition} monthName={monthName} />
+            <NnmStrip sid={sid} />
           </div>
         </div>
       </Gated>
@@ -335,44 +340,120 @@ function MetricsStrip({
         </div>
       </div>
 
-      {/* NNM — BOTH figures, clearly labelled (6.3) */}
-      <div className="mstrip" style={{ marginTop: 10 }}>
-        <div>
-          <div className="k">NNM YTD (from {monthName(m.nnm.ytd.first_month ?? "")} — first loaded month)</div>
-          <div className="v">
-            <Money value={m.nnm.ytd.amount} />
-          </div>
-        </div>
-        <div>
-          <div className="k">
-            NNM in scope ({monthName(transition.from_month_id)}→{monthName(transition.to_month_id)})
-          </div>
-          <div className="v">
-            <Money value={m.nnm.in_scope.amount} />
-          </div>
-        </div>
-        {m.nnm.by_product.map((p) => (
-          <div key={p.flow_product_cd}>
-            <div className="k">
-              {p.flow_product_cd === "MGDF" ? "Managed" : p.flow_product_cd === "BRKF" ? "Brokerage" : p.flow_product_cd}{" "}
-              net flows
-            </div>
-            <div className="v" style={{ fontSize: 15 }}>
-              <Money value={p.net_flows} />
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="note" style={{ marginTop: 8 }}>
-        {m.nnm.categories_note}.{" "}
-        <Chip variant="derived" title={m.nnm.qualification_note}>
-          ASSUMED
-        </Chip>{" "}
-        Any $4MM qualification statement rests on an unconfirmed assumption.
-      </div>
       {m.lifecycle.notes ? (
         <div className="note" style={{ marginTop: 4 }}>{m.lifecycle.notes}</div>
       ) : null}
+    </>
+  );
+}
+
+// ------------------------------------------------------- NNM strip (Round F2)
+// The four real categories from the NNM files (Managed/Brokerage split
+// REMOVED — it was an A2B placeholder). EC is prominent against the threshold
+// the API resolves from the EXTRACTED plan rule; nothing is hardcoded here.
+
+function categoryTooltip(c: NnmCategory): string {
+  return c.confirmed
+    ? `${c.label} — confirmed by the plan document (source file ${c.category_source}_*)`
+    : `${c.label} — category inferred from the source filename ${c.category_source}_*`;
+}
+
+function NnmStrip({ sid }: { sid: string }) {
+  const [nnm, setNnm] = useState<NnmResponse | null>(null);
+  const [error, setError] = useState<{ status: number; message: string } | null>(null);
+  useEffect(() => {
+    setNnm(null);
+    setError(null);
+    getAdvisorNnm(sid)
+      .then(setNnm)
+      .catch((e) => setError({ status: (e as { status?: number })?.status ?? 0, message: String((e as Error)?.message || e) }));
+  }, [sid]);
+
+  if (error) {
+    // 409 = feature flag off — absent, like every other gated section
+    if (error.status === 409) return null;
+    return (
+      <div className="note" style={{ marginTop: 10 }}>
+        NNM unavailable: {error.message}
+      </div>
+    );
+  }
+  if (!nnm) {
+    return <div style={{ color: "var(--slate)", fontSize: "12.5px", marginTop: 10 }}>Loading NNM…</div>;
+  }
+
+  const ec = nnm.categories.find((c) => c.category === "EC") ?? null;
+  const rest = nnm.categories.filter((c) => c.category !== "EC");
+  const t = nnm.threshold;
+
+  if (!nnm.categories.length) {
+    return (
+      <div className="note" style={{ marginTop: 10 }}>
+        {nnm.note || `No NNM rows in the feed for this advisor (as of ${nnm.as_of_label}).`}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="mstrip" style={{ marginTop: 10 }}>
+        {ec ? (
+          <div title={categoryTooltip(ec)} style={{ borderLeft: "3px solid var(--navy)", paddingLeft: 9 }}>
+            <div className="k">Existing Client (EC) NNM YTD — as of {nnm.as_of_label}</div>
+            <div className="v">
+              <Money value={ec.ytd_nnm} />
+            </div>
+            <div className="d mut">
+              MTD <Money value={ec.mtd_nnm} />
+            </div>
+          </div>
+        ) : null}
+        {rest.map((c) => (
+          <div key={c.category} title={categoryTooltip(c)}>
+            <div className="k">
+              {c.label} ({c.category}) YTD
+            </div>
+            <div className="v" style={{ fontSize: 15 }}>
+              <Money value={c.ytd_nnm} />
+            </div>
+            <div className="d mut">
+              MTD <Money value={c.mtd_nnm} />
+            </div>
+          </div>
+        ))}
+        <div>
+          <div className="k">Total NNM (all four categories) YTD</div>
+          <div className="v" style={{ fontSize: 15 }}>
+            <Money value={nnm.total.ytd_nnm} />
+          </div>
+          <div className="d mut">
+            MTD <Money value={nnm.total.mtd_nnm} />
+          </div>
+        </div>
+      </div>
+      <div className="note" style={{ marginTop: 8 }}>
+        {t.available && t.threshold_amt !== null ? (
+          <>
+            EC YTD <Money value={t.ytd_nnm ?? 0} /> vs the <Money value={t.threshold_amt} /> threshold
+            {" — "}
+            {t.qualifies ? (
+              <>at or above the threshold</>
+            ) : (
+              <>
+                gap <Money value={t.gap ?? 0} /> below the threshold
+              </>
+            )}
+            {t.as_of_month ? ` (as of ${nnm.as_of_label})` : ""}.{" "}
+            <Chip variant="derived" title={t.assumed_note}>
+              ASSUMED
+            </Chip>{" "}
+            The threshold figure comes from the extracted plan rule{t.rule_key ? ` (${t.rule_key})` : ""},
+            measured on {t.measured_category} flows.
+          </>
+        ) : (
+          <>{t.note || "No published plan rule states the NNM threshold yet — nothing is assumed in its place."}</>
+        )}
+      </div>
     </>
   );
 }
@@ -770,9 +851,31 @@ function CoachingSection({
   );
 }
 
-// ------------------------------------------------------------ opportunities
+// ------------------------------------------------- opportunities (Round F2 CRM)
 
-const STATUS_ORDER = ["Won", "Lost", "Pending"];
+const STAGE_GROUP_ORDER = ["EARLY", "MID", "LATE", "CLOSING"];
+const STAGE_GROUP_LABELS: Record<string, string> = {
+  EARLY: "Early",
+  MID: "Mid",
+  LATE: "Late",
+  CLOSING: "Closing",
+};
+
+/** The AI Read cell — the same purple ◆ AI treatment as every AI-generated
+ * element. Descriptive only: this column never sorts, filters, or totals. */
+function AiReadCell({ row }: { row: OpportunityDetailRow }) {
+  if (!row.ai_read) {
+    return <span className="mut" style={{ color: "var(--slate)", fontSize: 12 }}>No signal</span>;
+  }
+  const conf =
+    row.ai_read_confidence != null ? `confidence ${Math.round(row.ai_read_confidence * 100)}%` : "confidence unknown";
+  const evidence = row.ai_read_evidence ? ` — evidence: “${row.ai_read_evidence}”` : "";
+  return (
+    <Chip variant="aigen" title={`${conf}${evidence}`}>
+      ◆ AI {row.ai_read}
+    </Chip>
+  );
+}
 
 function OpportunitiesSection({ sid, transition }: { sid: string; transition: Transition | null }) {
   const [opps, setOpps] = useState<OpportunitiesResponse | null>(null);
@@ -785,18 +888,20 @@ function OpportunitiesSection({ sid, transition }: { sid: string; transition: Tr
       .catch((e) => setError(String(e?.message || e)));
   }, [sid, transition]);
 
-  const rows = opps
-    ? STATUS_ORDER.flatMap((s) => opps.by_status[s] ?? []).concat(opps.other)
+  const groups = opps
+    ? [...opps.by_stage_group].sort(
+        (a, b) => STAGE_GROUP_ORDER.indexOf(a.stage_group) - STAGE_GROUP_ORDER.indexOf(b.stage_group),
+      )
     : [];
+  const stalledTotal = groups.reduce((n, g) => n + (g.stalled_count || 0), 0);
+  const guidance = opps?.opportunities_guidance ?? opps?.guidance ?? null;
 
   return (
     <div className="card">
       <div className="card-h">
         <div>
-          <h2>
-            Opportunities <Chip variant="dummy" title="Placeholder feed — every row is synthetic until the real CRM feed arrives">Dummy Data</Chip>
-          </h2>
-          <p>CRM pipeline by status, joined through the household relationship.</p>
+          <h2>Opportunities</h2>
+          <p>CRM pipeline by stage group, joined through the household relationship.</p>
         </div>
       </div>
       <div className="card-b" style={{ padding: 0 }}>
@@ -804,51 +909,124 @@ function OpportunitiesSection({ sid, transition }: { sid: string; transition: Tr
           <div style={{ padding: 16 }}>
             <EmptyState title="Opportunities unavailable" message={error} />
           </div>
-        ) : rows.length ? (
+        ) : opps && (groups.length || opps.opportunities.length) ? (
           <>
             <div style={{ overflowX: "auto" }}>
               <table className="exc">
                 <thead>
                   <tr>
-                    <th>Status</th>
-                    <th>Stage</th>
+                    <th>Stage Group</th>
                     <th className="num">Opportunities</th>
-                    <th className="num">Amount</th>
-                    <th></th>
+                    <th className="num">Forecast Amount</th>
+                    <th className="num">Actual Assets</th>
+                    <th className="num">Stalled</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r, i) => (
-                    <tr key={i}>
-                      <td>
-                        <Chip variant={r.status.toLowerCase() === "won" ? "pos" : r.status.toLowerCase() === "lost" ? "neg" : "tag"}>
-                          {r.status || "—"}
-                        </Chip>
-                      </td>
-                      <td>{r.stage || "—"}</td>
-                      <td className="num">{r.opportunity_count}</td>
+                  {groups.map((g) => (
+                    <tr key={g.stage_group}>
+                      <td>{STAGE_GROUP_LABELS[g.stage_group] ?? g.stage_group}</td>
+                      <td className="num">{g.opportunity_count}</td>
                       <td className="num">
-                        <Money value={r.total_amount} />
+                        <Money value={g.forecast_amount} />
                       </td>
-                      <td>
-                        <Chip variant="dummy" title="data_source = DUMMY">Dummy Data</Chip>
+                      <td className="num">
+                        <Money value={g.actual_assets} />
+                      </td>
+                      <td className="num">
+                        {g.stalled_count > 0 ? <b style={{ color: "var(--neg, #B3261E)" }}>{g.stalled_count}</b> : 0}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {opps?.guidance?.document_name ? (
-              <div className="note">
-                Guidance: “{opps.guidance.excerpt?.slice(0, 220)}…” — <CitationLine c={opps.guidance} />
+            <div className="note">{opps.won_lost_note}</div>
+            <div className="note">{opps.assumption_note}</div>
+            {opps.data_quality?.invalid_advisor_rows > 0 ? (
+              <div className="note" style={{ color: "var(--sev-high-tx, #9A5B13)" }}>
+                {opps.data_quality.note ||
+                  `${opps.data_quality.invalid_advisor_rows} opportunity row(s) carry an invalid advisor reference in the source — shown, not hidden.`}
               </div>
-            ) : (
-              <div className="note">No document-derived guidance attached for this pipeline.</div>
-            )}
+            ) : null}
+            {stalledTotal > 0 ? (
+              <div className="note">
+                <b>{stalledTotal} stalled opportunit{stalledTotal === 1 ? "y" : "ies"}</b> — the anticipated
+                close date has passed (days to close is negative in the source).
+              </div>
+            ) : null}
+            {opps.opportunities.length ? (
+              <div style={{ overflowX: "auto" }}>
+                <table className="exc">
+                  <thead>
+                    <tr>
+                      <th>Household</th>
+                      <th>Stage</th>
+                      <th className="num">Days to Close</th>
+                      <th className="num">Forecast</th>
+                      <th className="num">Actual Assets</th>
+                      <th>Notes</th>
+                      {/* AI Read: descriptive only — deliberately not sortable or filterable */}
+                      <th>AI Read</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {opps.opportunities.map((r) => (
+                      <tr key={r.opportunity_id}>
+                        <td>
+                          <span style={{ fontFamily: "var(--mono, ui-monospace, monospace)", fontSize: 12 }} title={`Household ECI ${r.eci_id}`}>
+                            {r.eci_id || "—"}
+                          </span>
+                          {!r.advisor_valid ? (
+                            <>
+                              {" "}
+                              <Chip variant="neg" title="ownersid__c carried an invalid advisor reference in the source extract">
+                                invalid advisor ref
+                              </Chip>
+                            </>
+                          ) : null}
+                        </td>
+                        <td>{r.stage_name || "—"}</td>
+                        <td className="num">
+                          {r.days_to_close == null ? (
+                            "—"
+                          ) : r.is_stalled ? (
+                            <Chip variant="neg" title="Anticipated close date passed — days_to_close is negative in the source">
+                              Stalled · {-r.days_to_close}d past due
+                            </Chip>
+                          ) : (
+                            r.days_to_close
+                          )}
+                        </td>
+                        <td className="num">
+                          <Money value={r.amount} />
+                        </td>
+                        <td className="num">
+                          <Money value={r.actual_assets} />
+                        </td>
+                        <td style={{ maxWidth: 220 }}>
+                          <span title={r.comments || undefined} style={{ fontSize: 12 }}>
+                            {r.comments ? (r.comments.length > 60 ? `${r.comments.slice(0, 60)}…` : r.comments) : "—"}
+                          </span>
+                        </td>
+                        <td>
+                          <AiReadCell row={r} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+            {guidance?.document_name ? (
+              <div className="note">
+                Guidance: “{guidance.excerpt?.slice(0, 220)}…” — <CitationLine c={guidance} />
+              </div>
+            ) : null}
           </>
         ) : opps ? (
           <div style={{ padding: 16 }}>
-            <EmptyState title="No opportunities in the feed for this advisor" />
+            <EmptyState title="No opportunities in the CRM extract for this advisor" />
           </div>
         ) : (
           <div style={{ padding: 16, color: "var(--slate)", fontSize: "12.5px" }}>Loading…</div>

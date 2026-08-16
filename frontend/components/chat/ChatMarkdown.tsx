@@ -201,6 +201,13 @@ export default function ChatMarkdown({ text }: { text: string }) {
         }
         if (b.type === "table") {
           const numCols = b.header.map((_, c) => b.rows.length > 0 && b.rows.every((r) => !r[c] || isNumeric(r[c])));
+          // Round F2 6.1a — an opportunity table's AI-interpretation column
+          // gets the same purple ◆ AI treatment as everywhere else, so a chat
+          // answer never presents the reading as source data.
+          const aiCols = b.header.map((h) => {
+            const key = h.trim().toLowerCase().replace(/\*\*/g, "");
+            return key === "ai_read" || key === "ai read";
+          });
           return (
             <table className="mt" key={bi}>
               <thead>
@@ -217,7 +224,17 @@ export default function ChatMarkdown({ text }: { text: string }) {
                   <tr key={ri}>
                     {r.map((cell, ci) => (
                       <td key={ci} className={numCols[ci] ? "num" : undefined}>
-                        <ChatInline text={cell} keyBase={`t${bi}r${ri}c${ci}`} />
+                        {aiCols[ci] ? (
+                          cell && cell.trim() && cell.trim() !== "—" ? (
+                            <span className="chip aigen" title="AI interpretation of the CRM comment — descriptive only, never a source figure">
+                              ◆ AI <ChatInline text={cell} keyBase={`t${bi}r${ri}c${ci}`} />
+                            </span>
+                          ) : (
+                            <span style={{ color: "var(--slate)", fontSize: 12 }}>No signal</span>
+                          )
+                        ) : (
+                          <ChatInline text={cell} keyBase={`t${bi}r${ri}c${ci}`} />
+                        )}
                       </td>
                     ))}
                   </tr>

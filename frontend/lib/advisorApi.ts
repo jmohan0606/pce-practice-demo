@@ -47,6 +47,8 @@ export interface AdvisorTeam {
   team_rep_cd: string | null;
   agreements: { agreement_id: string; share_pct: number; status: string }[];
 }
+/** Legacy A2B flows-based NNM block — replaced by GET /{sid}/nnm (Round F2);
+ * kept optional so an older backend payload still type-checks. */
 export interface NnmBlock {
   ytd: { amount: number; first_month: string | null; label: string };
   in_scope: { amount: number; from: string; to: string; label: string };
@@ -65,7 +67,7 @@ export interface AdvisorSummary {
     lifecycle: { new_count: number; lost_count: number; retained_count: number; notes: string };
     aum: { total_balance: number; prior_balance: number | null; change_amt: number | null } | null;
     ncf: { net_flows: number; inflows: number; outflows: number; credited_flows: number } | null;
-    nnm: NnmBlock;
+    nnm?: NnmBlock;
     trades: { from_count: number; to_count: number; delta: number };
   };
 }
@@ -137,23 +139,85 @@ export function generateCoaching(sid: string, from: string, to: string): Promise
   });
 }
 
-// ----------------------------------------------------------- opportunities
+// ------------------------------------------------------------- NNM (Round F2)
 
-export interface OpportunityRow {
+export interface NnmCategory {
+  category: "EC" | "NB" | "YI" | "FS" | string;
+  label: string;
+  /** Raw source-file prefix, e.g. "ECNNM" — only EC is plan-confirmed. */
+  category_source: string;
+  confirmed: boolean;
+  latest_month: string;
+  mtd_nnm: number;
+  ytd_nnm: number;
+}
+export interface NnmThreshold {
+  available: boolean;
+  /** Resolved from the EXTRACTED plan rule at read time — never a constant. */
+  threshold_amt: number | null;
+  rule_key: string | null;
+  measured_category: string;
+  assumed: boolean;
+  assumed_note: string;
+  ytd_nnm: number | null;
+  gap: number | null;
+  qualifies: boolean | null;
+  as_of_month: string | null;
+  note: string | null;
+}
+export interface NnmResponse {
   advisor_sid: string;
-  stage: string;
-  status: string;
-  total_amount: number;
+  as_of_month: string;
+  as_of_label: string;
+  as_of_dt: string;
+  categories: NnmCategory[];
+  total: { mtd_nnm: number; ytd_nnm: number };
+  threshold: NnmThreshold;
+  note?: string | null;
+}
+export function getAdvisorNnm(sid: string): Promise<NnmResponse> {
+  return request(`/api/advisor/${encodeURIComponent(sid)}/nnm`);
+}
+
+// ----------------------------------------------- opportunities (Round F2 CRM)
+
+export interface OpportunityStageGroupRow {
+  stage_group: "EARLY" | "MID" | "LATE" | "CLOSING" | string;
   opportunity_count: number;
-  data_source: string; // 'DUMMY' until the CRM feed arrives
+  forecast_amount: number;
+  actual_assets: number;
+  stalled_count: number;
+}
+export interface OpportunityDetailRow {
+  opportunity_id: string;
+  eci_id: string;
+  stage_name: string;
+  stage_group: string;
+  /** Forecast pipeline value (working interpretation — see assumption_note). */
+  amount: number;
+  /** Assets that landed (working interpretation — never summed with amount). */
+  actual_assets: number;
+  days_to_close: number | null;
+  is_stalled: boolean;
+  date_of_last_contact: string | null;
+  comments: string;
+  /** AI interpretation of comments — descriptive ONLY, never drives a figure. */
+  ai_read: string;
+  ai_read_confidence: number | null;
+  ai_read_evidence: string;
+  advisor_valid: boolean;
+  account_record_type: string;
+  data_source: string;
 }
 export interface OpportunitiesResponse {
   advisor_sid: string;
-  by_status: Record<string, OpportunityRow[]>;
-  other: OpportunityRow[];
-  total_count: number;
-  data_source: string;
-  guidance: CoachCitation | null;
+  by_stage_group: OpportunityStageGroupRow[];
+  opportunities: OpportunityDetailRow[];
+  data_quality: { invalid_advisor_rows: number; note?: string | null };
+  assumption_note: string;
+  won_lost_note: string;
+  opportunities_guidance?: CoachCitation | null;
+  guidance?: CoachCitation | null;
 }
 export function getOpportunities(
   sid: string,
