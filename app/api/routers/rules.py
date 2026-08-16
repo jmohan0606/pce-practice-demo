@@ -50,6 +50,20 @@ def _serialize(rule: dict) -> dict:
     out.setdefault("applies_to_key", None)
     out.setdefault("active", True)
     out.setdefault("active_reason", None)
+    # Round 1 (schema freeze): exception configuration always serializes so
+    # Round 3's edit UI needs no API change. Defaults mirror the store's
+    # normalizer (exception_enabled=true ships on the three spec-named rules).
+    from app.rules.store import EXCEPTION_DEFAULT_RULE_CODES
+
+    out.setdefault("driver_enabled", True)
+    out.setdefault("exception_enabled",
+                   rule.get("rule_code") in EXCEPTION_DEFAULT_RULE_CODES)
+    out.setdefault("exception_denominator", None)
+    out.setdefault("exception_floor", None)
+    out.setdefault("exception_floor_unit", None)
+    out.setdefault("exception_sensitivity", None)
+    out.setdefault("product_scope", "")
+    out.setdefault("product_scope_source", "NOT STATED")
     from app.rules.store import RULE_PROVENANCE_TAGS
 
     out["provenance_label"] = RULE_PROVENANCE_TAGS.get(

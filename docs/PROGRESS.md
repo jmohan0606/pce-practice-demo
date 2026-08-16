@@ -1,5 +1,20 @@
 # Build Progress
 
+## Round 1 (docs/spec/ROUND_1_SCHEMA_FREEZE_SPEC.md) — schema freeze + client runbook
+- [x] Task 1 (main thread): eight exception-configuration attributes on
+      phx_dm_pce_rule (DDL / schema_catalog / SCHEMA_SPEC / store mirror
+      _RULE_GRAPH_ATTRS) — driver_enabled and exception_enabled INDEPENDENT;
+      denominator/floor(+unit)/sensitivity/product_scope(+source). Defaults:
+      three rules exception_enabled=true (DISCOUNT_SHARING_THRESHOLD_TRIGGER /
+      DISCOUNT_SHARING_MINIMUM_GRID_RATE / LOST_ACCOUNT — mapping in
+      DECISIONS.md), everything else driver-only; applied by setdefault at
+      store normalization so rehydrated stores migrate in place and proposals
+      are never overwritten. Extractor PROPOSES denominator/floor/scope from
+      the provision's own language with product_scope_source the citation or
+      "NOT STATED" — null honest, nothing invented (scripted-LLM proven). All
+      eight fields plan-preserving-editable + always serialized on the rules
+      API. Suites a/b/c/e/h green.
+
 ## Round F2 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md) — real CRM data, NNM, plan-unlocked rules
 - [x] Task 1 (main thread, d5eb45c): discovery AUTHORED, not run — no client
       data source reachable here (no PostgreSQL; neither the real CRM extract

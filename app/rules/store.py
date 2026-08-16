@@ -47,6 +47,10 @@ _RULE_GRAPH_ATTRS = (
     "rule_key", "version_id", "rule_code", "rule_name", "statement",
     "worked_example", "kind", "plan_json", "explanation", "missing_note",
     "grain", "provenance", "confidence", "status",
+    # Round 1 (schema freeze) — exception configuration on the rule vertex
+    "driver_enabled", "exception_enabled", "exception_denominator",
+    "exception_floor", "exception_floor_unit", "exception_sensitivity",
+    "product_scope", "product_scope_source",
 )
 _VERSION_GRAPH_ATTRS = (
     "version_id", "version_no", "status", "rule_count", "approved_by", "approved_at", "notes",
@@ -80,6 +84,21 @@ RULE_PROVENANCE_TAGS: dict[str, str] = {
     "MANUALLY_WRITTEN_TECH": "MANUALLY WRITTEN-TECH",
 }
 
+# Round 1 (schema freeze) — the three rules that ship exception_enabled=true
+# (spec: "fee reduction above threshold, discount sharing not applied, lost
+# accounts"), mapped to the rule_codes that exist:
+#   fee reduction above threshold  -> DISCOUNT_SHARING_THRESHOLD_TRIGGER
+#   discount sharing not applied   -> DISCOUNT_SHARING_MINIMUM_GRID_RATE (the
+#     closest published rule until a dedicated not-applied rule exists —
+#     DECISIONS.md)
+#   lost accounts                  -> LOST_ACCOUNT
+# Everything else defaults to driver_enabled=true, exception_enabled=false.
+EXCEPTION_DEFAULT_RULE_CODES = frozenset(
+    {"DISCOUNT_SHARING_THRESHOLD_TRIGGER",
+     "DISCOUNT_SHARING_MINIMUM_GRID_RATE", "LOST_ACCOUNT"})
+
+EXCEPTION_FLOOR_UNITS = ("accounts", "revenue")
+
 # Rule fields whose edit does NOT invalidate the compiled plan: they change
 # what is DISPLAYED or how urgently it is triaged, never what the query
 # computes. A severity-only edit therefore keeps COMPILED status and can be
@@ -90,7 +109,13 @@ _DISPLAY_ONLY_FIELDS = frozenset(
      # Round C (docs/rules): applies_to/active change WHICH entities the next
      # generation evaluates the rule for, never what the query computes — the
      # compiled plan stays valid, so these edits publish without a recompile.
-     "applies_to", "applies_to_key", "active", "active_reason", "provenance"})
+     "applies_to", "applies_to_key", "active", "active_reason", "provenance",
+     # Round 1 (schema freeze): exception configuration governs how the NEXT
+     # exception evaluation (Round 2) reads the rule, never what the compiled
+     # query computes — plan-preserving, publishes without a recompile.
+     "driver_enabled", "exception_enabled", "exception_denominator",
+     "exception_floor", "exception_floor_unit", "exception_sensitivity",
+     "product_scope", "product_scope_source"})
 
 
 class RuleStoreError(RuntimeError):
@@ -129,6 +154,7 @@ class RuleStore:
         for rule in self.rules.values():
             self._normalize_driver_fields(rule)
             self._normalize_round_c_fields(rule)
+            self._normalize_exception_fields(rule)
         self.driver_labels: dict[str, str] = self._persist.load_driver_labels()
         if self.versions:
             _log.info(
@@ -160,6 +186,25 @@ class RuleStore:
         rule.setdefault("applies_to", "ALL")
         rule.setdefault("applies_to_key", None)
         rule.setdefault("active", True)
+
+    @staticmethod
+    def _normalize_exception_fields(rule: dict) -> None:
+        """Round 1 (schema freeze): exception-configuration defaults. Pre-Round-1
+        rules migrate in place at construction (persisted on the next write).
+        driver_enabled defaults True; exception_enabled True only for the three
+        spec-named default rules; the extractor's proposals (or a human edit)
+        are never overwritten — setdefault only. product_scope "" = all
+        products; product_scope_source records the citation or "NOT STATED"
+        (a null is honest, a guessed number is not)."""
+        rule.setdefault("driver_enabled", True)
+        rule.setdefault("exception_enabled",
+                        rule.get("rule_code") in EXCEPTION_DEFAULT_RULE_CODES)
+        rule.setdefault("exception_denominator", None)
+        rule.setdefault("exception_floor", None)
+        rule.setdefault("exception_floor_unit", None)
+        rule.setdefault("exception_sensitivity", None)
+        rule.setdefault("product_scope", "")
+        rule.setdefault("product_scope_source", "NOT STATED")
 
     # ----- driver labels (Round A1 task 1) -----
 
@@ -279,6 +324,7 @@ class RuleStore:
             rule.setdefault("created_at", _now())
             self._normalize_driver_fields(rule)
             self._normalize_round_c_fields(rule)
+            self._normalize_exception_fields(rule)
             if rule["applies_to"] not in APPLIES_TO:
                 raise RuleStoreError(
                     f"unknown applies_to {rule['applies_to']!r} — expected one of "
@@ -417,6 +463,12 @@ class RuleStore:
                 # Round C (docs/rules) task 2.1: active state (set_active is the
                 # audited path — it requires the reason and records who/when)
                 "active", "active_reason",
+                # Round 1 (schema freeze): exception configuration is
+                # human-editable (the edit UI is Round 3; the store accepts it
+                # now so the API surface never needs a schema change)
+                "driver_enabled", "exception_enabled", "exception_denominator",
+                "exception_floor", "exception_floor_unit",
+                "exception_sensitivity", "product_scope", "product_scope_source",
                 # Round C (docs/rules) task 5.2: guidance <-> computed. NOT a
                 # display-only field: flipping it changes whether the rule
                 # produces figures, so the edited draft recompiles (promote) or

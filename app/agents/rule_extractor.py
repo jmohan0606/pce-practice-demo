@@ -100,10 +100,26 @@ def build_system_prompt() -> str:
         "being breached is higher than an informational note. Also emit "
         "`severity_reason`: ONE line explaining why you chose that level, so a "
         "human reviewing it can judge rather than guess.\n"
+        "- Exception configuration — PROPOSE, NEVER INVENT. Some rules will be "
+        "used to flag advisors as exceptions. From the provision's OWN language "
+        "only, propose: `exception_denominator` (what an exception RATE should "
+        "be measured against, e.g. \"managed accounts\" or \"prior-month "
+        "revenue\" — null if the document implies nothing), `exception_floor` "
+        "(a numeric materiality floor ONLY if the document states one — null "
+        "otherwise) with `exception_floor_unit` (\"accounts\" or \"revenue\", "
+        "null when floor is null), and `product_scope` (the product scope the "
+        "document states, e.g. a provision limited to the standard managed fee "
+        "schedule — null when the document states none). When you propose "
+        "product_scope, set `product_scope_source` to a short citation of where "
+        "the document states it (page/section + a few words); when the document "
+        "states nothing, product_scope_source MUST be \"NOT STATED\". A null "
+        "is honest; a guessed number is not.\n"
         "- Each rule object: rule_code (UPPER_SNAKE), rule_name, statement, "
         "worked_example (or null), kind, grain, driver_tag (short business label "
         "like \"Fee Rate\", \"Transfers\", \"Referrals\"), severity, "
-        "severity_reason, confidence (0..1), missing (sentence or null), citations.\n"
+        "severity_reason, confidence (0..1), missing (sentence or null), "
+        "exception_denominator, exception_floor, exception_floor_unit, "
+        "product_scope, product_scope_source, citations.\n"
         "- Return a JSON array only. No prose, no markdown fences. STRICT JSON: "
         "escape every newline inside strings. Keep each citation excerpt under "
         "160 characters."
@@ -265,6 +281,28 @@ def extract_rules_for_document(document_id: str, chunks: list[dict],
                 rule["severity_reason"] = (
                     "extractor did not assign a valid severity — defaulted to INFO"
                     + (f" (got {rule.get('severity')!r})" if rule.get("severity") else ""))
+            # Round 1 (schema freeze): exception-configuration PROPOSALS from
+            # the provision's own language — lenient coercion, null when not
+            # stated, never a reason to drop the rule. product_scope_source is
+            # the citation, or "NOT STATED" (a null is honest, a guessed
+            # number is not).
+            denom = rule.get("exception_denominator")
+            rule["exception_denominator"] = (str(denom).strip() or None) if denom else None
+            try:
+                floor = rule.get("exception_floor")
+                rule["exception_floor"] = float(floor) if floor not in (None, "") else None
+            except (TypeError, ValueError):
+                rule["exception_floor"] = None
+            unit = str(rule.get("exception_floor_unit") or "").strip().lower()
+            rule["exception_floor_unit"] = (
+                unit if unit in ("accounts", "revenue")
+                and rule["exception_floor"] is not None else None)
+            scope = rule.get("product_scope")
+            rule["product_scope"] = (str(scope).strip() or "") if scope else ""
+            source = str(rule.get("product_scope_source") or "").strip()
+            rule["product_scope_source"] = (
+                source if rule["product_scope"] and source
+                and source.upper() != "NOT STATED" else "NOT STATED")
             rule["provenance"] = "DOCUMENT_DERIVED"
             rule["document_id"] = document_id
             rule.setdefault("worked_example", None)

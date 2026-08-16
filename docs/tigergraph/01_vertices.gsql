@@ -143,10 +143,21 @@ CREATE VERTEX phx_dm_pce_rule_set_version (PRIMARY_ID version_id STRING, version
   status STRING, rule_count INT, approved_by STRING, approved_at DATETIME, notes STRING)
 WITH primary_id_as_attribute="true";
 
+// Round 1 (schema freeze) — exception configuration lives ON the rule so no
+// later round needs a migration. driver_enabled / exception_enabled are
+// INDEPENDENT: a rule can explain a movement (driver) and still be a poor
+// exception (NEW_BILLING). exception_denominator makes the exception a RATE;
+// exception_floor suppresses small-book noise; exception_sensitivity is a
+// multiple of the cohort median (the threshold comes from the data, never
+// invented); product_scope is EXTRACTED from the plan document with its
+// citation, or "NOT STATED".
 CREATE VERTEX phx_dm_pce_rule (PRIMARY_ID rule_key STRING, version_id STRING, rule_code STRING,
   rule_name STRING, statement STRING, worked_example STRING, kind STRING,
   plan_json STRING, explanation STRING, missing_note STRING, grain STRING,
-  provenance STRING, confidence DOUBLE, status STRING) WITH primary_id_as_attribute="true";
+  provenance STRING, confidence DOUBLE, status STRING,
+  driver_enabled BOOL, exception_enabled BOOL, exception_denominator STRING,
+  exception_floor DOUBLE, exception_floor_unit STRING, exception_sensitivity DOUBLE,
+  product_scope STRING, product_scope_source STRING) WITH primary_id_as_attribute="true";
 
 CREATE VERTEX phx_dm_pce_insight_run (PRIMARY_ID run_id STRING, advisor_sid STRING,
   from_month_id STRING, to_month_id STRING, version_id STRING, status STRING,

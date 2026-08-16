@@ -343,10 +343,22 @@ WITH primary_id_as_attribute="true";
 -- plain-English statement + the Rule Compiler's plan_json / explanation;
 -- missing_note carries a NEEDS_INPUT/NEEDS_DATA reason. kind is
 -- TRIGGER|RECORD|EXCLUDE|WINDOW|CAP|CALCULATION.
+-- Round 1 (schema freeze): eight exception-configuration attributes. The two
+-- toggles are INDEPENDENT (a rule can be a good driver and a poor exception);
+-- exception_denominator makes the exception a rate, not a count;
+-- exception_floor (+_unit: accounts|revenue) suppresses small-book noise;
+-- exception_sensitivity is a multiple of the cohort median — the threshold
+-- comes from the data, never invented; product_scope is a comma-separated
+-- group_id list ("" = all products) EXTRACTED from the plan document,
+-- product_scope_source its citation or "NOT STATED". Evaluation using these
+-- fields is Round 2; the edit UI is Round 3 — the schema is final now.
 CREATE VERTEX phx_dm_pce_rule (PRIMARY_ID rule_key STRING, version_id STRING, rule_code STRING,
   rule_name STRING, statement STRING, worked_example STRING, kind STRING,
   plan_json STRING, explanation STRING, missing_note STRING, grain STRING,
-  provenance STRING, confidence DOUBLE, status STRING) WITH primary_id_as_attribute="true";
+  provenance STRING, confidence DOUBLE, status STRING,
+  driver_enabled BOOL, exception_enabled BOOL, exception_denominator STRING,
+  exception_floor DOUBLE, exception_floor_unit STRING, exception_sensitivity DOUBLE,
+  product_scope STRING, product_scope_source STRING) WITH primary_id_as_attribute="true";
 
 CREATE VERTEX phx_dm_pce_insight_run (PRIMARY_ID run_id STRING, advisor_sid STRING,
   from_month_id STRING, to_month_id STRING, version_id STRING, status STRING,

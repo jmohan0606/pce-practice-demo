@@ -318,7 +318,15 @@
         "grain": "STRING",
         "provenance": "STRING",
         "confidence": "DOUBLE",
-        "status": "STRING"
+        "status": "STRING",
+        "driver_enabled": "BOOL",
+        "exception_enabled": "BOOL",
+        "exception_denominator": "STRING",
+        "exception_floor": "DOUBLE",
+        "exception_floor_unit": "STRING",
+        "exception_sensitivity": "DOUBLE",
+        "product_scope": "STRING",
+        "product_scope_source": "STRING"
       }
     },
     "phx_dm_pce_insight_run": {
