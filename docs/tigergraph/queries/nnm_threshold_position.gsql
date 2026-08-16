@@ -1,0 +1,34 @@
+// nnm_threshold_position — Round F2 task 4.3 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md).
+// Existing-Client YTD NNM against the plan's annual threshold: reports the
+// YTD figure, the month it is as of, the gap and whether it qualifies as of
+// that month. NEVER annualises or extrapolates a partial year — extrapolating
+// to a threshold would be inventing a number.
+//
+// threshold_amt is a PARAMETER, not a constant: the application resolves it
+// at read time from the published, document-derived NNM award rule
+// (app/graph/queries/nnm_catalog.py::resolve_nnm_threshold) and passes it in.
+// No dollar threshold from the plan documents lives in any query or code
+// (Round F2 check 13). threshold_amt <= 0 means "no published rule states a
+// threshold" — the query then reports the position without gap/qualifies.
+// Local-tier equivalent: app/graph/queries/nnm_catalog.py::nnm_threshold_position
+CREATE QUERY nnm_threshold_position(STRING advisor, DOUBLE threshold_amt) FOR GRAPH phx_dm_pce_practice_demo {
+  MapAccum<STRING, MaxAccum<STRING>> @@latest_month;   // advisor -> month (EC only)
+
+  scan = SELECT x FROM phx_dm_pce_advisor_nnm:x -(phx_dm_pce_nnm_by_advisor)- phx_dm_pce_advisor:a
+         WHERE x.category == "EC"
+           AND ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+         ACCUM @@latest_month += (x.advisor_sid -> x.month_id);
+
+  latest = SELECT x FROM phx_dm_pce_advisor_nnm:x -(phx_dm_pce_nnm_by_advisor)- phx_dm_pce_advisor:a
+           WHERE x.category == "EC"
+             AND ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+             AND x.month_id == @@latest_month.get(x.advisor_sid)
+           ORDER BY x.advisor_sid;
+
+  // per advisor: ytd_nnm, as_of_month; gap = threshold - ytd and
+  // qualifies = ytd >= threshold are computed ONLY when threshold_amt > 0
+  PRINT latest[latest.advisor_sid AS advisor_sid, latest.category AS category,
+               latest.category_source AS category_source,
+               latest.ytd_nnm AS ytd_nnm, latest.month_id AS as_of_month];
+  PRINT threshold_amt;
+}

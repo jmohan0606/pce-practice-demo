@@ -1,0 +1,31 @@
+// advisor_nnm_position — Round F2 task 4.3 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md).
+// NNM position per category for an advisor (or the cohort): the LATEST
+// available month's MTD and YTD per advisor x category. THE YTD FIGURE IS THE
+// POSITION — never a sum of MTD rows (each row already carries the file's
+// running YTD). category_source is the raw NNM file prefix: EC is confirmed
+// by the plan document; NB/YI/FS are inferred from filenames.
+// Local-tier equivalent: app/graph/queries/nnm_catalog.py::advisor_nnm_position
+// advisor = advisor_sid or "all" (cohort only, in_cohort = true).
+// category = optional filter EC|NB|YI|FS; empty string = all four.
+CREATE QUERY advisor_nnm_position(STRING advisor, STRING category) FOR GRAPH phx_dm_pce_practice_demo {
+  // latest month per advisor x category
+  MapAccum<STRING, MaxAccum<STRING>> @@latest_month;
+
+  scan = SELECT x FROM phx_dm_pce_advisor_nnm:x -(phx_dm_pce_nnm_by_advisor)- phx_dm_pce_advisor:a
+         WHERE ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+           AND (category == "" OR x.category == category)
+         ACCUM @@latest_month += (x.advisor_sid + "|" + x.category -> x.month_id);
+
+  latest = SELECT x FROM phx_dm_pce_advisor_nnm:x -(phx_dm_pce_nnm_by_advisor)- phx_dm_pce_advisor:a
+           WHERE ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+             AND (category == "" OR x.category == category)
+             AND x.month_id == @@latest_month.get(x.advisor_sid + "|" + x.category)
+           ORDER BY x.advisor_sid, x.category;
+
+  // one row per advisor x category: advisor_sid, category, category_source,
+  // latest_month, mtd_nnm, ytd_nnm, as_of_dt
+  PRINT latest[latest.advisor_sid AS advisor_sid, latest.category AS category,
+               latest.category_source AS category_source,
+               latest.month_id AS latest_month, latest.mtd_nnm AS mtd_nnm,
+               latest.ytd_nnm AS ytd_nnm, latest.as_of_dt AS as_of_dt];
+}

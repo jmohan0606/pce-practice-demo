@@ -1,0 +1,35 @@
+// advisor_nnm_all_categories — Round F2 task 4.3 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md).
+// All four NNM categories (EC/NB/YI/FS) for an advisor (or summed across the
+// cohort), MTD and YTD at each category's LATEST available month, plus a
+// TOTAL row across the four. YTD is the latest month's running figure, never
+// a sum of MTD rows. category_source keeps the raw file prefix on each row
+// (EC confirmed by the plan document; NB/YI/FS inferred from filenames).
+// Local-tier equivalent: app/graph/queries/nnm_catalog.py::advisor_nnm_all_categories
+CREATE QUERY advisor_nnm_all_categories(STRING advisor) FOR GRAPH phx_dm_pce_practice_demo {
+  MapAccum<STRING, MaxAccum<STRING>> @@latest_month;   // advisor|category -> month
+  MapAccum<STRING, SumAccum<DOUBLE>> @@mtd, @@ytd;     // category -> totals
+  MapAccum<STRING, MaxAccum<STRING>> @@cat_month;      // category -> latest month
+  MapAccum<STRING, MaxAccum<STRING>> @@cat_source;     // category -> file prefix
+  SumAccum<DOUBLE> @@total_mtd, @@total_ytd;
+
+  scan = SELECT x FROM phx_dm_pce_advisor_nnm:x -(phx_dm_pce_nnm_by_advisor)- phx_dm_pce_advisor:a
+         WHERE ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+         ACCUM @@latest_month += (x.advisor_sid + "|" + x.category -> x.month_id);
+
+  latest = SELECT x FROM phx_dm_pce_advisor_nnm:x -(phx_dm_pce_nnm_by_advisor)- phx_dm_pce_advisor:a
+           WHERE ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+             AND x.month_id == @@latest_month.get(x.advisor_sid + "|" + x.category)
+           ACCUM @@mtd += (x.category -> x.mtd_nnm),
+                 @@ytd += (x.category -> x.ytd_nnm),
+                 @@cat_month += (x.category -> x.month_id),
+                 @@cat_source += (x.category -> x.category_source),
+                 @@total_mtd += x.mtd_nnm,
+                 @@total_ytd += x.ytd_nnm;
+
+  // rows: category, category_source, latest_month, mtd_nnm, ytd_nnm
+  // plus TOTAL (category_source empty) — assembled client-side from the maps
+  PRINT @@mtd AS mtd_by_category, @@ytd AS ytd_by_category,
+        @@cat_month AS latest_month_by_category,
+        @@cat_source AS source_by_category,
+        @@total_mtd AS total_mtd, @@total_ytd AS total_ytd;
+}

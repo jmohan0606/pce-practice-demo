@@ -1,4 +1,4 @@
-// Combined loading job for all source-derivable edges (29).
+// Combined loading job for all source-derivable edges (31).
 // One CSV per edge type, named exactly for the type, columns: from_id,to_id.
 // App-written edges (rules & insights block) are excluded — the app writes those directly.
 CREATE LOADING JOB load_phx_dm_pce_edges FOR GRAPH phx_dm_pce_practice_demo {
@@ -31,6 +31,8 @@ CREATE LOADING JOB load_phx_dm_pce_edges FOR GRAPH phx_dm_pce_practice_demo {
   DEFINE FILENAME f_flow_in_month;
   DEFINE FILENAME f_opportunity_for_household;
   DEFINE FILENAME f_opportunity_by_advisor;
+  DEFINE FILENAME f_nnm_by_advisor;
+  DEFINE FILENAME f_nnm_in_month;
 
   // product chain
   LOAD f_product_in_group TO EDGE phx_dm_pce_product_in_group VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
@@ -70,4 +72,7 @@ CREATE LOADING JOB load_phx_dm_pce_edges FOR GRAPH phx_dm_pce_practice_demo {
   LOAD f_flow_in_month TO EDGE phx_dm_pce_flow_in_month VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
   LOAD f_opportunity_for_household TO EDGE phx_dm_pce_opportunity_for_household VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
   LOAD f_opportunity_by_advisor TO EDGE phx_dm_pce_opportunity_by_advisor VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  // advisor NNM (Round F2)
+  LOAD f_nnm_by_advisor TO EDGE phx_dm_pce_nnm_by_advisor VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f_nnm_in_month TO EDGE phx_dm_pce_nnm_in_month VALUES($"from_id", $"to_id") USING HEADER="true", SEPARATOR=",", QUOTE="double";
 }

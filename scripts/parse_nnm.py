@@ -94,6 +94,7 @@ def parse_nnm_file(path: str | Path) -> dict:
     as_of_dt = _dt(lines[0][1:])
 
     rows: list[dict] = []
+    seen_ids: dict[str, int] = {}
     for lineno, line in enumerate(lines[1:], start=2):
         if not line.startswith("D"):
             raise NnmParseError(f"{path.name}:{lineno}: expected a D-prefixed line, got {line!r}")
@@ -112,8 +113,16 @@ def parse_nnm_file(path: str | Path) -> dict:
             ytd_nnm = float(ytd_raw)
         except ValueError as exc:
             raise NnmParseError(f"{path.name}:{lineno}: non-numeric NNM value: {line!r}") from exc
+        nnm_id = f"{advisor_sid}|{month_id}|{category}"
+        if nnm_id in seen_ids:
+            raise NnmParseError(
+                f"{path.name}:{lineno}: duplicate advisor+month row "
+                f"({nnm_id!r}, first seen line {seen_ids[nnm_id]}) — one MTD/YTD "
+                "row per advisor per month is the format; a duplicate is a feed "
+                "fault to raise, not to silently overwrite")
+        seen_ids[nnm_id] = lineno
         rows.append({
-            "nnm_id": f"{advisor_sid}|{month_id}|{category}",
+            "nnm_id": nnm_id,
             "advisor_sid": advisor_sid,
             "month_id": month_id,
             "category": category,
@@ -151,8 +160,8 @@ def parse_nnm_dir(dir_path: str | Path, pattern: str = "*NNM_*.txt") -> list[dic
 DEFAULT_MOCK_MONTHS = ("202601", "202602", "202603", "202604", "202605", "202606")
 
 # Per-category YTD scale bands (drawn once per advisor x category). EC spreads
-# advisors across the plan's award bands — negative, below $4MM, $4–10MM and
-# above — so the threshold display has honest variety without any band value
+# advisors across the plan's award bands (negative through well above the
+# qualification threshold) so the threshold display has honest variety without any band value
 # living anywhere but the plan document.
 _SCALE_RANGES = {
     "EC": (-1_500_000.0, 14_000_000.0),

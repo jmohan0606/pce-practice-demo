@@ -196,43 +196,60 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
           f"kept={len(kept)} (all traceable={all_traceable}); "
           f"dropped={[d[:60] for d in dropped]}")
 
-    # 7 — AMENDED (operator override): no NNM metric or reference anywhere.
-    # advisor_nnm_position does not exist; no catalog name/description mentions
-    # NNM; the frontend has zero NNM text; the only permitted NNM strings in
-    # app/ are the reporter's blocking guard and rationale comments.
+    # 7 — RE-AMENDED (Round F2, 2026-08-16): NNM is now a fully-specified
+    # first-class feature — the four real category files load into
+    # phx_dm_pce_advisor_nnm and the spec sanctions the NNM queries, router
+    # and advisor-page categories. The pin's MEANING survives as three
+    # honesty invariants: (a) the Insights Reporter's guard still BLOCKS
+    # NNM-based recommendations (the flows data it reads remains a 3-month
+    # proxy); (b) NNM code stays confined to the sanctioned surfaces — a
+    # stray NNM reference elsewhere is still a bug; (c) NO plan-document
+    # dollar threshold is hardcoded in any Python file — the $4MM figure may
+    # only arrive via rule extraction from an uploaded document (Round F2
+    # check 13; nnm_threshold_position resolves it at read time).
     nnm_re = re.compile(r"\bnnm\b|net.new.money", re.IGNORECASE)
-    in_catalog = ("advisor_nnm_position" in CATALOG
-                  or any(nnm_re.search(name + " " + str(spec.get("description", "")))
-                         for name, spec in CATALOG.items()))
-    # Round A2B task 6 (2026-08-14) SUPERSEDES the Round E drop for the ADVISOR
-    # PAGE ONLY: the spec explicitly asks for labelled NNM figures ("NNM YTD
-    # (from first loaded month)" + "NNM in scope") built from total_net_flows —
-    # clearly labelled, never annualised, never a proxy shipped as fact. The
-    # pin is widened to allow exactly those surfaces; the catalog, GSQL and the
-    # reporter's NNM-blocking guard stay pinned as before.
+    sanctioned_queries = {"advisor_nnm_position", "advisor_nnm_all_categories",
+                          "nnm_threshold_position"}
+    catalog_ok = sanctioned_queries <= set(CATALOG)
     allowed_fe = {"frontend/app/advisor/page.tsx", "frontend/lib/advisorApi.ts"}
     fe_hits = [str(p) for p in list(Path("frontend/app").rglob("*.ts*"))
                + list(Path("frontend/components").rglob("*.ts*"))
                + list(Path("frontend/lib").rglob("*.ts*"))
                if nnm_re.search(p.read_text(encoding="utf-8"))
                and str(p) not in allowed_fe]
+    allowed_gsql = {f"docs/tigergraph/queries/{q}.gsql" for q in sanctioned_queries}
     gsql_hits = [str(p) for p in Path("docs/tigergraph/queries").glob("*.gsql")
-                 if nnm_re.search(p.read_text(encoding="utf-8"))]
+                 if nnm_re.search(p.read_text(encoding="utf-8"))
+                 and str(p) not in allowed_gsql]
     allowed_guard = {"app/agents/insights_reporter.py", "app/graph/queries/catalog.py",
-                     # Round A2B: the advisor summary endpoint serves the two
-                     # labelled NNM figures; the flag registry names the section
-                     "app/api/routers/advisor.py", "app/flags/registry.py"}
+                     "app/api/routers/advisor.py", "app/flags/registry.py",
+                     # Round F2 sanctioned NNM surfaces
+                     "app/graph/queries/nnm_catalog.py", "app/api/routers/nnm.py",
+                     "app/api/main.py"}
     app_hits = {str(p) for p in Path("app").rglob("*.py")
                 if nnm_re.search(p.read_text(encoding="utf-8"))}
     stray = sorted(app_hits - allowed_guard)
+    # (c) no hardcoded plan threshold in ANY .py (app/ and scripts/, verify
+    # scripts excluded — they may name figures as assertions about documents)
+    # (not-inside-a-larger-number guard: 14_000_000 must not match); the
+    # make_* / render_* document-fabrication scripts are excluded — they ARE
+    # the in-repo stand-in for client documents (their content is document
+    # text, not application logic; DECISIONS.md 2026-08-16), and the new
+    # PCA-style document keeps even that content out of Python entirely.
+    thresh_re = re.compile(r"(?<![\d,_.])4[,_]?000[,_]?000|\$4\s?MM", re.IGNORECASE)
+    hardcoded = sorted(str(p) for p in list(Path("app").rglob("*.py"))
+                       + list(Path("scripts").rglob("*.py"))
+                       if not p.name.startswith(("verify_", "check_", "make_", "render_"))
+                       and thresh_re.search(p.read_text(encoding="utf-8")))
     from app.agents.insights_reporter import _NNM_RE  # the guard itself
-    check(7, "no NNM metric or reference anywhere (amended: advisor_nnm_position "
-             "dropped; guard code blocks NNM recommendations)",
-          bool(not in_catalog and not fe_hits and not gsql_hits and not stray
-               and _NNM_RE.pattern),
-          f"catalog NNM={in_catalog}, frontend hits={fe_hits or 'none'}, "
-          f"gsql hits={gsql_hits or 'none'}, app hits outside the guard="
-          f"{stray or 'none'} (guard files: {sorted(app_hits & allowed_guard)})")
+    check(7, "NNM confined to sanctioned surfaces (Round F2): reporter guard "
+             "still blocks NNM recommendations; no stray NNM references; no "
+             "hardcoded plan threshold in any Python file",
+          bool(catalog_ok and not fe_hits and not gsql_hits and not stray
+               and not hardcoded and _NNM_RE.pattern),
+          f"catalog has the 3 NNM queries={catalog_ok}, frontend hits={fe_hits or 'none'}, "
+          f"gsql hits outside sanctioned={gsql_hits or 'none'}, app hits outside allowlist="
+          f"{stray or 'none'}, hardcoded-threshold files={hardcoded or 'none'}")
 
     # 8 — AMENDED (Round A2B task 6, 2026-08-14): the AI Insights page moved to
     # /advisor ("iPerform Advisor AI Insights"); /insights is now a client

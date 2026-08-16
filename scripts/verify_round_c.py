@@ -74,6 +74,17 @@ SAMPLE_PARAMS = {
                              "acct_key": "3060", "month_id": "202605"},
     "product_movement_causes": {"group_id": "managed_accounts",
                                 "from_month": "202604", "to_month": "202605"},
+    # Round F2 task 3 CRM queries (real opportunity shape)
+    "advisor_pipeline": {"advisor": "all"},
+    "advisor_opportunity_detail": {"advisor": "V000001"},
+    "household_opportunities": {"eci_id": "ECI3004"},
+    "pipeline_by_stage": {},
+    "stalled_opportunities": {"advisor": "all"},
+    # Round F2 task 4 NNM queries (spec supersedes the Round E drop — real
+    # NNM category files now exist; threshold resolves from the extracted rule)
+    "advisor_nnm_position": {"advisor": "all"},
+    "advisor_nnm_all_categories": {"advisor": "V000001"},
+    "nnm_threshold_position": {"advisor": "V000001"},
     # Round A1 task 3 dashboard metric queries
     "product_month_metrics": {"month_id": "202605", "product_view": "all"},
     "product_transition_table": {"from_month": "202604", "to_month": "202605",
@@ -154,9 +165,9 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
         if not wanted <= cols:
             missing_cols.append(f"{name}: missing {sorted(wanted - cols)}")
     check(1, "every catalog query executes and returns the documented columns",
-          not errors and not missing_cols and len(CATALOG) == 38,
+          not errors and not missing_cols and len(CATALOG) == 46,
           f"{len(CATALOG)} queries (24 Round C + 4 Round E position + 5 Round G drill-down "
-          f"+ 5 Round A1 dashboard); "
+          f"+ 5 Round A1 dashboard + 5 Round F2 CRM + 3 Round F2 NNM); "
           f"errors={errors or 'none'}; column gaps={missing_cols or 'none'}; "
           f"legitimately empty on mock data: {empty or 'none'}")
 
