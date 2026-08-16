@@ -21,7 +21,13 @@ Transformations (ROUND_D_EXTRACTION.md §2 — all in Python, none in SQL):
   - monthly_revenue aggregated from the transaction rows already built, never re-queried
   - prior_end_balance / prior_credited_amt COMPUTED from the previous month; 0 for the
     baseline month; present_prior_month=false for every baseline-month row
-  - opportunities generated as DUMMY against real ECIs and cohort advisors
+  - CRM opportunities transformed from raw_crm_opportunity.csv (Round F2): invalid
+    advisor suffix stripped with the raw kept + advisor_valid=false + count REPORTED
+    (never dropped, never silently joined); stage_group derived in app/shared/crm.py;
+    is_stalled = days_to_close < 0; ai_read columns left EMPTY at build — the one-time
+    interpretation pass runs at ingestion, not here
+  - NNM rows parsed from the four delivered ECNNM_/NBNNM_/YINNM_/FSNNM_*.txt files via
+    scripts/parse_nnm.py (H header as-of, D-prefix strip, negatives preserved)
   - all 29 edge files derived from the vertex rows; dropped-edge count printed per file
   - trades are NEVER joined to team agreements (post_split_credited_amt already carries
     the split; the join fans out one row per secondary member)
@@ -51,6 +57,11 @@ from app.revenue.products import (  # noqa: E402
     split_product_id,
 )
 from app.shared.ids import normalize_account_key  # noqa: E402
+from app.shared.crm import stage_group_for, strip_invalid_advisor_suffix  # noqa: E402
+
+# Round F2: the NNM parser is Subagent B's module — imported, never retyped.
+sys.path.insert(0, str(ROOT / "scripts"))
+import parse_nnm  # noqa: E402
 
 SCOPE_FROM, SCOPE_TO = date(2026, 4, 1), date(2026, 7, 1)
 OWNER_ROLE_CODES = {"001", "151", "201"}
@@ -114,7 +125,17 @@ RAW_CONTRACT: dict[str, list[str]] = {
                           "departed_advisor_sid", "departed_advisor_excl_am",
                           "lob_trfr_excl_am", "oi_pa_referral_cap_adj_am",
                           "large_flow_cap_adj_am", "forced_closure_excl_am"],
+    # Round F2 — cohort-filtered CRM extract (docs/data/extraction/raw_crm_opportunity.sql)
+    "raw_crm_opportunity.csv": ["opportunity_id", "eci_id", "ownersid",
+                                "account_record_type", "product_service_type",
+                                "stage_name", "amount", "actual_assets",
+                                "anticipated_investment_dt", "created_dt",
+                                "last_modified_dt", "date_of_last_contact",
+                                "days_to_close", "comments"],
 }
+# Round F2 — the four NNM files are DELIVERED pipe-delimited .txt files, not SQL
+# extract CSVs; contracted here by prefix so a missing file fails loudly.
+NNM_RAW_PREFIXES = tuple(sorted(parse_nnm.CATEGORY_BY_PREFIX))
 
 
 def read_raw(raw_dir: Path, filename: str) -> list[dict]:
@@ -492,39 +513,55 @@ def build_rpgs(txns: list[dict]) -> list[dict]:
     return [{"rpg_id": r, "account_count": str(len(s))} for r, s in sorted(accts.items())]
 
 
-def build_opportunities(accounts: list[dict], advisors: list[dict],
-                        txns: list[dict], seed: int) -> list[dict]:
-    """DUMMY CRM pipeline rows against REAL ECIs and cohort advisors — no CRM
-    feed exists yet; data_source='DUMMY' on every row (UI shows the chip)."""
-    rng = random.Random(seed)
-    cohort = [a["advisor_sid"] for a in advisors if as_bool(a["in_cohort"])]
-    eci_by_acct = {a["acct_key"]: a["primary_eci_id"] for a in accounts}
-    ecis_by_advisor: dict[str, set[str]] = defaultdict(set)
-    for t in txns:
-        eci = eci_by_acct.get(t["acct_key"], "")
-        if eci:
-            ecis_by_advisor[t["advisor_sid"]].add(eci)
-    stages = ["Prospecting", "Discovery", "Proposal", "Negotiation"]
-    groups = ["managed_accounts", "twhs_structured", "life_annuities",
-              "lending_sbl", "twhs_mutual_funds"]
-    sources = ["Referral", "Existing Client", "Event", "Cold Outreach"]
-    rows, n = [], 0
-    for sid in sorted(cohort):
-        for eci in sorted(ecis_by_advisor.get(sid, set()))[:2]:
-            n += 1
-            status = rng.choice(["PENDING", "PENDING", "WON", "LOST"])
-            close = "" if status == "PENDING" else f"2026-06-{rng.randint(1, 30):02d} 00:00:00"
-            rows.append({
-                "opportunity_id": f"OPP{n:05d}", "eci_id": eci, "advisor_sid": sid,
-                "stage": "Closed" if status != "PENDING" else rng.choice(stages),
-                "status": status, "amount": money(rng.uniform(50_000, 1_500_000)),
-                "product_group": rng.choice(groups),
-                "open_dt": f"2026-{rng.choice(['04', '05', '06'])}-{rng.randint(1, 28):02d} 00:00:00",
-                "expected_close_dt": f"2026-07-{rng.randint(1, 31):02d} 00:00:00",
-                "close_dt": close, "source": rng.choice(sources),
-                "data_source": "DUMMY",
-            })
-    return rows
+def build_crm_opportunities(raw: list[dict]) -> tuple[list[dict], dict]:
+    """Round F2: transform the raw CRM extract. Rows are NEVER dropped: an
+    invalid advisor reference keeps its raw value (advisor_valid=false) and is
+    counted for the validation report. ai_read columns stay EMPTY — the
+    one-time interpretation pass runs at ingestion, never at build."""
+    rows, invalid, ungrouped = [], 0, 0
+    for r in raw:
+        sid, valid = strip_invalid_advisor_suffix(r["ownersid"])
+        if not valid:
+            invalid += 1
+        group = stage_group_for(r["stage_name"])
+        if group == "UNGROUPED":
+            ungrouped += 1
+        days = int(float(r["days_to_close"] or 0))
+        rows.append({
+            "opportunity_id": r["opportunity_id"], "eci_id": r["eci_id"],
+            "advisor_sid": sid, "advisor_sid_raw": r["ownersid"],
+            "advisor_valid": bl(valid),
+            "account_record_type": r["account_record_type"],
+            "product_service_type": r["product_service_type"],
+            "stage_name": r["stage_name"], "stage_group": group,
+            "amount": money(num(r["amount"])),
+            "actual_assets": money(num(r["actual_assets"])),
+            "anticipated_investment_dt": ts(parse_dt(r["anticipated_investment_dt"])),
+            "created_dt": ts(parse_dt(r["created_dt"])),
+            "last_modified_dt": ts(parse_dt(r["last_modified_dt"])),
+            "date_of_last_contact": ts(parse_dt(r["date_of_last_contact"])),
+            "days_to_close": str(days), "is_stalled": bl(days < 0),
+            "comments": r["comments"],
+            "ai_read": "", "ai_read_confidence": "", "ai_read_evidence": "",
+            "ai_read_model": "", "data_source": "CRM",
+        })
+    stats = {"raw_rows": len(raw), "kept_rows": len(rows),
+             "invalid_advisor_rows": invalid, "ungrouped_stage_rows": ungrouped}
+    return rows, stats
+
+
+def build_advisor_nnm(raw_dir: Path) -> list[dict]:
+    """Round F2: parse the four delivered NNM files (parse_nnm enforces the
+    format loudly — H header, content-recognised column line, D-prefix strip,
+    negatives preserved). A missing prefix raises before anything is built."""
+    present = {f.name[:5].upper() for f in raw_dir.glob("*NNM_*.txt")}
+    missing = [p for p in NNM_RAW_PREFIXES if p not in present]
+    if missing:
+        raise ColumnMismatchError(
+            f"NNM raw files missing from {raw_dir}: {missing} — expected all "
+            f"four of {list(NNM_RAW_PREFIXES)} (delivered files, no SQL template)")
+    return [{**r, "mtd_nnm": f"{r['mtd_nnm']:.2f}", "ytd_nnm": f"{r['ytd_nnm']:.2f}"}
+            for r in parse_nnm.parse_nnm_dir(raw_dir)]
 
 
 # --------------------------------------------------------- columns / ids / edges
@@ -577,7 +614,7 @@ ID_COLUMNS = {
     "phx_dm_pce_team_agreement": "agreement_key", "phx_dm_pce_revenue_transaction": "txn_id",
     "phx_dm_pce_monthly_revenue": "mr_id", "phx_dm_pce_account_month": "am_id",
     "phx_dm_pce_account_transfer": "transfer_id", "phx_dm_pce_advisor_flow_month": "afm_id",
-    "phx_dm_pce_opportunity": "opportunity_id",
+    "phx_dm_pce_opportunity": "opportunity_id", "phx_dm_pce_advisor_nnm": "nnm_id",
 }
 
 # edge -> (from_type, to_type, source vertex, from_field, to_field)
@@ -612,6 +649,8 @@ EDGES = {
     "phx_dm_pce_flow_in_month": ("phx_dm_pce_advisor_flow_month", "phx_dm_pce_month", "phx_dm_pce_advisor_flow_month", "afm_id", "month_id"),
     "phx_dm_pce_opportunity_for_household": ("phx_dm_pce_opportunity", "phx_dm_pce_household", "phx_dm_pce_opportunity", "opportunity_id", "eci_id"),
     "phx_dm_pce_opportunity_by_advisor": ("phx_dm_pce_opportunity", "phx_dm_pce_advisor", "phx_dm_pce_opportunity", "opportunity_id", "advisor_sid"),
+    "phx_dm_pce_nnm_by_advisor": ("phx_dm_pce_advisor_nnm", "phx_dm_pce_advisor", "phx_dm_pce_advisor_nnm", "nnm_id", "advisor_sid"),
+    "phx_dm_pce_nnm_in_month": ("phx_dm_pce_advisor_nnm", "phx_dm_pce_month", "phx_dm_pce_advisor_nnm", "nnm_id", "month_id"),
 }
 
 
@@ -856,8 +895,14 @@ def build(raw_dir: Path, out_dir: Path, seed: int = 42) -> dict:
         ],
         "phx_dm_pce_account_transfer": transfers,
         "phx_dm_pce_advisor_flow_month": build_flows(raw["raw_adv_flows.csv"], month_ids),
-        "phx_dm_pce_opportunity": build_opportunities(accounts, advisors, txns, seed),
     }
+    crm_rows, crm_stats = build_crm_opportunities(raw["raw_crm_opportunity.csv"])
+    vertex_rows["phx_dm_pce_opportunity"] = crm_rows
+    vertex_rows["phx_dm_pce_advisor_nnm"] = build_advisor_nnm(raw_dir)
+    print(f"CRM: {crm_stats['raw_rows']} raw rows -> {crm_stats['kept_rows']} kept "
+          f"(0 dropped BY DESIGN); invalid advisor references: "
+          f"{crm_stats['invalid_advisor_rows']} (kept + reported); "
+          f"UNGROUPED stages: {crm_stats['ungrouped_stage_rows']}")
     ams, skipped_balance_rows = build_account_month(
         txns, raw["raw_monthly_balance.csv"], transfers, month_ids)
     vertex_rows["phx_dm_pce_account_month"] = ams

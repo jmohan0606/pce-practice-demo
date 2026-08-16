@@ -1,6 +1,6 @@
 {
   "graph": "phx_dm_pce_practice_demo",
-  "generated_by": "scripts/generate_mock_data.py (seed 42) + 9X non-credited post-pass (--retag-noncredited)",
+  "generated_by": "scripts/generate_mock_data.py (seed 42) + 9X non-credited post-pass (--retag-noncredited) + Round F2 CRM+NNM rebuild (--rebuild-crm-nnm)",
   "batch_size": 500,
   "files": [
     {
@@ -314,17 +314,28 @@
         "opportunity_id": "opportunity_id",
         "eci_id": "eci_id",
         "advisor_sid": "advisor_sid",
-        "stage": "stage",
-        "status": "status",
+        "advisor_sid_raw": "advisor_sid_raw",
+        "advisor_valid": "advisor_valid",
+        "account_record_type": "account_record_type",
+        "product_service_type": "product_service_type",
+        "stage_name": "stage_name",
+        "stage_group": "stage_group",
         "amount": "amount",
-        "product_group": "product_group",
-        "open_dt": "open_dt",
-        "expected_close_dt": "expected_close_dt",
-        "close_dt": "close_dt",
-        "source": "source",
+        "actual_assets": "actual_assets",
+        "anticipated_investment_dt": "anticipated_investment_dt",
+        "created_dt": "created_dt",
+        "last_modified_dt": "last_modified_dt",
+        "date_of_last_contact": "date_of_last_contact",
+        "days_to_close": "days_to_close",
+        "is_stalled": "is_stalled",
+        "comments": "comments",
+        "ai_read": "ai_read",
+        "ai_read_confidence": "ai_read_confidence",
+        "ai_read_evidence": "ai_read_evidence",
+        "ai_read_model": "ai_read_model",
         "data_source": "data_source"
       },
-      "expected_rows": 40,
+      "expected_rows": 77,
       "order": 17
     },
     {
@@ -660,7 +671,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 40,
+      "expected_rows": 77,
       "order": 45
     },
     {
@@ -672,8 +683,51 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 40,
+      "expected_rows": 77,
       "order": 46
+    },
+    {
+      "file": "vertices/phx_dm_pce_advisor_nnm.csv",
+      "kind": "vertex",
+      "target": "phx_dm_pce_advisor_nnm",
+      "id_column": "nnm_id",
+      "columns": {
+        "nnm_id": "nnm_id",
+        "advisor_sid": "advisor_sid",
+        "month_id": "month_id",
+        "category": "category",
+        "category_source": "category_source",
+        "mtd_nnm": "mtd_nnm",
+        "ytd_nnm": "ytd_nnm",
+        "entry_dt": "entry_dt",
+        "as_of_dt": "as_of_dt"
+      },
+      "expected_rows": 480,
+      "order": 47
+    },
+    {
+      "file": "edges/phx_dm_pce_nnm_by_advisor.csv",
+      "kind": "edge",
+      "target": "phx_dm_pce_nnm_by_advisor",
+      "from_type": "phx_dm_pce_advisor_nnm",
+      "to_type": "phx_dm_pce_advisor",
+      "from_column": "from_id",
+      "to_column": "to_id",
+      "columns": {},
+      "expected_rows": 480,
+      "order": 48
+    },
+    {
+      "file": "edges/phx_dm_pce_nnm_in_month.csv",
+      "kind": "edge",
+      "target": "phx_dm_pce_nnm_in_month",
+      "from_type": "phx_dm_pce_advisor_nnm",
+      "to_type": "phx_dm_pce_month",
+      "from_column": "from_id",
+      "to_column": "to_id",
+      "columns": {},
+      "expected_rows": 240,
+      "order": 49
     }
   ]
 }

@@ -303,7 +303,46 @@ WHERE  f.bus_dt::date >= DATE '2026-04-01' AND f.bus_dt::date < DATE '2026-06-01
   AND  r.standard_id IN ({in_cohort})
 GROUP  BY 1, 2, 3, 4, 5;
 """,
+        "raw_crm_opportunity.sql": f"""
+-- Round F2: the CRM opportunity extract, COHORT-FILTERED (the firm-wide file
+-- is 308,534 rows — far more than a 20-advisor demo needs). Table located via
+-- docs/data/extraction/discovery_crm_amount.sql STEP 0; replace <crm_table>
+-- with the schema-qualified name it returned.
+-- Invalid advisor references (e.g. 'I817209_CWM_INVALID') are INCLUDED on
+-- purpose — build_real_data.py strips the suffix, keeps the raw value, sets
+-- advisor_valid=false and REPORTS the count. Never filter them out here.
+-- The eci__c half of the filter keeps opportunities on cohort households
+-- whose owner sid is invalid or missing.
+SELECT o.id                                    AS opportunity_id,
+       COALESCE(o.eci__c,'')                   AS eci_id,
+       COALESCE(o.ownersid__c,'')              AS ownersid,
+       COALESCE(o.account_record_type_name__c,'') AS account_record_type,
+       COALESCE(o.product_service_type__c,'')  AS product_service_type,
+       COALESCE(o.stagename,'')                AS stage_name,
+       COALESCE(o.amount,0)                    AS amount,
+       COALESCE(o.actual_assets__c,0)          AS actual_assets,
+       o.anticipated_investment_date__c        AS anticipated_investment_dt,
+       o.createddate                           AS created_dt,
+       o.lastmodifieddate                      AS last_modified_dt,
+       o.date_of_last_contact__c               AS date_of_last_contact,
+       COALESCE(o.days_to_close,0)             AS days_to_close,
+       COALESCE(o.additional_comments__c,'')   AS comments
+FROM   <crm_table> o
+WHERE  regexp_replace(COALESCE(o.ownersid__c,''), '_.*$', '') IN ({in_cohort})
+   OR  o.eci__c IN (
+         SELECT DISTINCT r.party_eci_id
+         FROM   pcr.fpic_acct_eci_rel_tb_pm r
+         JOIN   pcr.fpic_revenue_transaction_tb_pm t
+                ON ltrim(trim(t.account_no),'0') = ltrim(trim(r.account_number),'0')
+         WHERE  t.advisor_sid IN ({in_cohort})
+       );
+""",
     }
+    # NOTE (Round F2): the four NNM files (ECNNM_/NBNNM_/YINNM_/FSNNM_*.txt)
+    # are DELIVERED FILES, not SQL extracts — there is no SQL template for
+    # them. Drop them into data/real/_raw/ as received; scripts/parse_nnm.py
+    # reads the pipe-delimited format directly (H header line, D-prefixed
+    # dates, negatives preserved).
 
 
 def main() -> int:

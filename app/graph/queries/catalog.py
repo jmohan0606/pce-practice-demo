@@ -939,22 +939,28 @@ def cohort_ranking(store: FoundationGraphStore, params: dict) -> list[dict]:
 
 @mock_query("advisor_opportunities")
 def advisor_opportunities(store: FoundationGraphStore, params: dict) -> list[dict]:
+    """Round F2: the real CRM extract shape — grouped by derived stage_group
+    (no Won/Lost status exists in the source); forecast amount and actual
+    assets stay separate columns, never summed together."""
     scope = _advisor_scope(store, params["advisor"])
     out: dict[tuple, dict] = {}
     for r in store.all_vertices("phx_dm_pce_opportunity").values():
         sid = str(r.get("advisor_sid"))
         if sid not in scope:
             continue
-        key = (sid, str(r.get("stage") or ""), str(r.get("status") or ""))
+        key = (sid, str(r.get("stage_group") or ""))
         row = out.setdefault(key, {
-            "advisor_sid": sid, "stage": key[1], "status": key[2],
-            "total_amount": 0.0, "opportunity_count": 0,
-            # every opportunity row is synthetic — the chip logic keys on this
-            "data_source": str(r.get("data_source") or "DUMMY"),
+            "advisor_sid": sid, "stage_group": key[1],
+            "forecast_amount": 0.0, "actual_assets": 0.0,
+            "opportunity_count": 0, "stalled_count": 0,
+            "data_source": str(r.get("data_source") or "CRM"),
         })
-        row["total_amount"] = round(row["total_amount"] + _num(r.get("amount")), 2)
+        row["forecast_amount"] = round(row["forecast_amount"] + _num(r.get("amount")), 2)
+        row["actual_assets"] = round(row["actual_assets"] + _num(r.get("actual_assets")), 2)
         row["opportunity_count"] += 1
-    return sorted(out.values(), key=lambda r: (r["advisor_sid"], -r["total_amount"]))
+        if r.get("is_stalled") in (True, "true"):
+            row["stalled_count"] += 1
+    return sorted(out.values(), key=lambda r: (r["advisor_sid"], -r["actual_assets"]))
 
 
 # --------------------------------------------------------------------------- households / rpg / teams
@@ -1191,11 +1197,13 @@ CATALOG: dict[str, dict] = {
         "returns": ["advisor_sid", "metric", "value", "rank", "cohort_median"],
     },
     "advisor_opportunities": {
-        "description": "Pipeline opportunities per advisor grouped by stage and status, with "
-                       "total amount and count. DUMMY data — every row carries data_source='DUMMY'.",
+        "description": "CRM pipeline per advisor grouped by stage group (EARLY|MID|LATE|CLOSING) "
+                       "with opportunity count, forecast amount, actual assets (separate columns — "
+                       "never summed together) and stalled count. Real CRM extract shape; the "
+                       "source has NO Won/Lost stage.",
         "params": [ADVISOR],
-        "returns": ["advisor_sid", "stage", "status", "total_amount", "opportunity_count",
-                    "data_source"],
+        "returns": ["advisor_sid", "stage_group", "forecast_amount", "actual_assets",
+                    "opportunity_count", "stalled_count", "data_source"],
     },
     "household_accounts": {
         "description": "Accounts of a household (owner-role relationships only), latest-month revenue.",

@@ -143,6 +143,8 @@ current-month credited amount is zero by definition. Both are `0` for 202604 (ba
 | `phx_dm_pce_account_eci_map` | `map_id,acct_src_key,acct_src_raw,wm_src_sys_cd,eci_id,bus_dt,new_exst_adv_clnt_in` | `raw_acct_eci_map.csv` |
 | `phx_dm_pce_team_agreement` | `agreement_key,agreement_id,team_rep_cd,agreement_type,status_cd,prm_advisor_sid,prm_share_pct,sec_advisor_sid,sec_share_pct,start_ts,end_ts` | `raw_team_agreement.csv` |
 | `phx_dm_pce_advisor_flow_month` | `afm_id,advisor_sid,month_id,flow_product_cd,flow_product_desc,comp_group_type,total_inflows,total_outflows,total_net_flows,credited_flows,departed_advisor_sid,departed_advisor_excl_am,lob_trfr_excl_am,oi_pa_referral_cap_adj_am,large_flow_cap_adj_am,forced_closure_excl_am` | `raw_adv_flows.csv` |
+| `phx_dm_pce_opportunity` (Round F2) | `opportunity_id,eci_id,advisor_sid,advisor_sid_raw,advisor_valid,account_record_type,product_service_type,stage_name,stage_group,amount,actual_assets,anticipated_investment_dt,created_dt,last_modified_dt,date_of_last_contact,days_to_close,is_stalled,comments,ai_read,ai_read_confidence,ai_read_evidence,ai_read_model,data_source` | `raw_crm_opportunity.csv` |
+| `phx_dm_pce_advisor_nnm` (Round F2) | `nnm_id,advisor_sid,month_id,category,category_source,mtd_nnm,ytd_nnm,entry_dt,as_of_dt` | the four delivered NNM files (below) |
 
 ⚠ **`new_exst_adv_clnt_in`** — the manifest column has no `_cyr` suffix, but the **source column is
 `new_exst_adv_clnt_in_cyr`** (confirmed in the client environment; the spec was stale). Map
@@ -172,8 +174,13 @@ file** — a silent drop is how a whole product disappears from a dashboard with
 > raw_advisor.csv              raw_account.csv           raw_product_hierarchy.csv
 > raw_revenue_transaction.csv  raw_rr_changes.csv        raw_monthly_balance.csv
 > raw_month_meta.csv           raw_acct_eci_rel.csv      raw_acct_eci_map.csv
-> raw_team_agreement.csv       raw_adv_flows.csv
+> raw_team_agreement.csv       raw_adv_flows.csv         raw_crm_opportunity.csv  (Round F2)
 > ```
+>
+> **Plus (Round F2) the four delivered NNM files** — NOT SQL extracts; drop them into the raw
+> directory exactly as received: `ECNNM_*.txt`, `NBNNM_*.txt`, `YINNM_*.txt`, `FSNNM_*.txt`
+> (pipe-delimited; `H<date>` as-of header; `D`-prefixed dates; **negative values are real**).
+> `scripts/parse_nnm.py` reads the format directly; a missing prefix fails the build loudly.
 
 `SET statement_timeout = '600s';` first. **Every query against
 `pcr.fpic_daily_trade_details_tb_prod` (48M rows) must filter to the cohort and date range before
@@ -213,6 +220,7 @@ section previously cited does not exist in this repo), **with these corrections 
 | `raw_month_meta.csv` | keep — supplies `trading_days`; expect 30/31/30 |
 | `raw_advisor.csv` | must include **transfer counterparties outside the cohort** (`in_cohort=false`), or transfer edges drop and inherited-account findings silently lose rows |
 | `raw_adv_flows.csv` | April and May only — no June rows exist. Flatten `other_attributes` JSONB into the six named columns |
+| `raw_crm_opportunity.csv` (Round F2) | cohort-filtered on stripped `ownersid__c` OR cohort-household `eci__c` (the firm-wide file is 308,534 rows). Invalid advisor references (`*_CWM_INVALID`) are INCLUDED — the build strips the suffix, keeps the raw, sets `advisor_valid=false`, and REPORTS the count. Locate `<crm_table>` via `discovery_crm_amount.sql` STEP 0. `ai_read*` columns are left empty at build: interpretation is a one-time ingestion pass (`scripts/interpret_crm_comments.py`), never a build transform |
 
 ---
 

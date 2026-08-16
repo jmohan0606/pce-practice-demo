@@ -1,0 +1,9 @@
+// Loading job for phx_dm_pce_advisor_nnm (Round F2 — parsed from the four
+// pipe-delimited NNM category files by scripts/parse_nnm.py; this job loads
+// the PARSED CSV, not the raw pipe format. Negative NNM values are real.)
+// CSV contract: header row required, columns in DDL order (primary id first):
+//   nnm_id,advisor_sid,month_id,category,category_source,mtd_nnm,ytd_nnm,entry_dt,as_of_dt
+CREATE LOADING JOB load_phx_dm_pce_advisor_nnm FOR GRAPH phx_dm_pce_practice_demo {
+  DEFINE FILENAME f;
+  LOAD f TO VERTEX phx_dm_pce_advisor_nnm VALUES($"nnm_id", $"advisor_sid", $"month_id", $"category", $"category_source", $"mtd_nnm", $"ytd_nnm", $"entry_dt", $"as_of_dt") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+}

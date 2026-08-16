@@ -1,0 +1,17 @@
+// stalled_opportunities — Round F2 task 3, the practical one: days_to_close
+// is frequently NEGATIVE in the source = past the anticipated close date.
+// That is a real, actionable finding straight from the data with no
+// interpretation. Returns detail rows (verbatim comment + labelled AI reading
+// beside it — ai_read never aggregated) sorted most-overdue first.
+// Local-tier equivalent: app/graph/queries/crm_catalog.py::stalled_opportunities
+CREATE QUERY stalled_opportunities(STRING advisor) FOR GRAPH phx_dm_pce_practice_demo {
+  o = SELECT x FROM phx_dm_pce_opportunity:x -(phx_dm_pce_opportunity_by_advisor)- phx_dm_pce_advisor:a
+      WHERE ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+        AND x.days_to_close < 0
+      ORDER BY x.days_to_close ASC;
+  PRINT o[o.opportunity_id, o.eci_id, o.advisor_sid, o.advisor_valid,
+          o.account_record_type, o.stage_name, o.stage_group, o.amount,
+          o.actual_assets, o.days_to_close, o.is_stalled, o.date_of_last_contact,
+          o.comments, o.ai_read, o.ai_read_confidence, o.ai_read_evidence,
+          o.data_source];
+}

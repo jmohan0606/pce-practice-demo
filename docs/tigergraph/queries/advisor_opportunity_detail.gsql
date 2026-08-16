@@ -1,0 +1,17 @@
+// advisor_opportunity_detail — Round F2 task 3 (added alongside the four spec
+// queries): full per-advisor opportunity detail rows for the advisor page's
+// Opportunities section and chat answers. Returns the three-provenance
+// columns — the source stage, the VERBATIM comment, and the labelled AI
+// reading (ai_read) beside it. ai_read is descriptive only: returned, never
+// aggregated, never filtered on, never driving a figure.
+// Local-tier equivalent: app/graph/queries/crm_catalog.py::advisor_opportunity_detail
+CREATE QUERY advisor_opportunity_detail(STRING advisor) FOR GRAPH phx_dm_pce_practice_demo {
+  o = SELECT x FROM phx_dm_pce_opportunity:x -(phx_dm_pce_opportunity_by_advisor)- phx_dm_pce_advisor:a
+      WHERE ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor)
+      ORDER BY x.is_stalled DESC, x.actual_assets DESC;
+  PRINT o[o.opportunity_id, o.eci_id, o.advisor_sid, o.advisor_valid,
+          o.account_record_type, o.stage_name, o.stage_group, o.amount,
+          o.actual_assets, o.days_to_close, o.is_stalled, o.date_of_last_contact,
+          o.comments, o.ai_read, o.ai_read_confidence, o.ai_read_evidence,
+          o.data_source];
+}

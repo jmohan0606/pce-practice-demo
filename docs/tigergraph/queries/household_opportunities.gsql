@@ -1,0 +1,15 @@
+// household_opportunities — Round F2 task 3. One household's CRM opportunity
+// rows with the three-provenance columns: source stage (stagename verbatim),
+// the verbatim free-text comment, and the labelled AI reading beside it
+// (ai_read is DESCRIPTIVE ONLY — returned for display, never aggregated,
+// never filtered on, never a figure).
+// Local-tier equivalent: app/graph/queries/crm_catalog.py::household_opportunities
+CREATE QUERY household_opportunities(STRING eci_id) FOR GRAPH phx_dm_pce_practice_demo {
+  o = SELECT x FROM phx_dm_pce_opportunity:x -(phx_dm_pce_opportunity_for_household)- phx_dm_pce_household:h
+      WHERE h.eci_id == eci_id;
+  PRINT o[o.opportunity_id, o.eci_id, o.advisor_sid, o.advisor_valid,
+          o.account_record_type, o.stage_name, o.stage_group, o.amount,
+          o.actual_assets, o.days_to_close, o.is_stalled, o.date_of_last_contact,
+          o.comments, o.ai_read, o.ai_read_confidence, o.ai_read_evidence,
+          o.data_source];
+}

@@ -2,17 +2,16 @@
 
 GET  /api/advisor/list                       sid, name, rep_code, in_cohort
 GET  /api/advisor/{sid}/summary?from=&to=    team chip, per-month AUM, metrics
-                                             strip (lifecycle, AUM, NCF, NNM
-                                             both ways, trades)
+                                             strip (lifecycle, AUM, NCF, trades;
+                                             real NNM lives at /{sid}/nnm)
 GET  /api/advisor/{sid}/peer-ranking?from=&to=  revenue / growth / discount-rate
 POST /api/advisor/{sid}/coaching/generate    runs the Coach (stored durably)
 GET  /api/advisor/{sid}/coaching             the stored result — no regeneration
-GET  /api/advisor/{sid}/opportunities        CRM pipeline (every row DUMMY)
+GET  /api/advisor/{sid}/opportunities        CRM pipeline (real extract shape)
 
 Every figure is a catalog-query result or a straight vertex read; the router
 composes, it computes no business numbers of its own. Missing data serializes
-as null with a note — never a guess (NNM categories NB/YI/EC/FS do not exist
-in the feed; the response says so).
+as null with a note — never a guess.
 """
 from __future__ import annotations
 
@@ -25,10 +24,6 @@ from app.shared.logging import get_logger
 _log = get_logger("app.api.advisor")
 
 router = APIRouter(prefix="/api/advisor", tags=["advisor"])
-
-NNM_CATEGORIES_NOTE = ("NB / YI / EC / FS categories are not present in the "
-                       "current data feed")
-
 
 def _catalog(name: str, params: dict) -> list[dict]:
     try:
@@ -94,14 +89,6 @@ def _team_status(sid: str) -> dict:
             "agreements": agreements}
 
 
-def _flows_by_month(sid: str) -> dict[str, list[dict]]:
-    out: dict[str, list[dict]] = {}
-    for r in _store().all_vertices("phx_dm_pce_advisor_flow_month").values():
-        if str(r.get("advisor_sid")) == sid:
-            out.setdefault(str(r.get("month_id")), []).append(r)
-    return out
-
-
 @router.get("/{sid}/summary")
 def advisor_summary(sid: str,
                     from_month: str = Query(..., alias="from"),
@@ -137,21 +124,12 @@ def advisor_summary(sid: str,
                           {"advisor": sid, "month_id": to_month})
     ncf = flows_rows[0] if flows_rows else None
 
-    # NNM — BOTH figures, clearly labelled. Data reality (verified):
-    # comp_group_type='NNM' only, flow products BRKF/MGDF; the four NNM
-    # categories do not exist in the feed and are never invented.
-    by_month = _flows_by_month(sid)
-    ytd_amount = round(sum(_num(r.get("total_net_flows"))
-                           for rows in by_month.values() for r in rows), 2)
-    in_scope_rows = by_month.get(to_month, [])
-    in_scope = round(sum(_num(r.get("total_net_flows")) for r in in_scope_rows), 2)
-    by_product = sorted(
-        ({"flow_product_cd": str(r.get("flow_product_cd")),
-          "flow_product_desc": str(r.get("flow_product_desc") or ""),
-          "net_flows": round(_num(r.get("total_net_flows")), 2)}
-         for r in in_scope_rows),
-        key=lambda r: r["flow_product_cd"])
-    first_month = months[0] if months else None
+    # Round F2: the flows-proxy NNM block is GONE from this summary — the four
+    # real NNM category files now load into phx_dm_pce_advisor_nnm and the
+    # dedicated GET /api/advisor/{sid}/nnm endpoint serves the real figures
+    # (latest-month YTD, threshold resolved from the extracted plan rule).
+    # Net credited flows remain above as NCF, which is what the flow table
+    # actually measures.
 
     # trades per month for this advisor (the months query's txn_count)
     from app.graph.client import get_graph_client
@@ -180,18 +158,6 @@ def advisor_summary(sid: str,
             "ncf": ({"net_flows": ncf["net_flows"], "inflows": ncf["inflows"],
                      "outflows": ncf["outflows"],
                      "credited_flows": ncf["credited_flows"]} if ncf else None),
-            "nnm": {
-                "ytd": {"amount": ytd_amount, "first_month": first_month,
-                        "label": f"NNM YTD (from {first_month} — first loaded month)"},
-                "in_scope": {"amount": in_scope, "from": from_month,
-                             "to": to_month,
-                             "label": f"NNM in scope ({from_month}→{to_month})"},
-                "by_product": by_product,
-                "categories_note": NNM_CATEGORIES_NOTE,
-                # the $4MM qualification is UNCONFIRMED — the UI chips it ASSUMED
-                "qualification_note": "Qualification threshold ($4MM) is an "
-                                      "unconfirmed assumption",
-            },
             "trades": {"from_count": trades.get(from_month, 0),
                        "to_count": trades.get(to_month, 0),
                        "delta": trades.get(to_month, 0) - trades.get(from_month, 0)},
@@ -311,28 +277,44 @@ def coaching_get(sid: str, from_month: str = Query(..., alias="from"),
 
 # ------------------------------------------------------------ opportunities
 
+ASSUMPTION_NOTE = ("Amount is the forecast pipeline value; Actual assets is what "
+                   "landed — working interpretation until the client confirms. "
+                   "The two are never summed.")
+WON_LOST_NOTE = ("The source CRM carries no Won/Lost stage; stage groups are "
+                 "shown instead and no outcome is invented.")
+
+
 @router.get("/{sid}/opportunities",
             dependencies=[Depends(require_feature("advisor.crm_opportunities"))])
 def opportunities(sid: str,
                   from_month: str | None = Query(None, alias="from"),
                   to_month: str | None = Query(None, alias="to")) -> dict:
+    """Round F2: the real CRM extract shape. Three provenances ride every
+    detail row — source stage, verbatim comment, labelled AI reading. The
+    reading is descriptive only: nothing here aggregates, filters or sorts on
+    it (rows sort on is_stalled then actual_assets — source data)."""
     from app.agents.coach import get_coach_store
 
     _advisor_row(sid)
-    rows = _catalog("advisor_opportunities", {"advisor": sid})
-    by_status: dict[str, list[dict]] = {"Won": [], "Lost": [], "Pending": []}
-    other: list[dict] = []
-    for r in rows:
-        status = str(r.get("status") or "").capitalize()
-        (by_status.get(status) if status in by_status else other).append(r)
+    groups = _catalog("advisor_pipeline", {"advisor": sid})
+    rows = _catalog("advisor_opportunity_detail", {"advisor": sid})
+    invalid = sum(1 for r in rows if r.get("advisor_valid") is False)
     guidance = None
     if from_month and to_month:
         stored = get_coach_store().get(sid, from_month, to_month)
         if stored:
             guidance = stored.get("opportunities_guidance")
-    return {"advisor_sid": sid,
-            "by_status": by_status, "other": other,
-            "total_count": sum(int(r.get("opportunity_count") or 0) for r in rows),
-            # every row is synthetic until the CRM feed arrives
-            "data_source": "DUMMY",
-            "guidance": guidance}
+    return {
+        "advisor_sid": sid,
+        "by_stage_group": [{k: g.get(k) for k in
+                            ("stage_group", "opportunity_count", "forecast_amount",
+                             "actual_assets", "stalled_count")} for g in groups],
+        "opportunities": rows,
+        "data_quality": {"invalid_advisor_rows": invalid,
+                         **({"note": "invalid advisor references exist in the "
+                                     "source and are shown, not hidden"}
+                            if invalid else {})},
+        "assumption_note": ASSUMPTION_NOTE,
+        "won_lost_note": WON_LOST_NOTE,
+        "guidance": guidance,
+    }

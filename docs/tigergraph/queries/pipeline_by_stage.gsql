@@ -1,0 +1,24 @@
+// pipeline_by_stage — Round F2 task 3. Practice-level CRM pipeline by SOURCE
+// stage name (the 15 Salesforce stages, verbatim). The source has no Won/Lost
+// stage — where the requirement asks for Won/Lost/Pending, this query is the
+// honest answer: stages + groups, and the gap is a client question.
+// forecast_amount and actual_assets never summed together.
+// Local-tier equivalent: app/graph/queries/crm_catalog.py::pipeline_by_stage
+CREATE QUERY pipeline_by_stage() FOR GRAPH phx_dm_pce_practice_demo {
+  MapAccum<STRING, SumAccum<INT>> @@count;        // key = stage_name
+  MapAccum<STRING, SumAccum<DOUBLE>> @@forecast;
+  MapAccum<STRING, SumAccum<DOUBLE>> @@actual;
+  MapAccum<STRING, SumAccum<INT>> @@stalled;
+  MapAccum<STRING, MaxAccum<STRING>> @@grp;
+
+  o = SELECT x FROM phx_dm_pce_opportunity:x
+      ACCUM @@count    += (x.stage_name -> 1),
+            @@forecast += (x.stage_name -> x.amount),
+            @@actual   += (x.stage_name -> x.actual_assets),
+            @@stalled  += (x.stage_name -> (x.is_stalled ? 1 : 0)),
+            @@grp      += (x.stage_name -> x.stage_group);
+
+  PRINT @@count AS opportunity_count, @@forecast AS forecast_amount,
+        @@actual AS actual_assets, @@stalled AS stalled_count,
+        @@grp AS stage_group;
+}

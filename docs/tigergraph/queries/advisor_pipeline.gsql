@@ -1,0 +1,26 @@
+// advisor_pipeline — Round F2 task 3 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md).
+// CRM pipeline per advisor by DERIVED stage_group (EARLY|MID|LATE|CLOSING —
+// the source's 15 stage names carry no Won/Lost and none is invented).
+// forecast_amount and actual_assets stay SEPARATE (never summed together);
+// stalled = days_to_close < 0 (past the anticipated close date);
+// invalid_advisor_count surfaces advisor_valid=false rows (kept, reported).
+// Local-tier equivalent: app/graph/queries/crm_catalog.py::advisor_pipeline
+CREATE QUERY advisor_pipeline(STRING advisor) FOR GRAPH phx_dm_pce_practice_demo {
+  MapAccum<STRING, SumAccum<INT>> @@count;        // key = advisor|stage_group
+  MapAccum<STRING, SumAccum<DOUBLE>> @@forecast;
+  MapAccum<STRING, SumAccum<DOUBLE>> @@actual;
+  MapAccum<STRING, SumAccum<INT>> @@stalled;
+  MapAccum<STRING, SumAccum<INT>> @@invalid;
+
+  o = SELECT x FROM phx_dm_pce_opportunity:x -(phx_dm_pce_opportunity_by_advisor)- phx_dm_pce_advisor:a
+      WHERE (advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor
+      ACCUM @@count    += (x.advisor_sid + "|" + x.stage_group -> 1),
+            @@forecast += (x.advisor_sid + "|" + x.stage_group -> x.amount),
+            @@actual   += (x.advisor_sid + "|" + x.stage_group -> x.actual_assets),
+            @@stalled  += (x.advisor_sid + "|" + x.stage_group -> (x.is_stalled ? 1 : 0)),
+            @@invalid  += (x.advisor_sid + "|" + x.stage_group -> (x.advisor_valid ? 0 : 1));
+
+  PRINT @@count AS opportunity_count, @@forecast AS forecast_amount,
+        @@actual AS actual_assets, @@stalled AS stalled_count,
+        @@invalid AS invalid_advisor_count;
+}

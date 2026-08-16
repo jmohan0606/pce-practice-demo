@@ -324,7 +324,7 @@
         "source": "source",
         "data_source": "data_source"
       },
-      "expected_rows": 40,
+      "expected_rows": 60,
       "order": 17
     },
     {
@@ -660,7 +660,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 40,
+      "expected_rows": 60,
       "order": 45
     },
     {
@@ -672,8 +672,32 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 40,
+      "expected_rows": 60,
       "order": 46
+    },
+    {
+      "file": "edges/phx_dm_pce_nnm_by_advisor.csv",
+      "kind": "edge",
+      "target": "phx_dm_pce_nnm_by_advisor",
+      "from_type": "phx_dm_pce_advisor_nnm",
+      "to_type": "phx_dm_pce_advisor",
+      "from_column": "from_id",
+      "to_column": "to_id",
+      "columns": {},
+      "expected_rows": 480,
+      "order": 47
+    },
+    {
+      "file": "edges/phx_dm_pce_nnm_in_month.csv",
+      "kind": "edge",
+      "target": "phx_dm_pce_nnm_in_month",
+      "from_type": "phx_dm_pce_advisor_nnm",
+      "to_type": "phx_dm_pce_month",
+      "from_column": "from_id",
+      "to_column": "to_id",
+      "columns": {},
+      "expected_rows": 240,
+      "order": 48
     }
   ]
 }

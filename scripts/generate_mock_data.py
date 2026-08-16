@@ -13,7 +13,7 @@ Scenarios covered (BUILD_PLAN §4.5 / SCHEMA_SPEC §5 cohort selection):
   - fee reductions above 10% with and WITHOUT a recorded grid_reduction
   - team agreements (shares as fractions)
   - a syndicate one-off (two large STRT allocations, one advisor, May only)
-  - an advisor crossing the $4MM NNM threshold (flows, Apr+May only)
+  - an advisor crossing the annual NNM threshold (flows, Apr+May only)
   - two boring advisors with nothing dramatic
   - one advisor with a blank name (blank stays blank — never invented)
   - one unmapped product (visible, never dropped)
@@ -57,6 +57,12 @@ from app.revenue.products import (  # noqa: E402
     revenue_class_rows,
 )
 from app.shared.ids import normalize_account_key  # noqa: E402
+from app.shared import crm  # noqa: E402  (Round F2 — stage grouping, ONE place)
+
+# Round F2: the NNM parser/fabricator is Subagent B's module; imported, never
+# reimplemented — generation must round-trip through the real parser.
+sys.path.insert(0, str(ROOT / "scripts"))
+import parse_nnm  # noqa: E402
 
 RNG = random.Random(42)
 
@@ -629,7 +635,7 @@ def build_flows(cohort: list[str]) -> list[dict]:
     rows = []
     flow_products = [("MGDF", "Managed Flows"), ("BRKF", "Brokerage Flows")]
     for sid in cohort:
-        # V000008 crosses the $4MM annual NNM threshold
+        # V000008 crosses the annual NNM qualification threshold
         scale = 2_400_000.0 if sid == "V000008" else RNG.uniform(120_000, 700_000)
         for month_id in ("202604", "202605"):  # June has no flow rows
             for cd, desc in flow_products:
@@ -649,35 +655,212 @@ def build_flows(cohort: list[str]) -> list[dict]:
     return rows
 
 
-# --------------------------------------------------------------------------- opportunities
-def build_opportunities(by_advisor: dict[str, list[dict]]) -> list[dict]:
-    """CRM pipeline rows, joined through ECI — DUMMY data on every row until a
-    real CRM feed exists (data_source='DUMMY'; the UI shows a Dummy Data chip)."""
-    stages = ["Prospecting", "Discovery", "Proposal", "Negotiation", "Closed"]
-    groups = ["managed_accounts", "twhs_structured", "insurance_annuities",
-              "lending", "mutual_funds"]
-    sources = ["Referral", "Existing Client", "Event", "Cold Outreach"]
-    rows = []
-    n = 0
-    for sid, accts in sorted(by_advisor.items()):
-        eci_ids = sorted({a["primary_eci_id"] for a in accts if a.get("primary_eci_id")})
-        for eci in eci_ids[:2 * ACCT_F]:  # a couple of open opportunities per advisor (× F at scale)
+# --------------------------------------------------------------------------- opportunities (Round F2: real CRM extract shape)
+# Free-text comment pools for the mock CRM rows. MOST rows carry boilerplate
+# with no actionable signal (check 15: "No signal" must be common) — the
+# ai_read interpretation pass must find nothing in them. A minority carry the
+# genuine signal phrases observed in the real extract's sample.
+CRM_NOSIGNAL_COMMENTS = [
+    "", "", "",  # empty comments are real and common
+    "left voicemail", "follow up next week", "client travelling",
+    "sent brochure", "discussed generally, no decision",
+    "reviewing with spouse", "call back after quarter end",
+    "no update", "spoke briefly", "waiting on client",
+]
+CRM_SIGNAL_COMMENTS = [
+    "closed won",
+    "Awaiting application process",
+    "Opened a CD 4 months, we will review his situation in 4 months",
+    "LMS and JPMCAP conservative",
+    "new acct opened",
+    "client verbally committed, paperwork next week",
+    "not moving forward this year",
+]
+CRM_STAGE_NAMES = sorted(crm.STAGE_GROUPS)  # the 14 transcribed stage names
+CRM_RECORD_TYPES = ["PersonAccount", "Prospect", "Business_Prospect",
+                    "IndustriesBusiness", "IndustriesHousehold", "Strategic_Household"]
+
+
+def build_crm_opportunities(ecis_by_advisor: dict[str, list[str]],
+                            seed: str = "f2|crm|v2") -> list[dict]:
+    """Mock rows in the REAL extract's shape (data_source='CRM'). Own seeded
+    RNG (9X post-pass precedent): never consumes the module RNG stream, no
+    builtin hash(), so the --rebuild-crm-nnm mode reproduces byte-identical
+    output on any machine.
+
+    Honest to the observed source: `amount` (forecast) is 0 on most rows;
+    `actual_assets` carries value mainly on later-stage rows; days_to_close
+    is often NEGATIVE (past the anticipated close = stalled); a few rows have
+    an invalid advisor reference (advisor_sid_raw keeps the suffix,
+    advisor_valid=false — never dropped, never silently joined). NO Won/Lost
+    status exists anywhere; ai_read columns are left EMPTY here — the one-time
+    ingestion interpretation pass (scripts/interpret_crm_comments.py) fills
+    them, so generation stays LLM-free.
+    """
+    rng = random.Random(seed)
+    rows, n = [], 0
+    for sid in sorted(ecis_by_advisor):
+        eci_ids = sorted(ecis_by_advisor[sid])
+        take = min(len(eci_ids), 3 + rng.randint(0, 2) + (ACCT_F - 1) * 2)
+        for eci in eci_ids[:take]:
             n += 1
-            status = RNG.choice(["PENDING", "PENDING", "WON", "LOST"])
-            open_dt = f"2026-{RNG.choice(['04','05','06'])}-{RNG.randint(1, 28):02d}"
-            close_dt = "" if status == "PENDING" else f"2026-06-{RNG.randint(1, 30):02d}"
+            stage_name = rng.choice(CRM_STAGE_NAMES)
+            group = crm.stage_group_for(stage_name)
+            # forecast amount populated mostly on EARLY/MID rows; actual
+            # assets mostly on LATE/CLOSING rows — never both summed anywhere
+            amount = 0.0
+            actual = 0.0
+            if group in ("EARLY", "MID"):
+                if rng.random() < 0.55:
+                    amount = rng.uniform(25_000, 2_000_000)
+            if group in ("LATE", "CLOSING"):
+                if rng.random() < 0.8:
+                    actual = rng.uniform(10_000, 3_000_000)
+                if rng.random() < 0.25:
+                    amount = rng.uniform(25_000, 1_500_000)
+            days_to_close = rng.randint(-178, 359)
+            created = f"2026-{rng.choice(['01', '02', '03', '04'])}-{rng.randint(1, 28):02d}"
+            modified = f"2026-{rng.choice(['05', '06'])}-{rng.randint(1, 28):02d}"
+            contact = f"2026-{rng.choice(['03', '04', '05', '06'])}-{rng.randint(1, 28):02d}"
+            # every 20th row carries an invalid advisor reference (deterministic
+            # placement — the observed _CWM_INVALID pattern must reliably exist)
+            invalid = n % 20 == 10
+            comment = (rng.choice(CRM_SIGNAL_COMMENTS) if rng.random() < 0.28
+                       else rng.choice(CRM_NOSIGNAL_COMMENTS))
             rows.append({
-                "opportunity_id": f"OPP{n:05d}", "eci_id": eci, "advisor_sid": sid,
-                "stage": "Closed" if status != "PENDING" else RNG.choice(stages[:4]),
-                "status": status, "amount": money(RNG.uniform(50_000, 1_500_000)),
-                "product_group": RNG.choice(groups),
-                "open_dt": f"{open_dt} 00:00:00",
-                "expected_close_dt": f"2026-07-{RNG.randint(1, 31):02d} 00:00:00",
-                "close_dt": f"{close_dt} 00:00:00" if close_dt else "",
-                "source": RNG.choice(sources),
-                "data_source": "DUMMY",  # every row — the honesty flag the UI keys on
+                "opportunity_id": f"OPP{n:05d}", "eci_id": eci,
+                "advisor_sid": sid,
+                "advisor_sid_raw": f"{sid}_CWM_INVALID" if invalid else sid,
+                "advisor_valid": not invalid,
+                "account_record_type": rng.choice(CRM_RECORD_TYPES),
+                "product_service_type": "",  # mostly blank in the sample
+                "stage_name": stage_name, "stage_group": group,
+                "amount": money(amount), "actual_assets": money(actual),
+                "anticipated_investment_dt": f"2026-{rng.choice(['07', '08', '09'])}-{rng.randint(1, 28):02d} 00:00:00",
+                "created_dt": f"{created} 00:00:00",
+                "last_modified_dt": f"{modified} 00:00:00",
+                "date_of_last_contact": f"{contact} 00:00:00",
+                "days_to_close": str(days_to_close),
+                "is_stalled": days_to_close < 0,
+                "comments": comment,
+                # filled by the one-time ingestion interpretation pass
+                "ai_read": "", "ai_read_confidence": "",
+                "ai_read_evidence": "", "ai_read_model": "",
+                "data_source": "CRM",
             })
     return rows
+
+
+def build_nnm_vertex_rows(cohort_sids: list[str], nnm_raw_dir: Path,
+                          seed: int = 77) -> list[dict]:
+    """Write the four raw-format NNM files then parse them back through the
+    REAL parser (scripts/parse_nnm.py — Subagent B's module) so generation and
+    ingestion share one format. Deterministic; own RNG inside parse_nnm."""
+    parse_nnm.write_mock_nnm_files(nnm_raw_dir, cohort_sids, seed=seed)
+    rows = parse_nnm.parse_nnm_dir(nnm_raw_dir)
+    return [{**r,
+             "mtd_nnm": f"{r['mtd_nnm']:.2f}", "ytd_nnm": f"{r['ytd_nnm']:.2f}"}
+            for r in rows]
+
+
+def rebuild_crm_nnm_csv() -> None:
+    """--rebuild-crm-nnm (Round F2): rewrite ONLY the CRM opportunity and NNM
+    files against the COMMITTED data/ CSVs — never a full regeneration (the
+    generator is not cross-process deterministic; DECISIONS.md 2026-08-12).
+    Touches: vertices/phx_dm_pce_opportunity.csv (+ its 2 edge CSVs),
+    data/nnm_raw/*.txt, vertices/phx_dm_pce_advisor_nnm.csv (+ its 2 edge
+    CSVs), and exactly those manifest entries. Every other committed CSV stays
+    byte-identical — prove with `git diff --stat data/`."""
+
+    def load(name: str) -> list[dict]:
+        with (VDIR / f"{name}.csv").open(newline="", encoding="utf-8-sig") as f:
+            return list(csv.DictReader(f))
+
+    advisors = load("phx_dm_pce_advisor")
+    cohort = sorted(a["advisor_sid"] for a in advisors if a["in_cohort"] == "true")
+    accounts = load("phx_dm_pce_account")
+    am_rows = load("phx_dm_pce_account_month")
+    eci_of_acct = {a["acct_key"]: a["primary_eci_id"] for a in accounts}
+    ecis_by_advisor: dict[str, set[str]] = defaultdict(set)
+    for r in am_rows:
+        eci = eci_of_acct.get(r["acct_key"], "")
+        if eci and r["advisor_sid"] in cohort:
+            ecis_by_advisor[r["advisor_sid"]].add(eci)
+
+    changed: dict[str, list[dict]] = {
+        "phx_dm_pce_opportunity": build_crm_opportunities(
+            {sid: sorted(e) for sid, e in ecis_by_advisor.items()}),
+        "phx_dm_pce_advisor_nnm": build_nnm_vertex_rows(cohort, DATA / "nnm_raw"),
+    }
+    new_counts: dict[str, int] = {}
+    for target, rows in changed.items():
+        rel = f"vertices/{target}.csv"
+        new_counts[rel] = write_csv(DATA / rel, VERTEX_COLUMNS[target], rows)
+        print(f"vertex {target}: {new_counts[rel]} rows")
+
+    valid_ids = {
+        "phx_dm_pce_advisor": {a["advisor_sid"] for a in advisors},
+        "phx_dm_pce_household": {h["eci_id"] for h in load("phx_dm_pce_household")},
+        "phx_dm_pce_month": {m["month_id"] for m in load("phx_dm_pce_month")},
+    }
+    for edge_name, (ftype, ttype, source, ffield, tfield) in EDGES.items():
+        if source not in changed:
+            continue
+        rows, seen, dropped = [], set(), 0
+        for r in changed[source]:
+            fid, tid = r.get(ffield, ""), r.get(tfield, "")
+            if not fid or not tid or tid not in valid_ids[ttype]:
+                dropped += 1
+                continue
+            if (fid, tid) in seen:
+                continue
+            seen.add((fid, tid))
+            rows.append({"from_id": fid, "to_id": tid})
+        rel = f"edges/{edge_name}.csv"
+        new_counts[rel] = write_csv(DATA / rel, ["from_id", "to_id"], rows)
+        note = f" ({dropped} out-of-scope targets dropped, reported)" if dropped else ""
+        print(f"edge {edge_name}: {new_counts[rel]} rows{note}")
+
+    manifest = json.loads((DATA / "manifest.json").read_text(encoding="utf-8"))
+    existing = {e["file"]: e for e in manifest["files"]}
+    next_order = max(e["order"] for e in manifest["files"]) + 1
+    for target in changed:
+        rel = f"vertices/{target}.csv"
+        entry = existing.get(rel)
+        if entry is None:
+            entry = {"file": rel, "kind": "vertex", "target": target,
+                     "id_column": ID_COLUMNS[target], "columns": {},
+                     "expected_rows": 0, "order": next_order}
+            next_order += 1
+            manifest["files"].append(entry)
+        entry["columns"] = {c: c for c in VERTEX_COLUMNS[target]}
+        entry["id_column"] = ID_COLUMNS[target]
+        entry["expected_rows"] = new_counts[rel]
+    for edge_name, (ftype, ttype, source, _f, _t) in EDGES.items():
+        if source not in changed:
+            continue
+        rel = f"edges/{edge_name}.csv"
+        entry = existing.get(rel)
+        if entry is None:
+            entry = {"file": rel, "kind": "edge", "target": edge_name,
+                     "from_type": ftype, "to_type": ttype,
+                     "from_column": "from_id", "to_column": "to_id",
+                     "columns": {}, "expected_rows": 0, "order": next_order}
+            next_order += 1
+            manifest["files"].append(entry)
+        entry["expected_rows"] = new_counts[rel]
+    tag = "Round F2 CRM+NNM rebuild (--rebuild-crm-nnm)"
+    if tag not in manifest["generated_by"]:
+        manifest["generated_by"] += f" + {tag}"
+    (DATA / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    print(f"manifest: {len(new_counts)} file entries updated")
+    invalid = sum(1 for r in changed["phx_dm_pce_opportunity"]
+                  if r["advisor_valid"] is False)
+    print(f"CRM data quality: {invalid} invalid advisor reference(s) kept and "
+          f"reported (advisor_valid=false), 0 dropped")
+    ungrouped = sum(1 for r in changed["phx_dm_pce_opportunity"]
+                    if r["stage_group"] == "UNGROUPED")
+    print(f"CRM stage grouping: {ungrouped} UNGROUPED row(s)")
 
 
 # --------------------------------------------------------------------------- writers
@@ -714,9 +897,15 @@ VERTEX_COLUMNS = {
                                        "credited_flows", "departed_advisor_sid", "departed_advisor_excl_am",
                                        "lob_trfr_excl_am", "oi_pa_referral_cap_adj_am", "large_flow_cap_adj_am",
                                        "forced_closure_excl_am"],
-    "phx_dm_pce_opportunity": ["opportunity_id", "eci_id", "advisor_sid", "stage", "status", "amount",
-                                "product_group", "open_dt", "expected_close_dt", "close_dt", "source",
+    "phx_dm_pce_opportunity": ["opportunity_id", "eci_id", "advisor_sid", "advisor_sid_raw",
+                                "advisor_valid", "account_record_type", "product_service_type",
+                                "stage_name", "stage_group", "amount", "actual_assets",
+                                "anticipated_investment_dt", "created_dt", "last_modified_dt",
+                                "date_of_last_contact", "days_to_close", "is_stalled", "comments",
+                                "ai_read", "ai_read_confidence", "ai_read_evidence", "ai_read_model",
                                 "data_source"],
+    "phx_dm_pce_advisor_nnm": ["nnm_id", "advisor_sid", "month_id", "category", "category_source",
+                                "mtd_nnm", "ytd_nnm", "entry_dt", "as_of_dt"],
 }
 
 ID_COLUMNS = {
@@ -728,7 +917,7 @@ ID_COLUMNS = {
     "phx_dm_pce_team_agreement": "agreement_key", "phx_dm_pce_revenue_transaction": "txn_id",
     "phx_dm_pce_monthly_revenue": "mr_id", "phx_dm_pce_account_month": "am_id",
     "phx_dm_pce_account_transfer": "transfer_id", "phx_dm_pce_advisor_flow_month": "afm_id",
-    "phx_dm_pce_opportunity": "opportunity_id",
+    "phx_dm_pce_opportunity": "opportunity_id", "phx_dm_pce_advisor_nnm": "nnm_id",
 }
 
 # edge_name -> (from_type, to_type, source vertex, from_field, to_field)
@@ -762,6 +951,10 @@ EDGES = {
     "phx_dm_pce_flow_in_month": ("phx_dm_pce_advisor_flow_month", "phx_dm_pce_month", "phx_dm_pce_advisor_flow_month", "afm_id", "month_id"),
     "phx_dm_pce_opportunity_for_household": ("phx_dm_pce_opportunity", "phx_dm_pce_household", "phx_dm_pce_opportunity", "opportunity_id", "eci_id"),
     "phx_dm_pce_opportunity_by_advisor": ("phx_dm_pce_opportunity", "phx_dm_pce_advisor", "phx_dm_pce_opportunity", "opportunity_id", "advisor_sid"),
+    # NNM rows span Jan–Jun; only loaded months (202604–06) get month edges —
+    # the vertex keeps every month, queries read the attribute, drops reported.
+    "phx_dm_pce_nnm_by_advisor": ("phx_dm_pce_advisor_nnm", "phx_dm_pce_advisor", "phx_dm_pce_advisor_nnm", "nnm_id", "advisor_sid"),
+    "phx_dm_pce_nnm_in_month": ("phx_dm_pce_advisor_nnm", "phx_dm_pce_month", "phx_dm_pce_advisor_nnm", "nnm_id", "month_id"),
 }
 
 
@@ -790,9 +983,18 @@ def main() -> None:
                          "rows stay byte-identical) instead of regenerating. "
                          "Use this on the committed data set — a from-scratch "
                          "regen does not reproduce it (builtin-hash salting).")
+    ap.add_argument("--rebuild-crm-nnm", action="store_true",
+                    help="Round F2: rewrite ONLY the CRM opportunity + NNM "
+                         "files (vertices, edges, nnm_raw, manifest entries) "
+                         "against the COMMITTED data/ CSVs — every other CSV "
+                         "stays byte-identical. Use this on the committed "
+                         "set; a from-scratch regen does not reproduce it.")
     args = ap.parse_args()
     if args.retag_noncredited:
         retag_noncredited_csv()
+        return
+    if args.rebuild_crm_nnm:
+        rebuild_crm_nnm_csv()
         return
     if args.scale < 1:
         ap.error("--scale must be >= 1")
@@ -840,7 +1042,13 @@ def main() -> None:
     vertex_rows["phx_dm_pce_account_month"] = am_rows
     vertex_rows["phx_dm_pce_account_transfer"] = transfer_rows
     vertex_rows["phx_dm_pce_advisor_flow_month"] = build_flows(cohort)
-    vertex_rows["phx_dm_pce_opportunity"] = build_opportunities(by_advisor)
+    ecis_by_advisor = {
+        sid: sorted({a["primary_eci_id"] for a in accts if a.get("primary_eci_id")})
+        for sid, accts in by_advisor.items()
+    }
+    vertex_rows["phx_dm_pce_opportunity"] = build_crm_opportunities(ecis_by_advisor)
+    vertex_rows["phx_dm_pce_advisor_nnm"] = build_nnm_vertex_rows(
+        sorted(by_advisor), DATA / "nnm_raw")
 
     # --- vertices ---
     manifest_files = []

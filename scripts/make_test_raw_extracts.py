@@ -364,7 +364,50 @@ def main() -> int:
                 })
     write(out, "raw_adv_flows.csv", flows)
 
-    print(f"\nfabricated raw set complete: {len(RAW_CONTRACT)} files in {out}")
+    # ---- Round F2: CRM opportunity extract (cohort-shaped, incl. invalid
+    # advisor references and free-text comments; ai_read never fabricated) ----
+    from app.shared.crm import STAGE_GROUPS
+
+    stage_names = sorted(STAGE_GROUPS)
+    record_types = ["PersonAccount", "Prospect", "Business_Prospect",
+                    "IndustriesBusiness", "IndustriesHousehold", "Strategic_Household"]
+    comment_pool = ["", "", "left voicemail", "follow up next week",
+                    "closed won", "Awaiting application process",
+                    "Opened a CD 4 months, we will review his situation in 4 months",
+                    "LMS and JPMCAP conservative", "new acct opened", "no update"]
+    crm_rows = []
+    ecis = sorted({a["primary_eci_id"] for a in accounts if a.get("primary_eci_id")})
+    for i in range(60):
+        sid = cohort[i % len(cohort)]
+        # every 15th row carries an invalid advisor reference, as in the source
+        owner = f"{sid}_CWM_INVALID" if i % 15 == 7 else sid
+        days = RNG.randint(-178, 359)
+        crm_rows.append({
+            "opportunity_id": f"006{i:012d}", "eci_id": ecis[i % len(ecis)],
+            "ownersid": owner,
+            "account_record_type": record_types[i % len(record_types)],
+            "product_service_type": "",
+            "stage_name": stage_names[i % len(stage_names)],
+            "amount": money(RNG.uniform(0, 900_000) if RNG.random() < 0.4 else 0),
+            "actual_assets": money(RNG.uniform(10_000, 2_500_000) if RNG.random() < 0.5 else 0),
+            "anticipated_investment_dt": f"2026-{RNG.choice(['07','08'])}-{RNG.randint(1,28):02d} 00:00:00",
+            "created_dt": f"2026-0{RNG.randint(1,4)}-{RNG.randint(1,28):02d} 00:00:00",
+            "last_modified_dt": f"2026-06-{RNG.randint(1,28):02d} 00:00:00",
+            "date_of_last_contact": f"2026-0{RNG.randint(4,6)}-{RNG.randint(1,28):02d} 00:00:00",
+            "days_to_close": str(days),
+            "comments": comment_pool[i % len(comment_pool)],
+        })
+    write(out, "raw_crm_opportunity.csv", crm_rows)
+
+    # ---- Round F2: the four delivered NNM files (raw pipe format, via the
+    # shared fabricator so generation round-trips the real parser) ----
+    import parse_nnm
+
+    nnm_paths = parse_nnm.write_mock_nnm_files(out, cohort, seed=177)
+    print(f"NNM raw files: {[p.name for p in nnm_paths]}")
+
+    print(f"\nfabricated raw set complete: {len(RAW_CONTRACT)} CSVs + "
+          f"{len(nnm_paths)} NNM files in {out}")
     return 0
 
 

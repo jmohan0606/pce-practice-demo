@@ -1,8 +1,9 @@
-// Loading job for phx_dm_pce_opportunity (CRM pipeline — DUMMY data until a
-// real CRM feed exists; data_source='DUMMY' on every row)
+// Loading job for phx_dm_pce_opportunity (Round F2 — the real CRM extract
+// shape; data_source='CRM'. ai_read* columns may be empty at first load: the
+// one-time ingestion interpretation pass fills them and rows are re-upserted.)
 // CSV contract: header row required, columns in DDL order (primary id first):
-//   opportunity_id,eci_id,advisor_sid,stage,status,amount,product_group,open_dt,expected_close_dt,close_dt,source,data_source
+//   opportunity_id,eci_id,advisor_sid,advisor_sid_raw,advisor_valid,account_record_type,product_service_type,stage_name,stage_group,amount,actual_assets,anticipated_investment_dt,created_dt,last_modified_dt,date_of_last_contact,days_to_close,is_stalled,comments,ai_read,ai_read_confidence,ai_read_evidence,ai_read_model,data_source
 CREATE LOADING JOB load_phx_dm_pce_opportunity FOR GRAPH phx_dm_pce_practice_demo {
   DEFINE FILENAME f;
-  LOAD f TO VERTEX phx_dm_pce_opportunity VALUES($"opportunity_id", $"eci_id", $"advisor_sid", $"stage", $"status", $"amount", $"product_group", $"open_dt", $"expected_close_dt", $"close_dt", $"source", $"data_source") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f TO VERTEX phx_dm_pce_opportunity VALUES($"opportunity_id", $"eci_id", $"advisor_sid", $"advisor_sid_raw", $"advisor_valid", $"account_record_type", $"product_service_type", $"stage_name", $"stage_group", $"amount", $"actual_assets", $"anticipated_investment_dt", $"created_dt", $"last_modified_dt", $"date_of_last_contact", $"days_to_close", $"is_stalled", $"comments", $"ai_read", $"ai_read_confidence", $"ai_read_evidence", $"ai_read_model", $"data_source") USING HEADER="true", SEPARATOR=",", QUOTE="double";
 }
