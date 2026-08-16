@@ -1,5 +1,81 @@
 # Build Progress
 
+## Round F2 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md) — real CRM data, NNM, plan-unlocked rules
+- [x] Task 1 (main thread, d5eb45c): discovery AUTHORED, not run — no client
+      data source reachable here (no PostgreSQL; neither the real CRM extract
+      nor the NNM files are in-repo). discovery_job_code.sql +
+      discovery_crm_amount.sql committed as operator-run artifacts with
+      how-to-read notes; working assumptions in DECISIONS.md (amount=forecast
+      pipeline / actual_assets=landed, NEVER summed; job_code NOT added until
+      discovery answers — manufactured schema refused); plan tables enter ONLY
+      via document files (the new PCA-style doc renders from a non-Python
+      content source via the generic scripts/render_plan_pdf.py).
+- [x] Pre-dispatch foundations (main thread, dabbe39): both vertices in every
+      schema place (30V/42E) — real 23-column CRM opportunity shape replaces
+      the V14 dummy; phx_dm_pce_advisor_nnm + nnm_by_advisor/nnm_in_month;
+      catalog.py end-of-module merge hooks (crm_catalog.py=A, nnm_catalog.py=B
+      — zero shared-file edits across three concurrent subagents);
+      scripts/parse_nnm.py with frozen signatures, deterministic round-trip.
+- [x] Tasks 2+3 (Subagent A, verified in main thread, 9b13a9b): mock builder
+      is an ADDITIVE post-pass (own RNG; every committed credited CSV
+      byte-identical, proven by git diff) — 77 CRM rows (4 *_CWM_INVALID refs
+      kept+reported, stage_group from the 14 transcribed stages with UNGROUPED
+      counted never guessed, NO Won/Lost anywhere, comments never
+      keyword-parsed) + 480 NNM rows generated THROUGH parse_nnm; ingest 49
+      targets 0 mismatches. ai_read pass (real Haiku, crm_ai_read|*): 60
+      comments, 35 readings / 42 no-signal, substring gate 0 violations,
+      $0.026, re-run no-op. build_real_data on fabricated raw set: ALL 12
+      VALIDATIONS PASSED, 4 invalid refs reported. 5 CRM catalog queries
+      (spec's 4 + advisor_opportunity_detail) with GSQL twins;
+      /api/advisor/{sid}/opportunities on the fixed contract (data_quality /
+      assumption_note / won_lost_note). Main-thread fixes: crm_catalog
+      circular import (both orders proven); legacy flows-proxy NNM block +
+      hardcoded-$4MM note REMOVED from the advisor summary.
+- [x] Task 4 (Subagent B, verified in main thread, 55cf41f): parse_nnm
+      hardened (duplicates raise naming both lines); check_nnm_parse 19/19.
+      advisor_nnm_position / advisor_nnm_all_categories(+TOTAL) /
+      nnm_threshold_position — latest-month YTD IS the position (never a sum
+      of MTD, never annualised); threshold resolves AT READ TIME from the
+      published extracted rule (zero/conflicting candidates → honestly
+      unavailable with the reason named); GET /api/advisor/{sid}/nnm on the
+      fixed contract (EC confirmed=true only, raw file prefix on every
+      category, assumed_note). Re-pins: C6-1 38→46; E-7 re-amended (NNM
+      confined to sanctioned surfaces, reporter guard intact, NO hardcoded
+      plan threshold in any .py — now a permanent pin).
+- [x] Tasks 5+6 (Subagent C, verified in main thread, d7dceac): advisor page
+      Managed/Brokerage split REMOVED; four real categories (EC prominent vs
+      the API-resolved threshold + ASSUMED chip; raw-file-prefix tooltips on
+      the three inferred ones; total; MTD+YTD with as-of month; NO dollar
+      threshold anywhere in the frontend); Opportunities rebuilt — stage-group
+      summary, stalled callout with days-past-due chips, three-provenance
+      columns (Stage / verbatim Notes / ◆ AI chip with confidence+evidence
+      hover, "No signal" never blank, non-sortable), Dummy chips gone from
+      CRM, assumption + no-Won/Lost notes, invalid-advisor data-quality line;
+      ChatMarkdown renders ai_read table columns as the AI chip. npm build 8
+      routes.
+- [x] Task 7 (main thread): all 19 checks with actual output in
+      docs/ROUND_F2_COMPLETE.md. CHECK 12: cwm_pca_plan_2026.pdf (content in
+      a non-Python .md, generic renderer) uploaded → real Sonnet extraction
+      found ALL THREE tables with page citations (26 rules: the full grid in
+      MONTHLY_INCENTIVE_GRID_CALCULATION p.2, the discount-sharing series
+      p.3, NNM_AWARD_THRESHOLD + the award-rate bands p.3, SAG definitions
+      p.4); NNM_AWARD_THRESHOLD + two discount-sharing rules COMPILED and
+      published as RSV_v8; the /nnm endpoint's threshold went
+      available=false → {4000000.0, R_NNM_AWARD_THRESHOLD_RSV_v8, gap
+      306211.01} — the $4MM figure reached the UI through extraction alone.
+      CHECK 13: grid rates / award bps / $4MM / $500 in NO Python file (grep
+      pasted; sanctioned exceptions stated up front in DECISIONS.md). CHECK
+      18: no aggregate touches ai_read (grep pasted). Browser-observed 11/14/
+      17 (four categories + ASSUMED threshold line; Dummy gone + assumption
+      note; ◆ AI chip with "confidence 85% — evidence: …" hover, No signal
+      cells, STALLED · Nd PAST DUE chips, invalid-advisor line on V000003).
+      Tiered band schedules honestly NEEDS_DATA at compile (no tiered-band
+      construct in the plan grammar — named per rule, client conversation).
+      All suites green: a 25/25 · b 19/19 · c 13/13 · e 8/8 · h 9/9 ·
+      a1 17/17 · flags 8/8 · manual 17/17 · nnm_parse 19/19; npm build 8
+      routes. Pre-generated on RSV_v8: practice aggregate BOTH transitions +
+      V000001/V000014/V000019 both transitions.
+
 ## Round E chat (docs/spec/ROUND_E_CHAT_SPEC.md) — conversational chat
 - [x] Task 1 (main thread): Layer 2 tool boundary — app/chat/tools.py ChatTools
       with EXACTLY four capabilities (run_catalog_query validated-before-
@@ -589,7 +665,35 @@ Note: per Round E/G/H precedent, subagents reported and the MAIN THREAD
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: E chat (docs/spec/ROUND_E_CHAT_SPEC.md) — COMPLETE. All 8 tasks done;
+Round: F2 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md) — COMPLETE. All 7 tasks done;
+      docs/ROUND_F2_COMPLETE.md carries the actual output of all 19 checks.
+      The round's principle held: the client's grid rate table, discount
+      sharing table and NNM award rates live ONLY in documents — the new
+      cwm_pca_plan_2026.pdf renders from a non-Python content file, the
+      extractor found all three tables with page citations, and the $4MM
+      threshold reaches the UI exclusively via extraction → compile →
+      publish (RSV_v8) → read-time resolution. The CRM opportunity vertex now
+      matches the real Salesforce extract (invalid advisor refs reported
+      never hidden; no Won/Lost invented; ai_read is labelled interpretation
+      that drives no figure); the four NNM category files load with
+      latest-month-YTD semantics, never annualised.
+Round F2 standing client questions (stated, not guessed): (1) does a job-code
+      column exist on fpic_employee_tb/fpic_prm_rr_tb (discovery_job_code.sql
+      ready; plan applicability per advisor is blocked on it); (2) confirm
+      amount=forecast vs actual_assets=landed (discovery_crm_amount.sql
+      ready); (3) confirm EC is the measured NNM threshold category (ASSUMED
+      chip until then); (4) is Won/Lost outcome tracked anywhere structured;
+      (5) tiered band schedules (grid rates, award rates) are inexpressible
+      in the plan grammar — extracted faithfully, honest NEEDS_DATA at
+      compile (same class as the ratio-of-aggregates gap).
+Round F2 carried observations: (1) synthetic-run turn logs (crm_ai_read|*,
+      doc_extract|*, coach) remain process-local — durable evidence is the
+      run-time capture; (2) NNM_AWARD_THRESHOLD compiled against category
+      TOTAL / month 2026-12 per the document text — matches 0 rows on data
+      ending 202606 (fires when December data exists); the endpoint's
+      EC-measured position carries the ASSUMED chip.
+
+Previous round: E chat (docs/spec/ROUND_E_CHAT_SPEC.md) — COMPLETE. All 8 tasks done;
       docs/ROUND_E_CHAT_COMPLETE.md carries the verbatim exchange of every
       check. The two-layer guardrail design (tool boundary is the protection,
       classifier stays lenient — DO NOT TIGHTEN, see DECISIONS.md warning) is

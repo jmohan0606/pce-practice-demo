@@ -163,7 +163,8 @@ def _dollar_amounts(text: str) -> list[float]:
 def _rule_threshold(rule: dict) -> float | None:
     """The dollar threshold an extracted NNM rule states, read from its
     compiled plan first (trigger/filter values), else its statement text.
-    Only 'large-dollar' values qualify — a bps award rate or a $500 floor is
+    Only 'large-dollar' values qualify — a bps award rate or a small
+    minimum-award floor is
     not the annual-flows threshold."""
     candidates: list[float] = []
     plan = rule.get("plan") or {}
