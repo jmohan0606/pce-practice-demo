@@ -1,0 +1,199 @@
+// pce-practice-demo — vertex DDL (30 vertices)
+// Source: docs/spec/SCHEMA_SPEC.md §1 (18 source-loaded) + §2 (12 app-written)
+// Target: TigerGraph 4.2.2, GSQL Syntax V1. Run in global scope before 02_edges.gsql.
+USE GLOBAL
+
+// ---------------------------------------------------------------------------
+// §1 Source-loaded vertices (18)
+// ---------------------------------------------------------------------------
+
+// V1
+CREATE VERTEX phx_dm_pce_month (PRIMARY_ID month_id STRING, month_name STRING,
+  start_dt DATETIME, end_dt DATETIME, trading_days INT, is_baseline BOOL, is_partial BOOL)
+WITH primary_id_as_attribute="true";
+
+// V2
+CREATE VERTEX phx_dm_pce_revenue_class (PRIMARY_ID class_id STRING, class_name STRING)
+WITH primary_id_as_attribute="true";
+
+// V3
+CREATE VERTEX phx_dm_pce_product_group (PRIMARY_ID group_id STRING, group_name STRING,
+  display_prefix STRING, class_id STRING, sort_order INT, is_aggregated BOOL)
+WITH primary_id_as_attribute="true";
+
+// V4
+CREATE VERTEX phx_dm_pce_product (PRIMARY_ID product_id STRING, product_cd STRING,
+  product_sub_cd STRING, product_name STRING, sor STRING, file_key STRING,
+  group_id STRING, grid_type STRING) WITH primary_id_as_attribute="true";
+
+// V5
+CREATE VERTEX phx_dm_pce_advisor (PRIMARY_ID advisor_sid STRING, rep_code STRING,
+  advisor_name STRING, branch_cd STRING, employee_id STRING, in_cohort BOOL)
+WITH primary_id_as_attribute="true";
+
+// V6
+CREATE VERTEX phx_dm_pce_account (PRIMARY_ID acct_key STRING, account_no_raw STRING,
+  account_class_cd STRING, account_class_nm STRING, account_lob_cd STRING,
+  account_purpose_cd STRING, managed_platform_cd STRING, service_channel_cd STRING,
+  account_open_dt DATETIME, is_managed BOOL, opened_in_scope BOOL, primary_eci_id STRING)
+WITH primary_id_as_attribute="true";
+
+// V7
+CREATE VERTEX phx_dm_pce_household (PRIMARY_ID eci_id STRING, account_count INT)
+WITH primary_id_as_attribute="true";
+
+// V7b
+CREATE VERTEX phx_dm_pce_account_eci_rel (PRIMARY_ID rel_id STRING, acct_key STRING,
+  eci_id STRING, enterprise_relationship_code STRING, party_role_name STRING,
+  client_employee_ind STRING, is_owner_role BOOL) WITH primary_id_as_attribute="true";
+
+// V7c
+CREATE VERTEX phx_dm_pce_account_eci_map (PRIMARY_ID map_id STRING, acct_src_key STRING,
+  acct_src_raw STRING, wm_src_sys_cd STRING, eci_id STRING, bus_dt DATETIME,
+  new_exst_adv_clnt_in STRING) WITH primary_id_as_attribute="true";
+
+// V7d
+CREATE VERTEX phx_dm_pce_rpg (PRIMARY_ID rpg_id STRING, account_count INT)
+WITH primary_id_as_attribute="true";
+
+// V8
+CREATE VERTEX phx_dm_pce_team_agreement (PRIMARY_ID agreement_key STRING, agreement_id INT,
+  team_rep_cd STRING, agreement_type STRING, status_cd STRING, prm_advisor_sid STRING,
+  prm_share_pct DOUBLE, sec_advisor_sid STRING, sec_share_pct DOUBLE,
+  start_ts DATETIME, end_ts DATETIME) WITH primary_id_as_attribute="true";
+
+// V9
+CREATE VERTEX phx_dm_pce_revenue_transaction (PRIMARY_ID txn_id STRING, trade_ref_no STRING,
+  split_seq_no STRING, advisor_sid STRING, acct_key STRING, product_id STRING,
+  month_id STRING, trade_dt DATETIME, proc_dt DATETIME, days_to_process INT,
+  credited_amt DOUBLE, non_credited_amt DOUBLE, pre_split_amt DOUBLE, split_pct DOUBLE,
+  reason_cd STRING, is_credited BOOL, standard_rate_bps DOUBLE, client_rate_bps DOUBLE,
+  discount_amt DOUBLE, eff_disc_pct DOUBLE, grid_reduction DOUBLE, rpg STRING,
+  concession_type STRING, file_key STRING, trade_description STRING)
+WITH primary_id_as_attribute="true";
+
+// V10
+CREATE VERTEX phx_dm_pce_monthly_revenue (PRIMARY_ID mr_id STRING, advisor_sid STRING,
+  month_id STRING, product_id STRING, group_id STRING, class_id STRING,
+  credited_amt DOUBLE, non_credited_amt DOUBLE, txn_count INT, distinct_accounts INT)
+WITH primary_id_as_attribute="true";
+
+// V11
+CREATE VERTEX phx_dm_pce_account_month (PRIMARY_ID am_id STRING, acct_key STRING,
+  advisor_sid STRING, month_id STRING, end_balance DOUBLE, credited_amt DOUBLE,
+  txn_count INT, is_zero_balance BOOL, present_prior_month BOOL,
+  prior_end_balance DOUBLE, prior_credited_amt DOUBLE)
+WITH primary_id_as_attribute="true";
+
+// V12
+CREATE VERTEX phx_dm_pce_account_transfer (PRIMARY_ID transfer_id STRING, acct_key STRING,
+  from_advisor_sid STRING, to_advisor_sid STRING, from_rr STRING, to_rr STRING,
+  transfer_ts DATETIME, month_id STRING, is_intra_team BOOL, occd_cd STRING)
+WITH primary_id_as_attribute="true";
+
+// V13
+CREATE VERTEX phx_dm_pce_advisor_flow_month (PRIMARY_ID afm_id STRING, advisor_sid STRING,
+  month_id STRING, flow_product_cd STRING, flow_product_desc STRING, comp_group_type STRING,
+  total_inflows DOUBLE, total_outflows DOUBLE, total_net_flows DOUBLE, credited_flows DOUBLE,
+  departed_advisor_sid STRING, departed_advisor_excl_am DOUBLE, lob_trfr_excl_am DOUBLE,
+  oi_pa_referral_cap_adj_am DOUBLE, large_flow_cap_adj_am DOUBLE, forced_closure_excl_am DOUBLE)
+WITH primary_id_as_attribute="true";
+
+// V16 (Round F2 task 2) — CRM pipeline matching the REAL Salesforce extract
+// (replaces the V14 dummy shape). amount = forecast pipeline value;
+// actual_assets = assets that landed (NEVER summed together — DECISIONS.md
+// 2026-08-16). advisor_sid_raw keeps values like I817209_CWM_INVALID;
+// advisor_valid=false marks them (reported, never dropped or silently joined).
+// stage_group is derived EARLY|MID|LATE|CLOSING — the source has NO Won/Lost
+// stage and none is invented. ai_read* is the labelled LLM interpretation of
+// the verbatim comments field: descriptive only, never drives a figure.
+CREATE VERTEX phx_dm_pce_opportunity (PRIMARY_ID opportunity_id STRING, eci_id STRING,
+  advisor_sid STRING, advisor_sid_raw STRING, advisor_valid BOOL,
+  account_record_type STRING, product_service_type STRING, stage_name STRING,
+  stage_group STRING, amount DOUBLE, actual_assets DOUBLE,
+  anticipated_investment_dt DATETIME, created_dt DATETIME,
+  last_modified_dt DATETIME, date_of_last_contact DATETIME, days_to_close INT,
+  is_stalled BOOL, comments STRING, ai_read STRING, ai_read_confidence DOUBLE,
+  ai_read_evidence STRING, ai_read_model STRING, data_source STRING)
+WITH primary_id_as_attribute="true";
+
+// V16 (Round F2 task 4) — advisor NNM by category from the four monthly files
+// (ECNNM/NBNNM/YINNM/FSNNM). category_source keeps the raw file prefix: EC is
+// confirmed by the plan document ("Existing Client Annual NNM Flows"); NB/YI/
+// FS are inferred from filenames and correctable without re-parsing. Negative
+// values in both NNM columns are real, not errors.
+CREATE VERTEX phx_dm_pce_advisor_nnm (PRIMARY_ID nnm_id STRING,
+  advisor_sid STRING, month_id STRING, category STRING, category_source STRING,
+  mtd_nnm DOUBLE, ytd_nnm DOUBLE, entry_dt DATETIME, as_of_dt DATETIME)
+WITH primary_id_as_attribute="true";
+
+// ---------------------------------------------------------------------------
+// §2 App-written vertices (12) — empty at load
+// ---------------------------------------------------------------------------
+
+CREATE VERTEX phx_dm_pce_document (PRIMARY_ID document_id STRING, document_name STRING,
+  document_type STRING, page_count INT, content_hash STRING, status STRING,
+  uploaded_at DATETIME) WITH primary_id_as_attribute="true";
+
+CREATE VERTEX phx_dm_pce_document_chunk (PRIMARY_ID chunk_id STRING, document_id STRING,
+  chunk_index INT, page_no INT, section_path STRING, chunk_text STRING,
+  has_table BOOL, chroma_collection STRING) WITH primary_id_as_attribute="true";
+
+CREATE VERTEX phx_dm_pce_rule_set_version (PRIMARY_ID version_id STRING, version_no INT,
+  status STRING, rule_count INT, approved_by STRING, approved_at DATETIME, notes STRING)
+WITH primary_id_as_attribute="true";
+
+CREATE VERTEX phx_dm_pce_rule (PRIMARY_ID rule_key STRING, version_id STRING, rule_code STRING,
+  rule_name STRING, statement STRING, worked_example STRING, kind STRING,
+  plan_json STRING, explanation STRING, missing_note STRING, grain STRING,
+  provenance STRING, confidence DOUBLE, status STRING) WITH primary_id_as_attribute="true";
+
+CREATE VERTEX phx_dm_pce_insight_run (PRIMARY_ID run_id STRING, advisor_sid STRING,
+  from_month_id STRING, to_month_id STRING, version_id STRING, status STRING,
+  query_count INT, budget_hit BOOL, budget_hit_tokens BOOL, started_at DATETIME,
+  completed_at DATETIME, narrative STRING, bullets_json STRING,
+  total_input_tokens INT, total_output_tokens INT, total_cache_read_tokens INT,
+  est_cost_usd DOUBLE, wall_ms INT) WITH primary_id_as_attribute="true";
+
+CREATE VERTEX phx_dm_pce_finding (PRIMARY_ID finding_id STRING, run_id STRING, title STRING,
+  summary STRING, impact_amt DOUBLE, driver_code STRING, product_id STRING,
+  provenance STRING, rule_key STRING, rank_order INT) WITH primary_id_as_attribute="true";
+
+CREATE VERTEX phx_dm_pce_evidence_row (PRIMARY_ID evidence_id STRING, finding_id STRING,
+  row_index INT, row_json STRING) WITH primary_id_as_attribute="true";
+
+CREATE VERTEX phx_dm_pce_agent_query_log (PRIMARY_ID query_id STRING, run_id STRING,
+  seq_no INT, agent_name STRING, query_name STRING, params_json STRING,
+  row_count INT, latency_ms INT) WITH primary_id_as_attribute="true";
+
+// One row per LLM turn (miner, reporter, extractor, conflict auditor). Token
+// fields come from the provider's response.usage — never estimated.
+// turn_id = run_id || '|' || seq_no.
+CREATE VERTEX phx_dm_pce_agent_turn_log (PRIMARY_ID turn_id STRING, run_id STRING,
+  seq_no INT, agent_name STRING, model STRING, input_tokens INT, output_tokens INT,
+  cache_read_tokens INT, cache_write_tokens INT, latency_ms INT, action_kind STRING,
+  query_name STRING, est_cost_usd DOUBLE) WITH primary_id_as_attribute="true";
+
+// Round A2B task 7 — feature-flag state (app-written; the FlagStore's runtime
+// upsert is its loading job — precedent: phx_dm_pce_agent_turn_log). History
+// lives in the app's durable SQLite; the vertex carries the current state.
+CREATE VERTEX phx_dm_pce_feature_flag (PRIMARY_ID flag_key STRING, enabled BOOL,
+  updated_at STRING, updated_by STRING, note_reason STRING, note_at STRING)
+  WITH primary_id_as_attribute="true";
+
+// Round E chat (Tasks 4–5) — conversations and messages (app-written; the
+// ChatStore's runtime upsert is its loading job — precedent:
+// phx_dm_pce_agent_turn_log). Global persistence for now: every user sees
+// every conversation (demo simplification recorded in DECISIONS.md).
+CREATE VERTEX phx_dm_pce_conversation (PRIMARY_ID conversation_id STRING, title STRING,
+  created_at DATETIME, updated_at DATETIME, message_count INT)
+  WITH primary_id_as_attribute="true";
+
+// message_id = conversation_id || '|' || seq_no. Token/cost fields feed the
+// Trace screen like every other agent call. guardrail_json / extra_json stay
+// in the app's durable SQLite only (data/runtime/chat.db).
+CREATE VERTEX phx_dm_pce_chat_message (PRIMARY_ID message_id STRING, conversation_id STRING,
+  seq_no INT, role STRING, text STRING, tool_calls_json STRING, guardrail_tag STRING,
+  guardrail_confidence DOUBLE, reasoning_steps_json STRING, latency_ms INT,
+  tokens_in INT, tokens_out INT, est_cost_usd DOUBLE, created_at DATETIME)
+  WITH primary_id_as_attribute="true";

@@ -30,6 +30,19 @@
       EXPLICIT: GET/POST /api/jobs + /{id}/resume (?resume=1 on
       extract-rules). All suites green (a25 b19 c13 e8 h9 a1-17, flags 8,
       manual 17, nnm 19).
+- [x] Task 3 (main thread): migrations/001_exceptions_and_jobs.gsql — one
+      GLOBAL SCHEMA_CHANGE JOB (valid on an installed 4.2.2 graph): the eight
+      rule attributes + phx_dm_pce_job + both edges ADDed to the graph; NO
+      DROP or data-touching statement anywhere. F2 baseline snapshotted from
+      commit 388bf22 into migrations/baseline_f2/.
+      scripts/verify_schema_parity.py: parses GSQL, applies the migration to
+      the baseline IN MEMORY and requires equality with the clean install
+      (names AND types), plus data-safety scan, 03_create_graph exact type
+      list, schema_catalog==DDL both ways, and 90_drop_all exact-reverse
+      order — 13 PASS on 31V/44E; a deliberately corrupted migration fails
+      SP-4 naming the missing attribute (proven). Manifest +
+      generate_mock_data untouched BY THE CHECKLIST'S OWN RULE (both
+      additions are app-written — no CSV load).
 
 ## Round F2 (docs/spec/ROUND_F2_CRM_NNM_SPEC.md) — real CRM data, NNM, plan-unlocked rules
 - [x] Task 1 (main thread, d5eb45c): discovery AUTHORED, not run — no client

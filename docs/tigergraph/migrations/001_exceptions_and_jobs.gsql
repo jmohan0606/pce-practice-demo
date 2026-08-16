@@ -1,0 +1,56 @@
+// Round 1 (schema freeze) — migration 001: exception configuration + jobs.
+//
+// FOR AN ENVIRONMENT WHERE THE ROUND-F2 SCHEMA IS ALREADY INSTALLED (30
+// vertices / 42 edges) and may already hold loaded data. A full reinstall
+// would drop that data — this file is the delta and NOTHING here touches
+// data: no DROP, no DELETE, no UPDATE, no loading statement of any kind.
+//
+// A fresh environment skips this file and installs 01_vertices.gsql →
+// 02_edges.gsql → 03_create_graph.gsql instead. The two paths MUST converge
+// on the identical schema — scripts/verify_schema_parity.py asserts it
+// (baseline_f2/ + this migration == clean install), so the environments can
+// never silently diverge.
+USE GLOBAL
+
+// ---------------------------------------------------------------------------
+// 1. New global types: the job vertex (app-written; the JobStore's runtime
+// upsert is its loading job — no loading job is created here) and its edges.
+// ---------------------------------------------------------------------------
+CREATE VERTEX phx_dm_pce_job (PRIMARY_ID job_id STRING, kind STRING,
+  scope_key STRING, stage STRING, stage_index INT, stage_total INT,
+  items_done INT, items_total INT, status STRING, resume_token STRING,
+  error STRING, started_at DATETIME, updated_at DATETIME,
+  completed_at DATETIME) WITH primary_id_as_attribute="true";
+
+CREATE DIRECTED EDGE phx_dm_pce_job_for_document (FROM phx_dm_pce_job, TO phx_dm_pce_document) WITH REVERSE_EDGE="phx_dm_pce_document_has_job";
+CREATE DIRECTED EDGE phx_dm_pce_job_for_run (FROM phx_dm_pce_job, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_job";
+
+// ---------------------------------------------------------------------------
+// 2. One global schema-change job carries both alterations:
+//    - the eight exception-configuration attributes on phx_dm_pce_rule
+//      (driver_enabled / exception_enabled are INDEPENDENT toggles;
+//      exception_denominator makes the exception a rate; floor(+unit)
+//      suppresses small-book noise; sensitivity is a multiple of the cohort
+//      median; product_scope is extracted from the plan document with
+//      product_scope_source its citation or "NOT STATED"). Existing rule
+//      rows keep working — new attributes default empty and the application
+//      store backfills defaults at read (setdefault).
+//    - the three new types added to the installed graph. Additive only; the
+//      graph keeps its data.
+// ---------------------------------------------------------------------------
+CREATE GLOBAL SCHEMA_CHANGE JOB migration_001_exceptions_and_jobs {
+  ALTER VERTEX phx_dm_pce_rule ADD ATTRIBUTE (
+    driver_enabled BOOL,
+    exception_enabled BOOL,
+    exception_denominator STRING,
+    exception_floor DOUBLE,
+    exception_floor_unit STRING,
+    exception_sensitivity DOUBLE,
+    product_scope STRING,
+    product_scope_source STRING
+  );
+  ADD VERTEX phx_dm_pce_job TO GRAPH phx_dm_pce_practice_demo;
+  ADD EDGE phx_dm_pce_job_for_document TO GRAPH phx_dm_pce_practice_demo;
+  ADD EDGE phx_dm_pce_job_for_run TO GRAPH phx_dm_pce_practice_demo;
+}
+RUN GLOBAL SCHEMA_CHANGE JOB migration_001_exceptions_and_jobs

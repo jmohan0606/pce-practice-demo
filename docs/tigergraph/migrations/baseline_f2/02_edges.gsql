@@ -1,0 +1,72 @@
+// pce-practice-demo — edge DDL (42 directed edge types, each with a reverse edge)
+// Source: docs/spec/SCHEMA_SPEC.md §3
+// Target: TigerGraph 4.2.2, GSQL Syntax V1. Run after 01_vertices.gsql, before 03_create_graph.gsql.
+USE GLOBAL
+
+// product chain
+CREATE DIRECTED EDGE phx_dm_pce_product_in_group (FROM phx_dm_pce_product, TO phx_dm_pce_product_group) WITH REVERSE_EDGE="phx_dm_pce_group_has_product";
+CREATE DIRECTED EDGE phx_dm_pce_group_in_class (FROM phx_dm_pce_product_group, TO phx_dm_pce_revenue_class) WITH REVERSE_EDGE="phx_dm_pce_class_has_group";
+
+// transactions
+CREATE DIRECTED EDGE phx_dm_pce_txn_by_advisor (FROM phx_dm_pce_revenue_transaction, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_has_txn";
+CREATE DIRECTED EDGE phx_dm_pce_txn_for_account (FROM phx_dm_pce_revenue_transaction, TO phx_dm_pce_account) WITH REVERSE_EDGE="phx_dm_pce_account_has_txn";
+CREATE DIRECTED EDGE phx_dm_pce_txn_of_product (FROM phx_dm_pce_revenue_transaction, TO phx_dm_pce_product) WITH REVERSE_EDGE="phx_dm_pce_product_has_txn";
+CREATE DIRECTED EDGE phx_dm_pce_txn_in_month (FROM phx_dm_pce_revenue_transaction, TO phx_dm_pce_month) WITH REVERSE_EDGE="phx_dm_pce_month_has_txn";
+
+// monthly aggregates
+CREATE DIRECTED EDGE phx_dm_pce_mr_by_advisor (FROM phx_dm_pce_monthly_revenue, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_has_mr";
+CREATE DIRECTED EDGE phx_dm_pce_mr_in_month (FROM phx_dm_pce_monthly_revenue, TO phx_dm_pce_month) WITH REVERSE_EDGE="phx_dm_pce_month_has_mr";
+CREATE DIRECTED EDGE phx_dm_pce_mr_of_product (FROM phx_dm_pce_monthly_revenue, TO phx_dm_pce_product) WITH REVERSE_EDGE="phx_dm_pce_product_has_mr";
+CREATE DIRECTED EDGE phx_dm_pce_mr_in_group (FROM phx_dm_pce_monthly_revenue, TO phx_dm_pce_product_group) WITH REVERSE_EDGE="phx_dm_pce_group_has_mr";
+
+// account month
+CREATE DIRECTED EDGE phx_dm_pce_am_for_account (FROM phx_dm_pce_account_month, TO phx_dm_pce_account) WITH REVERSE_EDGE="phx_dm_pce_account_has_am";
+CREATE DIRECTED EDGE phx_dm_pce_am_by_advisor (FROM phx_dm_pce_account_month, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_has_am";
+CREATE DIRECTED EDGE phx_dm_pce_am_in_month (FROM phx_dm_pce_account_month, TO phx_dm_pce_month) WITH REVERSE_EDGE="phx_dm_pce_month_has_am";
+
+// household / eci
+CREATE DIRECTED EDGE phx_dm_pce_account_in_household (FROM phx_dm_pce_account, TO phx_dm_pce_household) WITH REVERSE_EDGE="phx_dm_pce_household_has_account";
+CREATE DIRECTED EDGE phx_dm_pce_rel_of_account (FROM phx_dm_pce_account_eci_rel, TO phx_dm_pce_account) WITH REVERSE_EDGE="phx_dm_pce_account_has_rel";
+CREATE DIRECTED EDGE phx_dm_pce_rel_to_household (FROM phx_dm_pce_account_eci_rel, TO phx_dm_pce_household) WITH REVERSE_EDGE="phx_dm_pce_household_has_rel";
+CREATE DIRECTED EDGE phx_dm_pce_map_of_account (FROM phx_dm_pce_account_eci_map, TO phx_dm_pce_account) WITH REVERSE_EDGE="phx_dm_pce_account_has_map";
+CREATE DIRECTED EDGE phx_dm_pce_map_to_household (FROM phx_dm_pce_account_eci_map, TO phx_dm_pce_household) WITH REVERSE_EDGE="phx_dm_pce_household_has_map";
+
+// rpg
+CREATE DIRECTED EDGE phx_dm_pce_account_in_rpg (FROM phx_dm_pce_account, TO phx_dm_pce_rpg) WITH REVERSE_EDGE="phx_dm_pce_rpg_has_account";
+CREATE DIRECTED EDGE phx_dm_pce_txn_in_rpg (FROM phx_dm_pce_revenue_transaction, TO phx_dm_pce_rpg) WITH REVERSE_EDGE="phx_dm_pce_rpg_has_txn";
+
+// transfers
+CREATE DIRECTED EDGE phx_dm_pce_transfer_of_account (FROM phx_dm_pce_account_transfer, TO phx_dm_pce_account) WITH REVERSE_EDGE="phx_dm_pce_account_has_transfer";
+CREATE DIRECTED EDGE phx_dm_pce_transfer_from (FROM phx_dm_pce_account_transfer, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_transferred_out";
+CREATE DIRECTED EDGE phx_dm_pce_transfer_to (FROM phx_dm_pce_account_transfer, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_transferred_in";
+
+// team
+CREATE DIRECTED EDGE phx_dm_pce_team_primary (FROM phx_dm_pce_team_agreement, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_primary_on";
+CREATE DIRECTED EDGE phx_dm_pce_team_secondary (FROM phx_dm_pce_team_agreement, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_secondary_on";
+
+// flows
+CREATE DIRECTED EDGE phx_dm_pce_flow_by_advisor (FROM phx_dm_pce_advisor_flow_month, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_has_flow";
+CREATE DIRECTED EDGE phx_dm_pce_flow_in_month (FROM phx_dm_pce_advisor_flow_month, TO phx_dm_pce_month) WITH REVERSE_EDGE="phx_dm_pce_month_has_flow";
+
+// opportunity (CRM pipeline — real Salesforce extract shape since Round F2, joined through ECI)
+CREATE DIRECTED EDGE phx_dm_pce_opportunity_for_household (FROM phx_dm_pce_opportunity, TO phx_dm_pce_household) WITH REVERSE_EDGE="phx_dm_pce_household_has_opportunity";
+CREATE DIRECTED EDGE phx_dm_pce_opportunity_by_advisor (FROM phx_dm_pce_opportunity, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_has_opportunity";
+
+// advisor NNM (Round F2 — the four category files; flow_month edge convention)
+CREATE DIRECTED EDGE phx_dm_pce_nnm_by_advisor (FROM phx_dm_pce_advisor_nnm, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_has_nnm";
+CREATE DIRECTED EDGE phx_dm_pce_nnm_in_month (FROM phx_dm_pce_advisor_nnm, TO phx_dm_pce_month) WITH REVERSE_EDGE="phx_dm_pce_month_has_nnm";
+
+// rules & insights (app-written)
+CREATE DIRECTED EDGE phx_dm_pce_chunk_of_document (FROM phx_dm_pce_document_chunk, TO phx_dm_pce_document) WITH REVERSE_EDGE="phx_dm_pce_document_has_chunk";
+CREATE DIRECTED EDGE phx_dm_pce_rule_in_version (FROM phx_dm_pce_rule, TO phx_dm_pce_rule_set_version) WITH REVERSE_EDGE="phx_dm_pce_version_has_rule";
+CREATE DIRECTED EDGE phx_dm_pce_rule_cites_chunk (FROM phx_dm_pce_rule, TO phx_dm_pce_document_chunk) WITH REVERSE_EDGE="phx_dm_pce_chunk_supports_rule";
+CREATE DIRECTED EDGE phx_dm_pce_run_uses_version (FROM phx_dm_pce_insight_run, TO phx_dm_pce_rule_set_version) WITH REVERSE_EDGE="phx_dm_pce_version_used_by_run";
+CREATE DIRECTED EDGE phx_dm_pce_run_for_advisor (FROM phx_dm_pce_insight_run, TO phx_dm_pce_advisor) WITH REVERSE_EDGE="phx_dm_pce_advisor_has_run";
+CREATE DIRECTED EDGE phx_dm_pce_finding_in_run (FROM phx_dm_pce_finding, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_finding";
+CREATE DIRECTED EDGE phx_dm_pce_finding_matched_rule (FROM phx_dm_pce_finding, TO phx_dm_pce_rule) WITH REVERSE_EDGE="phx_dm_pce_rule_produced_finding";
+CREATE DIRECTED EDGE phx_dm_pce_evidence_of_finding (FROM phx_dm_pce_evidence_row, TO phx_dm_pce_finding) WITH REVERSE_EDGE="phx_dm_pce_finding_has_evidence";
+CREATE DIRECTED EDGE phx_dm_pce_query_in_run (FROM phx_dm_pce_agent_query_log, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_query";
+CREATE DIRECTED EDGE phx_dm_pce_turn_in_run (FROM phx_dm_pce_agent_turn_log, TO phx_dm_pce_insight_run) WITH REVERSE_EDGE="phx_dm_pce_run_has_turn";
+
+// chat (Round E, app-written — precedent: phx_dm_pce_turn_in_run)
+CREATE DIRECTED EDGE phx_dm_pce_message_in_conversation (FROM phx_dm_pce_chat_message, TO phx_dm_pce_conversation) WITH REVERSE_EDGE="phx_dm_pce_conversation_has_message";
