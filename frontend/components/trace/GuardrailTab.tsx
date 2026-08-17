@@ -14,6 +14,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import EmptyState from "@/components/EmptyState";
+import { Pager, usePager } from "@/components/Pager";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ||
@@ -88,6 +89,8 @@ export default function GuardrailTab() {
     });
 
   const summaryTags = data ? Object.keys(data.summary).sort() : [];
+  // Task 12c — the classification log paginates (5/10/20, default 5)
+  const pager = usePager(data?.rows ?? []);
 
   return (
     <div className="card">
@@ -145,7 +148,7 @@ export default function GuardrailTab() {
                 </tr>
               </thead>
               <tbody>
-                {data.rows.map((r) => {
+                {pager.rows.map((r) => {
                   const isLong = r.message.length > TRUNCATE_AT;
                   const isOpen = expanded.has(r.message_id);
                   const shown =
@@ -193,6 +196,7 @@ export default function GuardrailTab() {
                 })}
               </tbody>
             </table>
+            <Pager {...pager} noun="messages" />
           </div>
         ) : data && !error ? (
           <EmptyState

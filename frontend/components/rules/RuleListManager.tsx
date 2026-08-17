@@ -26,8 +26,17 @@ import {
   getExtractionSummary,
   getRulesDetailed,
 } from "@/lib/api";
-import { RulesApiError, deleteRules, setRuleActive } from "@/lib/rulesApi";
+import {
+  type CompileAttempt,
+  RulesApiError,
+  deleteRules,
+  recompileRule,
+  setRuleActive,
+} from "@/lib/rulesApi";
+import { Pager, usePager } from "@/components/Pager";
 import AppliesToChip from "@/components/rules/AppliesToChip";
+import AttemptCompare from "@/components/rules/AttemptCompare";
+import PlanView from "@/components/rules/PlanView";
 import ProvenanceChip from "@/components/rules/ProvenanceChip";
 import ReasonModal from "@/components/rules/ReasonModal";
 import SeverityChip from "@/components/rules/SeverityChip";
@@ -47,6 +56,13 @@ const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MODERATE", "LOW", "INFO"];
 function keyOf(rule: RuleDetail): string {
   return rule.rule_key || rule.rule_code;
 }
+
+/** Compile attempts are serialized on draft rules; lib/api's RuleDetail does
+ * not declare them, so read structurally. */
+type WithAttempts = RuleDetail & {
+  compile_attempts?: CompileAttempt[];
+  picked_attempt_no?: number | null;
+};
 
 /** The API serializes version_id on every rule; lib/api's RuleDetail (main
  * thread owned) does not declare it yet, so read it structurally. */
@@ -83,6 +99,11 @@ export default function RuleListManager() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [reasonFor, setReasonFor] = useState<RuleDetail | null>(null);
   const [busy, setBusy] = useState(false);
+  // Task 12a — retry query generation, moved here from the old page column
+  const [retryFor, setRetryFor] = useState<string | null>(null);
+  const [retryNote, setRetryNote] = useState("");
+  const [retryBusy, setRetryBusy] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
   // filters — "" means All
   const [fStatus, setFStatus] = useState("");
   const [fProvenance, setFProvenance] = useState("");
@@ -167,6 +188,23 @@ export default function RuleListManager() {
     [pools, matchesFilters],
   );
 
+  // Task 12a — ONE flat, paginated list at page width: drafts in review order
+  // (compiled → draft → needs-input → needs-data), then the published version.
+  // Status is carried by each row's StatusChip.
+  const groupOrder = (r: RuleDetail) => {
+    const i = DRAFT_GROUPS.findIndex((g) => g.status === (r.status || "DRAFT"));
+    return i === -1 ? DRAFT_GROUPS.length : i;
+  };
+  const flatRules = useMemo(
+    () => [
+      ...[...filteredDrafts].sort((a, b) => groupOrder(a) - groupOrder(b) || a.rule_code.localeCompare(b.rule_code)),
+      ...[...filteredPublished].sort((a, b) => a.rule_code.localeCompare(b.rule_code)),
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredDrafts, filteredPublished],
+  );
+  const pager = usePager(flatRules);
+
   const selectedRules = useMemo(
     () => allRules.filter((r) => selected.has(keyOf(r))),
     [allRules, selected],
@@ -220,6 +258,25 @@ export default function RuleListManager() {
       setActionError(errText(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const runRetry = async (ruleKey: string) => {
+    setRetryBusy(true);
+    setRetryError(null);
+    try {
+      await recompileRule(ruleKey, retryNote);
+      setRetryFor(null);
+      setRetryNote("");
+      refresh();
+    } catch (e) {
+      setRetryError(
+        e instanceof RulesApiError && (e.status === 0 || e.status === 404)
+          ? "The recompile service is not reachable."
+          : errText(e),
+      );
+    } finally {
+      setRetryBusy(false);
     }
   };
 
@@ -287,6 +344,76 @@ export default function RuleListManager() {
             {rule.active_changed_at ? `, ${rule.active_changed_at}` : ""}
           </div>
         ) : null}
+        {/* Task 12a / C2 — compiled query COLLAPSED by default, expand to view */}
+        {rule.plan || rule.natural_language_only ? (
+          <details className="tech" style={{ marginTop: 6 }}>
+            <summary>Query this compiles to</summary>
+            <PlanView
+              plan={rule.plan}
+              explanation={rule.explanation}
+              naturalLanguageOnly={rule.natural_language_only === true}
+            />
+          </details>
+        ) : null}
+        {/* Task 12a / C2 — attempts open ON CLICK, never inline-always */}
+        {rule.rule_key && ((rule as WithAttempts).compile_attempts?.length ?? 0) > 0 ? (
+          <details className="tech" style={{ marginTop: 6 }}>
+            <summary>
+              {(rule as WithAttempts).compile_attempts?.length} compile attempt
+              {((rule as WithAttempts).compile_attempts?.length ?? 0) === 1 ? "" : "s"} — open to
+              compare and pick
+            </summary>
+            <AttemptCompare
+              ruleKey={rule.rule_key}
+              attempts={(rule as WithAttempts).compile_attempts ?? []}
+              pickedAttemptNo={(rule as WithAttempts).picked_attempt_no}
+              onPicked={refresh}
+            />
+          </details>
+        ) : null}
+        {/* Task 12a — retry / generate query on unapproved computed rules */}
+        {!approved &&
+        rule.rule_key &&
+        ["DRAFT", "COMPILED", "NEEDS_DATA"].includes((rule.status || "DRAFT").toUpperCase()) &&
+        !rule.natural_language_only ? (
+          <div style={{ marginTop: 6 }}>
+            {retryFor === rule.rule_key ? (
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  className="filter"
+                  style={{ flex: 1, minWidth: 220 }}
+                  placeholder="Optional note for the compiler — e.g. “this should be at RPG level, not account”"
+                  value={retryNote}
+                  onChange={(e) => setRetryNote(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !retryBusy) runRetry(rule.rule_key as string);
+                    if (e.key === "Escape") setRetryFor(null);
+                  }}
+                />
+                <button className="btn primary" disabled={retryBusy} onClick={() => runRetry(rule.rule_key as string)}>
+                  {retryBusy ? "Compiling…" : "Ask for another plan"}
+                </button>
+                <button className="btn" disabled={retryBusy} onClick={() => setRetryFor(null)}>
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                className="btn"
+                onClick={() => {
+                  setRetryFor(rule.rule_key as string);
+                  setRetryNote("");
+                  setRetryError(null);
+                }}
+              >
+                {rule.plan ? "Retry query generation" : "Generate query"}
+              </button>
+            )}
+            {retryError && retryFor === rule.rule_key ? (
+              <div style={{ color: "var(--neg, #B3261E)", fontSize: 12.5, marginTop: 4 }}>{retryError}</div>
+            ) : null}
+          </div>
+        ) : null}
         {approved ? (
           <div className="rule-f">
             <span className="techsrc">
@@ -304,37 +431,6 @@ export default function RuleListManager() {
             </button>
           </div>
         ) : null}
-      </div>
-    );
-  };
-
-  const group = (label: string, rules: RuleDetail[], selectable: boolean) => {
-    if (!rules.length) return null;
-    const allOn = rules.every((r) => selected.has(keyOf(r)));
-    return (
-      <div key={label} style={{ marginBottom: 14 }}>
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            padding: "6px 0",
-            borderBottom: "1px solid var(--rule)",
-            marginBottom: 8,
-          }}
-        >
-          {selectable ? (
-            <input
-              type="checkbox"
-              checked={allOn}
-              onChange={(e) => toggleGroup(rules, e.target.checked)}
-              aria-label={`Select all in ${label}`}
-            />
-          ) : null}
-          <b style={{ fontSize: 12.5 }}>{label}</b>
-          <span style={{ fontSize: 12, color: "var(--slate)" }}>{rules.length}</span>
-        </div>
-        {rules.map((r) => ruleRow(r, selectable))}
       </div>
     );
   };
@@ -467,19 +563,36 @@ export default function RuleListManager() {
         </div>
       ) : null}
 
-      {/* draft pool — selectable, grouped by status with select-all */}
-      {DRAFT_GROUPS.map((g) =>
-        group(g.label, draftByStatus(g.status).filter(matchesFilters), true),
-      )}
-      {/* approved rules — selectable so a mixed selection is honestly disabled,
-          with deactivate/reactivate instead of delete */}
-      {group(
-        pools.version?.version_no != null
-          ? `Published — Version ${pools.version.version_no}`
-          : "Published",
-        filteredPublished,
-        true,
-      )}
+      {/* Task 12a — ONE flat rules list at page width, paginated 5/10/20.
+          Status, provenance, scope and severity ride on each row's chips;
+          select-all covers every filtered rule, not just the page. */}
+      {flatRules.length ? (
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            padding: "6px 0",
+            borderBottom: "1px solid var(--rule)",
+            marginBottom: 8,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={flatRules.every((r) => selected.has(keyOf(r)))}
+            onChange={(e) => toggleGroup(flatRules, e.target.checked)}
+            aria-label="Select every rule matching the current filters"
+          />
+          <b style={{ fontSize: 12.5 }}>
+            {pools.version?.version_no != null
+              ? `Draft pool + published v${pools.version.version_no}`
+              : "Draft pool"}
+          </b>
+          <span style={{ fontSize: 12, color: "var(--slate)" }}>{flatRules.length} rules</span>
+        </div>
+      ) : null}
+      {pager.rows.map((r) => ruleRow(r, true))}
+      <Pager {...pager} noun="rules" />
       {!filteredDrafts.length && !filteredPublished.length ? (
         <div className="note" style={{ border: "1px solid var(--rule)", borderRadius: 5 }}>
           No rules match the current filters.

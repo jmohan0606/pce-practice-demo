@@ -13,6 +13,7 @@ import {
 import { RulesApiError, setRuleActive } from "@/lib/rulesApi";
 import Chip from "@/components/Chip";
 import EmptyState from "@/components/EmptyState";
+import { Pager, usePager } from "@/components/Pager";
 import PageHeader from "@/components/PageHeader";
 import RuleCitationLine from "@/components/RuleCitation";
 import AppliesToChip from "@/components/rules/AppliesToChip";
@@ -143,6 +144,12 @@ export default function RuleVersionsPage() {
     }
   };
 
+  // Task 12b — the versions list paginates (5/10/20, default 5); v0 sits on
+  // the last page and is fully expandable and editable like any other version.
+  const verPager = usePager(versions ?? []);
+  // Task 12b — the never-fired list paginates too
+  const neverFiredPager = usePager(neverFired?.never_fired ?? []);
+
   // Resolve the compare pair oldest → newest by version_no
   const comparePair =
     compareSel.length === 2 && versions
@@ -173,7 +180,7 @@ export default function RuleVersionsPage() {
           ) : null}
           {versions && versions.length ? (
             <ul className="vers">
-              {versions.map((v) => {
+              {verPager.rows.map((v) => {
                 const versionId = v.version_id ?? String(v.version_no);
                 const status = (v.status || "").toUpperCase();
                 const current = status === "PUBLISHED";
@@ -229,17 +236,15 @@ export default function RuleVersionsPage() {
                     </div>
                     {open ? (
                       rules ? (
-                        <div style={{ marginTop: 12 }}>
-                          {rules.map((r) => (
-                            <RuleRow
-                              key={r.rule_key ?? r.rule_code}
-                              rule={r}
-                              currentVersion={current}
-                              onEdit={() => setEditing(r)}
-                              onToggleActive={() => setTogglingActive(r)}
-                            />
-                          ))}
-                        </div>
+                        // Task 12b — per-version rule lists paginate; keyed so
+                        // the pager resets when a different version is opened
+                        <VersionRules
+                          key={versionId}
+                          rules={rules}
+                          currentVersion={current}
+                          onEdit={setEditing}
+                          onToggleActive={setTogglingActive}
+                        />
                       ) : (
                         <div className="meta" style={{ marginTop: 10 }}>
                           Loading rules…
@@ -256,6 +261,7 @@ export default function RuleVersionsPage() {
               message={error ?? "Published rule set versions will appear here."}
             />
           )}
+          {versions && versions.length ? <Pager {...verPager} noun="versions" /> : null}
         </div>
       </div>
 
@@ -314,7 +320,7 @@ export default function RuleVersionsPage() {
           {neverFired ? (
             neverFired.never_fired.length ? (
               <>
-                {neverFired.never_fired.map((r) => (
+                {neverFiredPager.rows.map((r) => (
                   <div key={r.rule_code} className="rule conflict">
                     <div className="rule-h">
                       <div>
@@ -334,6 +340,7 @@ export default function RuleVersionsPage() {
                     <div className="rule-d">{r.note}</div>
                   </div>
                 ))}
+                <Pager {...neverFiredPager} noun="rules" />
                 <div className="note" style={{ border: "1px solid var(--rule)", borderRadius: 5 }}>
                   Checked {neverFired.months.length} month
                   {neverFired.months.length === 1 ? "" : "s"} ({neverFired.months[0]} –{" "}
@@ -397,6 +404,37 @@ export default function RuleVersionsPage() {
         />
       ) : null}
     </section>
+  );
+}
+
+/** Task 12b — an expanded version's rules, paginated 5/10/20 (default 5).
+ * Every version's rules — v0 included — render in full detail with the Edit
+ * action; an edit mints a new version, never a mutation. */
+function VersionRules({
+  rules,
+  currentVersion,
+  onEdit,
+  onToggleActive,
+}: {
+  rules: RuleDetail[];
+  currentVersion: boolean;
+  onEdit: (rule: RuleDetail) => void;
+  onToggleActive: (rule: RuleDetail) => void;
+}) {
+  const pager = usePager(rules);
+  return (
+    <div style={{ marginTop: 12 }}>
+      {pager.rows.map((r) => (
+        <RuleRow
+          key={r.rule_key ?? r.rule_code}
+          rule={r}
+          currentVersion={currentVersion}
+          onEdit={() => onEdit(r)}
+          onToggleActive={() => onToggleActive(r)}
+        />
+      ))}
+      <Pager {...pager} noun="rules" />
+    </div>
   );
 }
 
