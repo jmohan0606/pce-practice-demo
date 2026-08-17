@@ -38,3 +38,14 @@ Run it for April, then change the dates for May (2026-05-01 / 2026-06-01) and Ju
 Save as raw_adv_flows_202604.csv and so on, in data/real/_raw/. Expect roughly 55k rows per month, ~167k total.
 
 If April still times out, run EXPLAIN on it and send me the plan
+
+
+-----------------------------------
+copilot text
+
+
+Good progress. Continue the transaction chunks to completion and report at 40, 60 and 87.
+
+Once transactions are done, retry flows as-is for one month — the merge join may now complete within 900s, since the earlier failures were the nested loop rather than the volume. If April still times out, split flows by month and advisor batch (three batches of ~2,000 advisors per month, nine sub-chunks) and report.
+
+Do not retry flows while transactions are still running.
