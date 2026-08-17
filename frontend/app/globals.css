@@ -25,7 +25,10 @@ a{color:var(--navy-hi)}
 .pill-tg{font-size:11.5px;color:var(--pos);background:var(--pos-bg);border:1px solid var(--pos-br);
   padding:3px 10px;border-radius:12px}
 .pill-tg.off{color:var(--slate);background:var(--tag-bg);border-color:var(--rule)}
-.wrap{max-width:1240px;margin:0 auto;padding:20px 24px 64px}
+/* Round 3 task 6.7 — components expand to the page width with modest
+   left/right padding; no horizontal scroll bar anywhere. */
+.wrap{max-width:none;margin:0 auto;padding:20px 32px 64px}
+@media(min-width:2000px){.wrap{max-width:1920px}}
 .card{background:#fff;border:1px solid var(--rule);border-radius:6px;margin-bottom:16px}
 .card-h{padding:16px 20px;border-bottom:1px solid var(--rule);display:flex;
   justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
@@ -488,3 +491,53 @@ input.filter{font:inherit;font-size:13px;border:1px solid var(--rule);background
   cursor:pointer;box-shadow:0 6px 20px rgba(16,28,44,.28);display:flex;gap:8px;
   align-items:center;z-index:60}
 /* ========================================================== end Round E chat */
+
+/* ============================================= Round 3 — shared UI foundations
+   (Phase 2, main thread. Subagents consume these; they never edit this file.) */
+
+/* 6.1 pagination — <Pager> */
+.pager{display:flex;justify-content:space-between;align-items:center;gap:12px;
+  padding:9px 14px;font-size:12.5px;color:var(--slate);border-top:1px solid var(--rule-2);
+  flex-wrap:wrap}
+.pager-ctl{display:flex;align-items:center;gap:8px}
+.pager-ctl select{padding:3px 6px;font-size:12.5px}
+.pager-ctl button{font:inherit;font-size:14px;border:1px solid var(--rule);background:#fff;
+  color:var(--ink);width:26px;height:26px;border-radius:4px;cursor:pointer;line-height:1}
+.pager-ctl button:disabled{opacity:.35;cursor:default}
+.pager-page{font-variant-numeric:tabular-nums}
+
+/* 6.2 comparison beneath every number — <CompareValue> */
+.cmpv{display:inline-flex;flex-direction:column;align-items:inherit}
+.cmpv-cur{font-weight:600}
+.cmpv-sub{font-size:11.5px;margin-top:1px;color:var(--slate);white-space:nowrap}
+td .cmpv,.num .cmpv{align-items:flex-end}
+
+/* 6.4 section headers are BOLD — "Why the number moved", metric-strip labels */
+.sec-h{font-weight:700;color:var(--ink)}
+.mstrip .k{font-weight:700;color:var(--ink)}
+.ev h4{font-weight:700;color:var(--ink)}
+.kpi .k{font-weight:700;color:var(--ink)}
+
+/* F6 — a narrow evidence table shrinks to its content, never stretches */
+.ev table{width:auto;min-width:320px;max-width:100%}
+.ev .why table,.why table{width:100%} /* the drill-down "why" tables keep full width */
+
+/* Round 3 task 7 — ONE toggle rule for every segmented control:
+   selected = bold, blue, highlighted; unselected = pale, not highlighted.
+   (On/off switches — .sw — keep their own styling by design.) */
+.pivot{background:var(--rule-2)}
+.pivot button{color:var(--slate-2);font-weight:500}
+.pivot button:hover{color:var(--slate)}
+.pivot button[aria-selected="true"],.pivot button[aria-pressed="true"]{
+  background:#E8F0FB;color:var(--navy);font-weight:700;
+  box-shadow:inset 0 0 0 1px var(--navy-hi),0 1px 2px rgba(0,0,0,.06)}
+
+/* F7 — product and driver names inside a table row are headers: highlighted */
+.rowhead{font-weight:700;color:var(--navy)}
+
+/* D6 — the New tag renders bold / highlighted */
+.chip.newtag{background:#E8F0FB;color:var(--navy);font-weight:700}
+
+/* collapsed-by-default evidence note (F3) */
+.ev-note{font-size:12px;color:var(--slate);margin:6px 0 2px}
+/* ====================================================== end Round 3 shared */
