@@ -1,10 +1,25 @@
-Stop the extraction loop. You are retrying a failing chunk rather than making progress.
+The rpg::text fix is in scripts/generate_extraction_sql.py but the query that actually ran shows COALESCE(d.rpg,'') without the cast. The executing SQL is not coming from the patched source.
 
-Report, without running any extraction:
+Find where the stale copy is:
 
-cat data/real/_raw/extract_checkpoint.json — how many chunks completed, and the last one
-ls -la data/real/_raw/*.csv | wc -l
-The exact error from the most recent failed attempt, in full
-Was the rpg::text cast actually applied? Show the line from scripts/generate_extraction_sql.py
+bash
+grep -rn "COALESCE(d.rpg" scripts/ docs/data/extraction/ 2>/dev/null
+find . -name "*.pyc" -path "*generate_extraction*"
+ls -la docs/data/extraction/raw_revenue_transaction.sql 2>/dev/null
 
-Do not retry anything until you have reported these four things.
+Most likely one of:
+
+a generated .sql file in docs/data/extraction/ written before the fix, being read instead of the template
+a __pycache__ copy of generate_extraction_sql
+a long-running process holding the old module in memory
+
+Fix it: delete any stale generated .sql, clear __pycache__, and start a completely new process — do not resume inside the existing one.
+
+Then, before running the full chunk, prove the fix is live by printing the generated SQL:
+
+bash
+python3 -c "from scripts.generate_extraction_sql import templates; print(templates()['raw_revenue_transaction.sql'][:600])"
+
+The rpg line must show ::text. Do not run another chunk until that output confirms it.
+
+Then resume without --skip.
