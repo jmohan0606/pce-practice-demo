@@ -347,6 +347,26 @@ Context: The spec ships three rules with exception_enabled=true: "fee reduction 
 Decision: EXCEPTION_DEFAULT_RULE_CODES = {DISCOUNT_SHARING_THRESHOLD_TRIGGER (fee reduction ≥ threshold — "fee reduction above threshold"), DISCOUNT_SHARING_MINIMUM_GRID_RATE (the closest published discount-sharing compliance rule — stands in for "discount sharing not applied" until a dedicated rule exists), LOST_ACCOUNT}. The default applies by rule_code at store normalization (setdefault — an extractor proposal or human edit is never overwritten), so re-extractions and rehydrated stores get it without a reseed. All eight exception fields join the plan-preserving edit set (they govern how Round 2's exception evaluation reads the rule, never what the compiled query computes) — same class as applies_to/active.
 Reversible: yes (edit the set when the dedicated rule exists)
 
+## 2026-08-17 · Round 1b · Committed data updated by additive post-pass, never regeneration
+Context: Tasks 1–3 add job_code / the two pay-type columns / the PCS|PBR product+group to the mock data, but the generator was never cross-process deterministic (Round H finding — builtin hash() product subsets), so regenerating data/ breaks every data-derived pin.
+Decision: The committed CSVs were edited by deterministic column-append/row-insert post-passes (Round A1 9X precedent): advisor.csv gained job_code via the generator's own mock_job_code(i) rule; product.csv gained the two pay-type columns from PAY_TYPE_CODES (transcribed from PRODUCT_HIERARCHY_FULL.md); product_group/product/product_in_group gained exactly the referrals_private_bank rows. NO transaction, monthly_revenue or account row changed. Consequence: referrals_private_bank has no mock revenue — verify_round_b B1-5 re-pinned to allow exactly that one seeded group absent from the revenue sections. The generator itself emits all three fields for future regens (which remain non-comparable to the committed bytes, as recorded 2026-08-12).
+Reversible: yes
+
+## 2026-08-17 · Round 1b · Sub-less PCS still resolves to Situational Partnership
+Context: Narrowing PCS to PCS/SP would strand the committed mock data's 59 pre-split `PCS|` transactions (empty sub-code): build_monthly_revenue re-derives group_id from product_id, so they would silently move to unmapped.
+Decision: `_SUBCODE_MAP[("PCS","")] = "referrals_sit_partnership"` — an explicit, commented alias. PCS/PBR maps to the new group, and any OTHER unknown PCS sub-code lands in unmapped per the ELIS/LEND rule (strictly narrower than the old wholesale PCS mapping). In the real export PCS rows always carry SP or PBR, so the alias binds only on legacy/degenerate rows.
+Reversible: yes
+
+## 2026-08-17 · Round 1b · Migration 002 grew task-by-task; parity script applies migrations/0NN_*.gsql in order
+Context: The spec puts migration 002 in task 4, but committing tasks 1–3 with the clean-install DDL ahead of the migration would leave intermediate commits failing verify_schema_parity.
+Decision: 002_schema_additions.gsql was created in task 1 (advisor ALTER) and extended in task 2 (product ALTER) so every commit stays parity-green; verify_schema_parity.py now globs migrations/0NN_*.gsql sorted and applies each in sequence (SP-1 data-safety per file, SP-2 per file), asserting baseline_f2 + 001 + 002 == clean install. A deliberately corrupted 002 (l2_pay_type_cd removed) fails SP-4 naming the attribute — probe proven 2026-08-17.
+Reversible: yes
+
+## 2026-08-17 · Round 1b · data/real_test fixtures legitimately reshuffled
+Context: Adding the two PCS rows to make_test_raw_extracts.HIERARCHY changed every RNG.choice(products) draw, so the fabricated transactions regenerated differently.
+Decision: Accepted — the fixtures are regenerable fabrications with no byte-level pins (all checks recompute from the drop: V-1..V-10 pass, sanity anchor $33,130/advisor/month, verify_round_1 12/12). The reshuffle is a feature: the fixture path now exercises PCS/SP and PCS/PBR end-to-end through build_real_data.
+Reversible: yes
+
 ## 2026-08-14 · Round A2B · Per-subtask commits collapsed for parallel-dispatched work
 Context: The spec asks for commits after 6.2/6.4/6.7; Subagent C's work arrived complete from the parallel dispatch (Round E tasks 6+7 precedent).
 Decision: One verified commit per task (6 and 7). Batch insight generation (advisor="all", 21 runs, $1.52) was run by the main thread during the round so exceptions/insights/advisor views verify against real stored runs.
