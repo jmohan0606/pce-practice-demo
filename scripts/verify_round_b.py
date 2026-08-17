@@ -85,9 +85,16 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     per_section = [{r["group_id"] for r in s["rows"]} for s in pc["sections"]]
     resolved = set().union(*per_section)
     dupes = per_section[0] & per_section[1] if len(per_section) == 2 else set()
-    check("B1-5", "all 24 groups + unmapped resolve; no group in two sections",
-          resolved == seeded and len(seeded) == 25 and not dupes,
-          f"resolved {len(resolved)}/25 seeded groups, in-two-sections={sorted(dupes) or 'none'}")
+    # Round 1b: referrals_private_bank is seeded (26 rows) but has no mock
+    # revenue by design (additive post-pass, no new transactions), so it is
+    # the ONE seeded group legitimately absent from the revenue sections.
+    check("B1-5", "every group with revenue resolves; 26 seeded (PBR revenue-less); "
+          "no group in two sections",
+          resolved <= seeded and len(seeded) == 26 and not dupes
+          and seeded - resolved <= {"referrals_private_bank"},
+          f"resolved {len(resolved)}/26 seeded groups "
+          f"(absent={sorted(seeded - resolved) or 'none'}), "
+          f"in-two-sections={sorted(dupes) or 'none'}")
 
     scratch = Path(os.environ.get("TMPDIR", "/tmp")) / "verify_round_b_fmt"
     tsc = APP_ROOT / "frontend/node_modules/.bin/tsc"

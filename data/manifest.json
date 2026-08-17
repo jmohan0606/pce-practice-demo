@@ -45,7 +45,7 @@
         "sort_order": "sort_order",
         "is_aggregated": "is_aggregated"
       },
-      "expected_rows": 25,
+      "expected_rows": 26,
       "order": 3
     },
     {
@@ -65,7 +65,7 @@
         "l1_pay_type_cd": "l1_pay_type_cd",
         "l2_pay_type_cd": "l2_pay_type_cd"
       },
-      "expected_rows": 31,
+      "expected_rows": 32,
       "order": 4
     },
     {
@@ -350,7 +350,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 31,
+      "expected_rows": 32,
       "order": 18
     },
     {

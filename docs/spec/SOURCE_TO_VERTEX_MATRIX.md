@@ -31,7 +31,7 @@ checks all three kinds before anything loads.
 | (operator-authored month metadata) | PostgreSQL-derived | `raw_month_meta.csv` | `phx_dm_pce_month` |
 | **ECNNM / NBNNM / YINNM / FSNNM monthly files** | **flat files (.txt)** | `ECNNM_*.txt`, `NBNNM_*.txt`, `YINNM_*.txt`, `FSNNM_*.txt` — original names kept; **all four categories required or the build fails loudly** | `phx_dm_pce_advisor_nnm` |
 | **CRM opportunity export** | **flat file (.csv)** | `crm_opportunities.csv` | `phx_dm_pce_opportunity` |
-| seeded constants | none (shipped in code/build) | — | `phx_dm_pce_product_group` (24 rows), `phx_dm_pce_revenue_class` (2 rows) |
+| seeded constants | none (shipped in code/build) | — | `phx_dm_pce_product_group` (25 rows + unmapped — Round 1b added `referrals_private_bank` for PCS/PBR), `phx_dm_pce_revenue_class` (2 rows) |
 
 Notes:
 - `phx_dm_pce_month` row content (trading days, baseline/partial flags) is

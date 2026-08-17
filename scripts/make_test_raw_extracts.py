@@ -50,6 +50,7 @@ HIERARCHY = [
     ("ATMF", "", "Trails Mutual Funds"), ("MMKT", "", "Money Market Funds"),
     ("STRT", "", "Structured Products"), ("ELIS", "EQ", "Equities"),
     ("ELIS", "OP", "Options"), ("MUFD", "", "Mutual Funds"),
+    ("PCS", "SP", "Situational Partnership"), ("PCS", "PBR", "Private Bank Referral"),
     ("FCXX", "", "Corporate Bonds"), ("FIX", "", "Fixed Annuities"),
     ("ALTI", "", "Alternative Investments"), ("LEND", "SBL", "Security Based Lending"),
     ("EDK", "", "Everyday 401K"), ("MISC", "", "Miscellaneous Level Two"),  # -> unmapped

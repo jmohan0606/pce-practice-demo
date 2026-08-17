@@ -1,13 +1,16 @@
-"""Product model: 24 display groups + revenue classes (SCHEMA_SPEC §1 V3/V4, §4).
+"""Product model: 25 display groups + revenue classes (SCHEMA_SPEC §1 V3/V4, §4).
 
 Aggregation group and revenue class are PARALLEL DIMENSIONS, NOT A HIERARCHY
 (BUILD_PLAN §3.2). A group is the display row in the product table; the class
 is Recurring / Non-Recurring. UMA displays as its own row *and* classes as
 Recurring — neither attribute is derived from the other. Do not collapse them.
 
-Mapping grain is `product_cd`, except ELIS (Equities / Options) and LEND
-(Security Based Lending / Margin), which split on `product_sub_cd` — the only
-two groups where `product_cd` alone is insufficient (SCHEMA_SPEC §4).
+Mapping grain is `product_cd`, except ELIS (Equities / Options), LEND
+(Security Based Lending / Margin) and — since Round 1b — PCS (Situational
+Partnership / Private Bank Referral), which split on `product_sub_cd`: the
+only groups where `product_cd` alone is insufficient (SCHEMA_SPEC §4). The
+client's hierarchy export confirmed PCS covers TWO sub-products; treating PCS
+as Situational Partnership alone silently unmapped Private Bank Referral.
 
 Products absent from the seed map to group ``unmapped`` — visible, never
 silently dropped.
@@ -39,9 +42,9 @@ class ProductGroup:
     is_aggregated: bool = True
 
 
-# The 24-row seed from SCHEMA_SPEC §4. Codes with a sub-code split (ELIS/EQ,
-# ELIS/OP, LEND/SBL, LEND/MGN) are listed as "CD/SUB" and resolved in
-# resolve_product(); every other code maps on product_cd alone.
+# The 25-row seed from SCHEMA_SPEC §4. Codes with a sub-code split (ELIS/EQ,
+# ELIS/OP, LEND/SBL, LEND/MGN, PCS/SP, PCS/PBR) are listed as "CD/SUB" and
+# resolved in resolve_product(); every other code maps on product_cd alone.
 PRODUCT_GROUPS: list[ProductGroup] = [
     ProductGroup(1, "managed_accounts", "Managed Accounts", "", RECURRING,
                  ["OISC", "OIS1", "JPMC", "MAP"]),
@@ -55,9 +58,12 @@ PRODUCT_GROUPS: list[ProductGroup] = [
                  ["MMKT"]),
     ProductGroup(6, "cash_mgmt_prdp", "Cash Management – Premium Deposits", "", RECURRING,
                  ["PRDP"]),
+    # Round 1b: narrowed from bare PCS to PCS/SP — the hierarchy export shows
+    # PCS covers two sub-products. Class RECURRING unchanged (client's earlier
+    # instruction stands).
     ProductGroup(7, "referrals_sit_partnership",
                  "Referrals & Revenue Share – Situational Partnership", "", RECURRING,
-                 ["PCS"]),
+                 ["PCS/SP"]),
     ProductGroup(8, "plans_529", "529 Plans", "", RECURRING, ["529T"]),
     ProductGroup(9, "donor_advised_funds", "Donor Advised Funds", "", RECURRING, ["DAF"]),
     ProductGroup(10, "twhs_structured", "Structured Products", "TWHS", NON_RECURRING,
@@ -87,10 +93,16 @@ PRODUCT_GROUPS: list[ProductGroup] = [
     ProductGroup(23, "lending_margin", "Lending – Margin", "", NON_RECURRING, ["LEND/MGN"]),
     ProductGroup(24, "referrals_everyday_401k",
                  "Referrals & Revenue Share – Everyday 401K", "", NON_RECURRING, ["EDK"]),
+    # Round 1b: PCS/PBR was silently unmapped while PCS mapped wholesale to
+    # Situational Partnership. NON_RECURRING, matching Everyday 401K and the
+    # other referral lines.
+    ProductGroup(25, "referrals_private_bank",
+                 "Referrals & Revenue Share – Private Bank Referral", "", NON_RECURRING,
+                 ["PCS/PBR"]),
 ]
 
 # Row 99: the catch-all for products absent from the seed. is_aggregated=False —
-# it is not one of the 24 real aggregation rows; it exists so unmapped revenue
+# it is not one of the 25 real aggregation rows; it exists so unmapped revenue
 # stays visible rather than dropped, and the UI can render it distinctly.
 UNMAPPED_GROUP = ProductGroup(99, UNMAPPED_GROUP_ID, "Unmapped Products", "",
                               NON_RECURRING, [], is_aggregated=False)
@@ -111,6 +123,12 @@ for _g in PRODUCT_GROUPS:
             _SUBCODE_MAP[(_cd.upper(), _sub.upper())] = _g.group_id
         else:
             _CD_MAP[_code.upper()] = _g.group_id
+
+# The committed mock data's PCS rows predate the PCS/SP · PCS/PBR split and
+# carry an empty sub-code; a sub-less PCS row still means Situational
+# Partnership (the export's PBR rows always carry the PBR sub-code). Any
+# OTHER unknown PCS sub-code lands in "unmapped", per the ELIS/LEND rule.
+_SUBCODE_MAP[("PCS", "")] = "referrals_sit_partnership"
 
 
 def make_product_id(product_cd: str, product_sub_cd: str = "") -> str:
@@ -158,7 +176,7 @@ def revenue_class_rows() -> list[dict]:
 
 
 def product_group_rows() -> list[dict]:
-    """The 25 phx_dm_pce_product_group rows (24 seed + unmapped), columns in
+    """The 26 phx_dm_pce_product_group rows (25 seed + unmapped), columns in
     V3 DDL attribute order: group_id, group_name, display_prefix, class_id,
     sort_order, is_aggregated."""
     return [

@@ -101,12 +101,20 @@ def check_products() -> None:
         ("LEND", "SBL"): "lending_sbl", ("LEND", "MGN"): "lending_margin",
         ("OISC", ""): "managed_accounts", ("UMA", ""): "managed_uma",
         ("ZZZZ", ""): "unmapped",
+        # Round 1b: PCS splits on sub-code; sub-less PCS = the committed mock
+        # data's pre-split rows (still Situational Partnership); unknown sub
+        # lands unmapped per the ELIS/LEND rule.
+        ("PCS", "SP"): "referrals_sit_partnership",
+        ("PCS", "PBR"): "referrals_private_bank",
+        ("PCS", ""): "referrals_sit_partnership",
+        ("PCS", "XX"): "unmapped",
     }
     bad = {c: resolve_product(*c) for c in cases if resolve_product(*c) != cases[c]}
     check("3a. resolve_product per spec (sub-code splits + unmapped)", not bad,
-          str(bad) if bad else "7 cases")
+          str(bad) if bad else "11 cases")
     rows = product_group_rows()
-    check("3b. 24 display groups + unmapped seeded", len(rows) == 25, f"{len(rows)} rows")
+    check("3b. 25 display groups + unmapped seeded (Round 1b: referrals_private_bank)",
+          len(rows) == 26, f"{len(rows)} rows")
     check("3c. UMA displays as its own row AND classes Recurring (parallel dimensions)",
           resolve_product("UMA") == "managed_uma" and class_for_group("managed_uma") == "RECURRING")
 

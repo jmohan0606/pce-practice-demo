@@ -7,6 +7,8 @@ STRT,,Structured Products,PCR,,PRODUCT_TYPE,structured_products,structured_produ
 ELIS,EQ,Equities,PCR,,PRODUCT_TYPE,equities_and_options,equities
 ELIS,OP,Options,PCR,,PRODUCT_TYPE,equities_and_options,options
 MUFD,,Mutual Funds,PCR,,PRODUCT_TYPE,mutual_funds,mutual_funds
+PCS,SP,Situational Partnership,PCR,,PRODUCT_TYPE,referrals_and_revenue_share,situational_partnership
+PCS,PBR,Private Bank Referral,PCR,,PRODUCT_TYPE,referrals_and_revenue_share,private_bank_referral
 FCXX,,Corporate Bonds,PCR,,PRODUCT_TYPE,fixed_income,corporate_bonds
 FIX,,Fixed Annuities,PCR,,PRODUCT_TYPE,annuities,fixed
 ALTI,,Alternative Investments,PCR,,PRODUCT_TYPE,alternative_investments,alternative_investments

@@ -83,7 +83,7 @@ CREATE VERTEX phx_dm_pce_product_group (PRIMARY_ID group_id STRING, group_name S
   display_prefix STRING, class_id STRING, sort_order INT, is_aggregated BOOL)
 WITH primary_id_as_attribute="true";
 ```
-Seeded from §4 (24 rows). `display_prefix` is `TWHS` where applicable, else empty.
+Seeded from §4 (25 rows). `display_prefix` is `TWHS` where applicable, else empty.
 
 ### V4 · `phx_dm_pce_product`
 ```sql
@@ -530,7 +530,7 @@ CREATE DIRECTED EDGE phx_dm_pce_job_for_run (FROM phx_dm_pce_job, TO phx_dm_pce_
 
 ---
 
-## 4. Product group seed (24 rows)
+## 4. Product group seed (25 rows)
 
 | sort | group_id | group_name | prefix | class | product_cd |
 |---|---|---|---|---|---|
@@ -540,7 +540,7 @@ CREATE DIRECTED EDGE phx_dm_pce_job_for_run (FROM phx_dm_pce_job, TO phx_dm_pce_
 | 4 | trails_life_annuities | Trails – Life & Annuities | | RECURRING | ITMF, ADVA |
 | 5 | cash_mgmt_mmkt | Cash Management – Money Market Funds | | RECURRING | MMKT |
 | 6 | cash_mgmt_prdp | Cash Management – Premium Deposits | | RECURRING | PRDP |
-| 7 | referrals_sit_partnership | Referrals & Revenue Share – Situational Partnership | | RECURRING | PCS |
+| 7 | referrals_sit_partnership | Referrals & Revenue Share – Situational Partnership | | RECURRING | PCS/SP |
 | 8 | plans_529 | 529 Plans | | RECURRING | 529T |
 | 9 | donor_advised_funds | Donor Advised Funds | | RECURRING | DAF |
 | 10 | twhs_structured | Structured Products | TWHS | NON_RECURRING | STRT |
@@ -558,10 +558,15 @@ CREATE DIRECTED EDGE phx_dm_pce_job_for_run (FROM phx_dm_pce_job, TO phx_dm_pce_
 | 22 | lending_sbl | Lending – Security Based Lending | | NON_RECURRING | LEND/SBL |
 | 23 | lending_margin | Lending – Margin | | NON_RECURRING | LEND/MGN |
 | 24 | referrals_everyday_401k | Referrals & Revenue Share – Everyday 401K | | NON_RECURRING | EDK |
+| 25 | referrals_private_bank | Referrals & Revenue Share – Private Bank Referral | | NON_RECURRING | PCS/PBR |
 | 99 | unmapped | Unmapped Products | | NON_RECURRING | *(everything else)* |
 
-Rows 11/12 and 22/23 split on `product_sub_cd` — the only two groups where `product_cd` alone is
-insufficient. Everything else maps on `product_cd`.
+Rows 11/12, 22/23 and 7/25 split on `product_sub_cd` — the only groups where `product_cd` alone
+is insufficient. Everything else maps on `product_cd`. Row 25 (Round 1b): the hierarchy export
+confirmed `PCS` covers `PCS|SP` Situational Partnership **and** `PCS|PBR` Private Bank Referral —
+before the split, PBR fell silently into `unmapped`. A sub-less `PCS` row (the committed mock
+data predates the split) still resolves to `referrals_sit_partnership`; any other unknown PCS
+sub-code lands in `unmapped`.
 
 Alternative Investments is **assumed** NON_RECURRING, unconfirmed by the client since V2 R11.
 

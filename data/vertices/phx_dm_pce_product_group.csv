@@ -23,4 +23,5 @@ defined_contribution_advisory,Defined Contribution Advisory,,NON_RECURRING,21,tr
 lending_sbl,Lending – Security Based Lending,,NON_RECURRING,22,true
 lending_margin,Lending – Margin,,NON_RECURRING,23,true
 referrals_everyday_401k,Referrals & Revenue Share – Everyday 401K,,NON_RECURRING,24,true
+referrals_private_bank,Referrals & Revenue Share – Private Bank Referral,,NON_RECURRING,25,true
 unmapped,Unmapped Products,,NON_RECURRING,99,false

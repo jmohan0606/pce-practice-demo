@@ -10,6 +10,7 @@ ADVA|,ADVA,,Trails – Life & Annuities — ADVA,PCR,product_hierarchy,trails_li
 MMKT|,MMKT,,Cash Management – Money Market Funds,PCR,product_hierarchy,cash_mgmt_mmkt,PRODUCT_TYPE,cash_management,money_market_funds
 PRDP|,PRDP,,Cash Management – Premium Deposits,PCR,product_hierarchy,cash_mgmt_prdp,PRODUCT_TYPE,cash_management,premium_deposits
 PCS|,PCS,,Referrals & Revenue Share – Situational Partnership,PCR,product_hierarchy,referrals_sit_partnership,PRODUCT_TYPE,referrals_and_revenue_share,situational_partnership
+PCS|PBR,PCS,PBR,Referrals & Revenue Share – Private Bank Referral,PCR,product_hierarchy,referrals_private_bank,PRODUCT_TYPE,referrals_and_revenue_share,private_bank_referral
 529T|,529T,,529 Plans,PCR,product_hierarchy,plans_529,PRODUCT_TYPE,trails,529
 DAF|,DAF,,Donor Advised Funds,PCR,product_hierarchy,donor_advised_funds,PRODUCT_TYPE,donor_advised_funds,donor_advised_funds
 STRT|,STRT,,Structured Products,PCR,product_hierarchy,twhs_structured,PRODUCT_TYPE,structured_products,structured_products
