@@ -358,6 +358,27 @@ function ChangeCell({ change }: { change: number }) {
   );
 }
 
+// A3/D5 — advisor identity is Name (SID) even when the contribution payload
+// carries only the SID: one cached advisor-list fetch resolves names.
+let _advisorNames: Record<string, string> | null = null;
+function useAdvisorNames(): Record<string, string> {
+  const [names, setNames] = useState<Record<string, string>>(_advisorNames ?? {});
+  useEffect(() => {
+    if (_advisorNames) return;
+    import("@/lib/api").then(({ getAdvisors }) =>
+      getAdvisors()
+        .then((r) => {
+          _advisorNames = Object.fromEntries(
+            (r.advisors ?? []).map((a) => [a.advisor_sid, a.advisor_name]),
+          );
+          setNames(_advisorNames);
+        })
+        .catch(() => {}),
+    );
+  }, []);
+  return names;
+}
+
 function AdvisorRows({
   rows,
   labels,
@@ -368,6 +389,7 @@ function AdvisorRows({
   onOpen: (advisor: string) => void;
 }) {
   const pager = usePager(rows);
+  const names = useAdvisorNames();
   return (
     <>
       <div className="sec-h">Contribution by advisor</div>
@@ -389,7 +411,7 @@ function AdvisorRows({
               <tr key={r.advisor_sid}>
                 <td>
                   {/* Review D5 — advisors here are ALWAYS Name (SID), linked */}
-                  <AdvisorLink sid={r.advisor_sid} name={r.advisor_name ?? null} />{" "}
+                  <AdvisorLink sid={r.advisor_sid} name={r.advisor_name ?? names[r.advisor_sid] ?? null} />{" "}
                   {r.is_new_to_product ? (
                     // Review D6 — the New tag renders bold / highlighted
                     <span
