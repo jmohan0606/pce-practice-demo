@@ -228,28 +228,58 @@ def _headline_figures(findings: list[dict], transition: dict) -> list[float]:
     return values
 
 
-def _is_verified_combination(n: float, headline: list[float]) -> bool:
+def _is_verified_sum_or_diff(n: float, headline: list[float]) -> bool:
     """Round 4 task 2 (found by observation): the Round 3 cross-cutting
-    mandate ASKS for connection statements ("together these added $85,341",
-    "7.2% of the book") while the gate banned every computed figure — the
-    same transition fell back to the template three times on correct
-    arithmetic. Resolution: the gate now VERIFIES the arithmetic instead of
-    banning it. A token is accepted only when it provably equals a sum or
-    difference of TWO headline figures (to the dollar) or a percentage of
-    one headline figure over another (to 0.1pp). Anything the gate cannot
-    reproduce from two verified figures still falls — the no-invented-figures
-    guarantee is unchanged; the accepted set is now checked arithmetic."""
+    mandate ASKS for connection statements ("together these added $85,341")
+    while the gate banned every computed figure — the same transition fell
+    back to the template three times on correct arithmetic. Resolution: the
+    gate VERIFIES the arithmetic instead of banning it — a token is accepted
+    when it provably equals a sum or difference of TWO headline figures (to
+    the dollar). Anything unreproducible still falls."""
     target = abs(n)
     for i, a in enumerate(headline):
         for b in headline[i:]:
             if abs((a + b) - target) < 0.51 or abs(abs(a - b) - target) < 0.51:
                 return True
-    if 0 < target <= 100:  # percent-shaped tokens: a of b
-        for a in headline:
-            for b in headline:
-                if b and abs(round(a / b * 100, 1) - target) < 0.051:
-                    return True
     return False
+
+
+def _is_named_ratio(n: float, unit_tokens: list[float],
+                    headline: list[float]) -> bool:
+    """Round 4 operator fix — the old percentage branch accepted a token
+    matching ANY ratio of ANY two headline figures: with 6 figures that is 36
+    ratios, so ~1.6% of all possible percentage values were auto-accepted and
+    an invented 87.3% slipped through because it coincidentally equals
+    48,007 / 54,978. A percentage that matches a ratio nobody stated is a
+    coincidence, not a verified figure. A percent-shaped token is now
+    accepted ONLY when both the numerator and the denominator of its ratio
+    are headline figures AND both appear as tokens in the SAME sentence or
+    bullet (exact, or their whole-dollar rounding)."""
+    target = abs(n)
+    if not (0 < target <= 100):
+        return False
+
+    def _named(figure: float) -> bool:
+        return any(t == round(figure, 2) or t == round(figure)
+                   or (float(t).is_integer() and int(t) == int(figure))
+                   for t in unit_tokens)
+
+    for a in headline:
+        for b in headline:
+            if b and abs(round(a / b * 100, 1) - target) < 0.051 \
+                    and _named(a) and _named(b):
+                return True
+    return False
+
+
+def _verification_units(narrative: str, bullets: list[str]) -> list[str]:
+    """The contexts a named ratio is scoped to: each SENTENCE of the
+    narrative, and each bullet whole."""
+    units: list[str] = []
+    for paragraph in (narrative or "").split("\n"):
+        units.extend(s for s in re.split(r"(?<=[.!?])\s+", paragraph) if s.strip())
+    units.extend(b for b in bullets or [] if (b or "").strip())
+    return units
 
 
 def verify_numbers(narrative: str, bullets: list[str],
@@ -257,15 +287,25 @@ def verify_numbers(narrative: str, bullets: list[str],
     """The numbers in the output that do NOT appear in the findings (empty =
     verified). Membership is exact-after-normalisation on value or |value|,
     plus whole-dollar roundings of allowed figures, plus VERIFIED two-figure
-    combinations of headline figures (sum/difference/percentage — the gate
-    reproduces the arithmetic; nothing unreproducible passes)."""
+    sums/differences of headline figures, plus percentages whose numerator
+    AND denominator are both named in the same sentence or bullet — the gate
+    reproduces every piece of arithmetic; nothing unreproducible passes."""
     allowed = allowed_numbers(findings, transition)
     headline = _headline_figures(findings, transition)
-    text = " ".join([narrative or "", *[b or "" for b in bullets or []]])
-    return [n for n in extract_numbers(text)
-            if n not in allowed and abs(n) not in allowed
-            and not _is_rounding_of_allowed(n, allowed)
-            and not _is_verified_combination(n, headline)]
+    bad: list[float] = []
+    for unit in _verification_units(narrative, bullets):
+        unit_tokens = extract_numbers(unit)
+        for n in unit_tokens:
+            if n in allowed or abs(n) in allowed:
+                continue
+            if _is_rounding_of_allowed(n, allowed):
+                continue
+            if _is_verified_sum_or_diff(n, headline):
+                continue
+            if _is_named_ratio(n, unit_tokens, headline):
+                continue
+            bad.append(n)
+    return bad
 
 
 # --------------------------------------------------------------------------- recommendations (task 5)

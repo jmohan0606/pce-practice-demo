@@ -1,6 +1,15 @@
 # Build Progress
 
 ## Round 4 (docs/spec/ROUND_4_SPEC.md) — CLI generation scripts + Round 3 on-screen fixes
+- [x] Post-round (operator fix; committed locally during the GitHub outage,
+      pushed once it returned): the numeric gate's percentage branch accepted
+      a token matching ANY ratio of ANY two headline figures (36 ratios from
+      6 figures ≈ 1.6% of all percentage values auto-accepted; an invented
+      87.3% passed as 48,007/54,978). A percentage is now accepted ONLY when
+      its numerator AND denominator are both named in the SAME sentence or
+      bullet; sum/difference branches unchanged (adversarially fine). NEW
+      scripts/check_numeric_gate.py 9/9 (the operator's seven cases + a
+      cross-sentence-laundering probe); c 13/13, r3 10/10, e 8/8 green.
 - [x] Task 1 (b866761): AI Insights renders the NARRATIVE ONLY — the
       duplication was InsightsSection mapping findings into bullets; finding
       cards now render once, in Revenue Drivers (observed: 0 vs 8 .finding
