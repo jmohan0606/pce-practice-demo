@@ -1,7 +1,6 @@
 "use client";
 
 import { useId } from "react";
-import { useTerm } from "@/components/Term";
 import { arrow, money, moneyAxis, niceCeil, percent } from "@/lib/format";
 
 /** Round A2B Task 2 — the transition bar chart.
@@ -23,7 +22,10 @@ export interface TransitionChartProps {
     credited_amt: number;
     recurring_amt: number;
     non_recurring_amt: number;
-    aum: number | null;
+    /** Still served by the API and part of the shared prop contract, but the
+     * bar chart NEVER renders it (Round 3 review B1 — AUM removed from the
+     * chart entirely). */
+    aum?: number | null;
   }[];
   transitions: {
     from: string;
@@ -82,7 +84,6 @@ export default function TransitionChart({
   monthName,
 }: TransitionChartProps) {
   const markerId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const aumTerm = useTerm("metric.aum");
   const config = VIEW_CONFIG[view];
 
   /** The view's plotted amount for a month — the bar height AND its label. */
@@ -129,9 +130,7 @@ export default function TransitionChart({
               return (
                 <div className="mcol" key={m.month_id}>
                   <div className="bval">{money(total)}</div>
-                  <div className="baum" title={aumTerm?.definition}>
-                    AUM {m.aum === null ? "—" : moneyAxis(m.aum)}
-                  </div>
+                  {/* Round 3 review B1 — no AUM on the bar chart, ever */}
                   <div className="bar" style={{ height: `${heightPct}%` }}>
                     {config.segments(m).map((s) => (
                       <div

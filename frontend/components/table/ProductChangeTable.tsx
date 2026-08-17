@@ -46,8 +46,10 @@ function ProductRow({
   return (
     <tr>
       <td>
-        {row.display_prefix ? <span className="pfx">{row.display_prefix}</span> : null}
-        {row.group_name}
+        {/* Review C2/C4 — bold product name, prefix joined with an en dash
+            ("TWHS – Structured Products", never "TWHSStructured Products") */}
+        {row.display_prefix ? <span className="pfx">{row.display_prefix} – </span> : null}
+        <span className="rowhead">{row.group_name}</span>
       </td>
       <td className="num grpline">{row.from_account_count.toLocaleString("en-US")}</td>
       <td className="num">{row.from_trade_count.toLocaleString("en-US")}</td>
@@ -128,29 +130,32 @@ export default function ProductChangeTable({
     <>
       <table>
         <thead>
+          {/* Review C1 — every header renders in the SAME font/size: the
+              rowSpan'd headers carry the same .colhead class (12px) the
+              sub-row headers already had. C3 — Accts renamed Accounts. */}
           <tr>
-            <th rowSpan={2} style={{ width: "19%" }}>
+            <th rowSpan={2} className="colhead" style={{ width: "19%" }}>
               Product Type
             </th>
-            <th className="grp" colSpan={3}>
+            <th className="grp colhead" colSpan={3}>
               {fromLabel}
             </th>
-            <th className="grp" colSpan={3}>
+            <th className="grp colhead" colSpan={3}>
               {toLabel}
             </th>
-            <th className="grp" colSpan={3}>
+            <th className="grp colhead" colSpan={3}>
               Difference
             </th>
-            <th rowSpan={2} className="num">
+            <th rowSpan={2} className="num colhead">
               <Term code="metric.share">% Share</Term>
             </th>
-            <th rowSpan={2} style={{ width: "9%" }}>
+            <th rowSpan={2} className="colhead" style={{ width: "9%" }}>
               Advisors
             </th>
           </tr>
           <tr>
             <th className="num grpline colhead">
-              <Term code="metric.accounts">Accts</Term>
+              <Term code="metric.accounts">Accounts</Term>
             </th>
             <th className="num colhead">
               <Term code="metric.trades">Trades</Term>
@@ -159,7 +164,7 @@ export default function ProductChangeTable({
               <Term code="metric.revenue">Revenue</Term>
             </th>
             <th className="num grpline colhead">
-              <Term code="metric.accounts">Accts</Term>
+              <Term code="metric.accounts">Accounts</Term>
             </th>
             <th className="num colhead">
               <Term code="metric.trades">Trades</Term>
@@ -167,7 +172,7 @@ export default function ProductChangeTable({
             <th className="num colhead">
               <Term code="metric.revenue">Revenue</Term>
             </th>
-            <th className="num grpline colhead">Δ Accts</th>
+            <th className="num grpline colhead">Δ Accounts</th>
             <th className="num colhead">Δ Trades</th>
             <th className="num colhead">Δ Revenue</th>
           </tr>

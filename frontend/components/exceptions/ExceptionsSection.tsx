@@ -1,40 +1,44 @@
 "use client";
 
-/** Round A2B 4.4 — the dashboard's Exceptions card.
+/** Round A2B 4.4 + Round 3 Task 10 (§H) / Task 3.2 — the dashboard's
+ * Exceptions card.
  *
- * Self-contained: fetches `/api/exceptions?from=&to=&severity=` for the
- * selected transition on mount / prop change and renders its own empty state.
+ * Two altitudes:
+ *   1. FIRM VIEW (Task 3.2) — one row per RULE from GET /api/exceptions/firm:
+ *      "9 of 156 managed accounts · 5.77% firm-wide · 2 advisors flagged ·
+ *      $…", each with a [Drill in ›] expanding the per-rule advisor ranking
+ *      (GET /api/exceptions/rule/{rule_key}, ranked by RATE, rate vs cohort
+ *      median, flagged state, suppressed reason).
+ *   2. WORKLIST — the per-finding rows from /api/insights/exceptions.
+ *      H3: defaults to ONE advisor (the first with exceptions) so the
+ *      expensive full query runs only on demand via the "All Advisors"
+ *      toggle. H4: the advisor dropdown lists ONLY advisors that actually
+ *      have exceptions. H2: plus a name/SID search. H1: real pagination.
  *
- * Props (the common section contract — the main thread composes this into
- * `app/page.tsx`):
- *   - `fromMonth: string`  — from-month id, e.g. "202604"
- *   - `toMonth: string`    — to-month id, e.g. "202605"
- *   - `monthName: (id: string) => string` — month id -> display name
- *
- * Behaviour:
- *   - Server sorts Critical → Info then |impact|; the severity filter
- *     refetches with the `severity` param (server-side filter): All /
- *     "Critical & High only" / each individual level.
- *   - Columns: Severity (`.sev` chip, tooltip from glossary
- *     `severity.<LEVEL>`) · Advisor (`<AdvisorLink>`) · Issue (title + slate
- *     detail) · Impact (`<Delta>`, em dash when null — an observation, not a
- *     movement) · Source (`<RuleCitation>`; source_kind="observation" rows
- *     show "Pattern — no rule matched" / "Observation" slate text, per the
- *     mockup) · a "›" link to `/advisor?sid=<sid>`.
- *
- * api.ts gap (reported, worked around locally): `getExceptions` has no
- * `severity` param and `ExceptionRow` lacks `severity`/`source_kind`, both of
- * which the backend serves — this file carries a typed local wrapper.
+ * API clients live in lib/exceptionsApi.ts (this round's new file).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ApiError, type ExceptionRow, type ExceptionsResponse } from "@/lib/api";
 import AdvisorLink from "@/components/AdvisorLink";
 import { Delta } from "@/components/Num";
 import EmptyState from "@/components/EmptyState";
+import { Pager, usePager } from "@/components/Pager";
 import RuleCitationLine from "@/components/RuleCitation";
 import { useTerm } from "@/components/Term";
+import { money, percent } from "@/lib/format";
+import {
+  type ExceptionAdvisor,
+  type ExceptionsResponseFull,
+  type FirmExceptionRule,
+  type FirmExceptionsResponse,
+  type RuleExceptionsResponse,
+  type Severity,
+  getExceptionAdvisors,
+  getExceptionsWorklist,
+  getFirmExceptions,
+  getRuleExceptions,
+} from "@/lib/exceptionsApi";
 
 export interface ExceptionsSectionProps {
   fromMonth: string;
@@ -42,43 +46,7 @@ export interface ExceptionsSectionProps {
   monthName: (id: string) => string;
 }
 
-// ---- typed local wrapper (api.ts gap — see file JSDoc) --------------------
-
-export type Severity = "CRITICAL" | "HIGH" | "MODERATE" | "LOW" | "INFO";
 const SEVERITIES: Severity[] = ["CRITICAL", "HIGH", "MODERATE", "LOW", "INFO"];
-
-/** The row the backend actually serves (ExceptionRow + Round A1 fields). */
-export interface ExceptionRowFull extends ExceptionRow {
-  severity: Severity;
-  source_kind: "rule" | "observation";
-}
-export interface ExceptionsResponseFull extends ExceptionsResponse {
-  exceptions: ExceptionRowFull[];
-}
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ||
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  "http://localhost:8002";
-
-async function getExceptionsFiltered(
-  from: string,
-  to: string,
-  severity: string,
-): Promise<ExceptionsResponseFull> {
-  const params = new URLSearchParams({ from, to });
-  if (severity) params.set("severity", severity);
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE}/api/exceptions?${params.toString()}`, { cache: "no-store" });
-  } catch {
-    throw new ApiError(0, `API unreachable at ${API_BASE}`);
-  }
-  if (!response.ok) throw new ApiError(response.status, `${response.status} for /api/exceptions`);
-  return (await response.json()) as ExceptionsResponseFull;
-}
-
-// ---- severity chip --------------------------------------------------------
 
 const SEV_CLASS: Record<Severity, string> = {
   CRITICAL: "crit",
@@ -104,18 +72,214 @@ function SevOption({ level }: { level: Severity }) {
   return <option value={level}>{term?.term ?? level}</option>;
 }
 
+// ---------------------------------------------------------------- firm view (Task 3.2)
+
+/** One firm-level rule row: the headline sentence plus the drill-in ranking. */
+function FirmRuleRow({ rule, month }: { rule: FirmExceptionRule; month: string }) {
+  const [open, setOpen] = useState(false);
+  const [ranking, setRanking] = useState<RuleExceptionsResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const drillIn = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && !ranking && !loading) {
+      setLoading(true);
+      getRuleExceptions(rule.rule_key, month)
+        .then((r) => setRanking(r))
+        .catch((e) => setError(String((e as Error)?.message || e)))
+        .finally(() => setLoading(false));
+    }
+  };
+
+  const firm = rule.firm;
+  const isMoney = rule.config.denominator_kind === "revenue";
+  const headline = [
+    `${isMoney ? money(firm.affected) : firm.affected.toLocaleString("en-US")} of ${
+      isMoney ? money(firm.denominator) : firm.denominator.toLocaleString("en-US")
+    } ${rule.config.denominator_label}`,
+    firm.rate_pct !== null ? `${percent(firm.rate_pct)} firm-wide` : null,
+    `${firm.advisors_flagged.toLocaleString("en-US")} advisor${firm.advisors_flagged === 1 ? "" : "s"} flagged`,
+    firm.impact_amt !== null ? money(firm.impact_amt) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div style={{ borderBottom: "1px solid var(--rule-2)", padding: "10px 18px" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        {rule.severity ? <SevChip level={rule.severity as Severity} /> : null}
+        <span className="rowhead">{rule.rule_name}</span>
+        <span style={{ fontSize: "12.5px" }}>{headline}</span>
+        <button type="button" className="btn sm" onClick={drillIn} aria-expanded={open}>
+          {open ? "Close ‹" : "Drill in ›"}
+        </button>
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--slate)", marginTop: 2 }}>
+        {rule.config.product_scope_applied}
+        {rule.cohort.median_pct !== null
+          ? ` · cohort median ${percent(rule.cohort.median_pct)}`
+          : ""}
+        {rule.cohort.flag_threshold_pct !== null
+          ? ` · flag threshold ${percent(rule.cohort.flag_threshold_pct)}`
+          : ""}
+        {` · ${rule.cohort.in_scope_advisors.toLocaleString("en-US")} advisors in scope`}
+      </div>
+      {open ? (
+        loading ? (
+          <p style={{ color: "var(--slate)", fontSize: "12.5px", margin: "10px 0 0" }}>Loading…</p>
+        ) : error ? (
+          <p style={{ color: "var(--slate)", fontSize: "12.5px", margin: "10px 0 0" }}>{error}</p>
+        ) : ranking ? (
+          <RuleRanking ranking={ranking} isMoney={isMoney} />
+        ) : null
+      ) : null}
+    </div>
+  );
+}
+
+/** The per-rule advisor ranking — ranked by RATE (the server's order). */
+function RuleRanking({ ranking, isMoney }: { ranking: RuleExceptionsResponse; isMoney: boolean }) {
+  const pager = usePager(ranking.advisors);
+  const fmt = (v: number) => (isMoney ? money(v) : v.toLocaleString("en-US"));
+  return (
+    <div style={{ marginTop: 8, overflowX: "auto" }}>
+      <table>
+        <thead>
+          <tr>
+            <th>Advisor</th>
+            <th className="num">Affected</th>
+            <th className="num">Of</th>
+            <th className="num">Rate</th>
+            <th className="num">Cohort Median</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pager.rows.map((a) => (
+            <tr key={a.advisor_sid}>
+              <td>
+                <AdvisorLink sid={a.advisor_sid} name={a.advisor_name || null} />
+              </td>
+              <td className="num">{fmt(a.affected)}</td>
+              <td className="num">{fmt(a.denominator)}</td>
+              <td className="num">
+                <span className={a.flagged ? "dn" : undefined}>{percent(a.rate_pct)}</span>
+              </td>
+              <td className="num">
+                {a.cohort_median_pct === null ? "—" : percent(a.cohort_median_pct)}
+              </td>
+              <td style={{ fontSize: 12 }}>
+                {a.suppressed_reason ? (
+                  <span style={{ color: "var(--slate)" }}>{a.suppressed_reason}</span>
+                ) : a.flagged ? (
+                  <span className="dn">Flagged — above the cohort threshold</span>
+                ) : (
+                  <span style={{ color: "var(--slate)" }}>Within cohort range</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <Pager {...pager} noun="advisors" />
+    </div>
+  );
+}
+
+function FirmView({ month, monthLabel }: { month: string; monthLabel: string }) {
+  const [data, setData] = useState<FirmExceptionsResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setData(null);
+    setError(null);
+    getFirmExceptions(month)
+      .then((d) => {
+        if (!cancelled) setData(d);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String((e as Error)?.message || e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [month]);
+  return (
+    <div style={{ borderBottom: "1px solid var(--rule)" }}>
+      <div className="sec-h" style={{ padding: "12px 18px 6px" }}>
+        Firm view — one row per rule · {monthLabel}
+      </div>
+      {error ? (
+        <div style={{ padding: "0 18px 12px" }}>
+          <EmptyState title="Firm view failed to load" message={error} />
+        </div>
+      ) : !data ? (
+        <p style={{ color: "var(--slate)", fontSize: "12.5px", margin: 0, padding: "0 18px 12px" }}>
+          Loading…
+        </p>
+      ) : !data.rules.length ? (
+        <p style={{ color: "var(--slate)", fontSize: "12.5px", margin: 0, padding: "0 18px 12px" }}>
+          No exception-enabled rules in the published rule set.
+        </p>
+      ) : (
+        data.rules.map((rule) => <FirmRuleRow key={rule.rule_key} rule={rule} month={month} />)
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- worklist (§H)
+
 export default function ExceptionsSection({ fromMonth, toMonth, monthName }: ExceptionsSectionProps) {
   // "" = all; "CRITICAL,HIGH" = the combined preset; else one level
   const [severity, setSeverity] = useState("");
+  // H3/H4 — advisors that actually have exceptions; default to the first
+  const [advisors, setAdvisors] = useState<ExceptionAdvisor[] | null>(null);
+  const [scope, setScope] = useState<"one" | "all">("one");
+  const [advisor, setAdvisor] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [data, setData] = useState<ExceptionsResponseFull | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // H4 — the dropdown's population: only advisors with exceptions
   useEffect(() => {
+    let cancelled = false;
+    setAdvisors(null);
+    setAdvisor(null);
+    setScope("one");
+    getExceptionAdvisors(fromMonth, toMonth)
+      .then((r) => {
+        if (cancelled) return;
+        setAdvisors(r.advisors);
+        // H3 — default to the FIRST advisor with exceptions, never the full set
+        setAdvisor(r.advisors[0]?.advisor_sid ?? null);
+        if (!r.advisors.length) setScope("all"); // nothing to scope to — the full (empty) set is cheap
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setAdvisors([]);
+        setScope("all");
+        setError(String((e as Error)?.message || e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fromMonth, toMonth]);
+
+  // the worklist fetch — scoped to one advisor unless "All Advisors" was asked for
+  useEffect(() => {
+    if (advisors === null) return; // wait for the advisor list
+    if (scope === "one" && advisor === null && advisors.length) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
-    getExceptionsFiltered(fromMonth, toMonth, severity)
+    getExceptionsWorklist(fromMonth, toMonth, {
+      severity: severity || undefined,
+      advisor: scope === "one" && advisor ? advisor : undefined,
+    })
       .then((d) => {
         if (cancelled) return;
         setData(d);
@@ -130,9 +294,22 @@ export default function ExceptionsSection({ fromMonth, toMonth, monthName }: Exc
     return () => {
       cancelled = true;
     };
-  }, [fromMonth, toMonth, severity]);
+  }, [fromMonth, toMonth, severity, scope, advisor, advisors]);
 
-  const rows = data?.exceptions ?? [];
+  // H2 — search filters the loaded rows by name or SID (like the advisor page's)
+  const rows = useMemo(() => {
+    const all = data?.exceptions ?? [];
+    const q = search.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter(
+      (x) =>
+        x.advisor_sid.toLowerCase().includes(q) ||
+        (x.advisor_name || "").toLowerCase().includes(q),
+    );
+  }, [data, search]);
+
+  // H1 — real pagination
+  const pager = usePager(rows);
 
   return (
     <div className="card">
@@ -144,7 +321,45 @@ export default function ExceptionsSection({ fromMonth, toMonth, monthName }: Exc
             {monthName(fromMonth)} → {monthName(toMonth)}
           </p>
         </div>
-        <div className="ctl">
+        <div className="ctl" style={{ flexWrap: "wrap" }}>
+          {/* H3 — the one segmented toggle: one advisor vs the full set */}
+          <div className="pivot" role="tablist" aria-label="Advisor scope">
+            <button
+              aria-selected={scope === "one"}
+              onClick={() => setScope("one")}
+              disabled={!advisors?.length}
+            >
+              One Advisor
+            </button>
+            <button aria-selected={scope === "all"} onClick={() => setScope("all")}>
+              All Advisors
+            </button>
+          </div>
+          {/* H4 — only advisors that actually have exceptions */}
+          {scope === "one" && advisors?.length ? (
+            <select
+              value={advisor ?? ""}
+              onChange={(e) => setAdvisor(e.target.value)}
+              aria-label="Advisor"
+            >
+              {advisors.map((a) => (
+                <option key={a.advisor_sid} value={a.advisor_sid}>
+                  {a.advisor_name ? `${a.advisor_name} (${a.advisor_sid})` : a.advisor_sid} ·{" "}
+                  {a.exception_count} exception{a.exception_count === 1 ? "" : "s"}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          {/* H2 — search bar matching the advisor page's */}
+          <input
+            className="filter"
+            type="text"
+            placeholder="Search name or SID…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search exceptions by advisor"
+            style={{ width: 180 }}
+          />
           <select value={severity} onChange={(e) => setSeverity(e.target.value)} aria-label="Severity filter">
             <option value="">All severities</option>
             <option value="CRITICAL,HIGH">Critical &amp; High only</option>
@@ -155,6 +370,9 @@ export default function ExceptionsSection({ fromMonth, toMonth, monthName }: Exc
         </div>
       </div>
       <div className="card-b flush" style={{ padding: 0 }}>
+        {/* Task 3.2 — the firm altitude sits above the worklist */}
+        <FirmView month={toMonth} monthLabel={monthName(toMonth)} />
+
         {error ? (
           <div style={{ padding: 18 }}>
             <EmptyState title="Exceptions failed to load" message={error} />
@@ -168,16 +386,24 @@ export default function ExceptionsSection({ fromMonth, toMonth, monthName }: Exc
         {data && !rows.length && !loading ? (
           <div style={{ padding: 18 }}>
             <EmptyState
-              title={severity ? "No exceptions at this severity" : "No open exceptions"}
+              title={
+                search
+                  ? "No exceptions match the search"
+                  : severity
+                    ? "No exceptions at this severity"
+                    : "No open exceptions"
+              }
               message={
-                severity
-                  ? "Nothing on this transition matches the selected severity filter."
-                  : "Exceptions come from each advisor's latest stored run on this transition — generate AI Insights first."
+                search
+                  ? "No loaded exception matches that name or SID."
+                  : severity
+                    ? "Nothing on this transition matches the selected severity filter."
+                    : "Exceptions come from each advisor's latest stored run on this transition — generate AI Insights first."
               }
             />
           </div>
         ) : null}
-        {rows.length ? (
+        {rows.length && !loading ? (
           <>
             <div style={{ overflowX: "auto" }}>
               <table>
@@ -187,12 +413,13 @@ export default function ExceptionsSection({ fromMonth, toMonth, monthName }: Exc
                     <th style={{ width: "17%" }}>Advisor</th>
                     <th>Issue</th>
                     <th className="num">Impact</th>
-                    <th style={{ width: "22%" }}>Source</th>
+                    {/* Review F8 — the source column carries the prefix */}
+                    <th style={{ width: "22%" }}>Source / Citation</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((x, i) => (
+                  {pager.rows.map((x, i) => (
                     <tr key={`${x.run_id}-${i}`}>
                       <td>
                         <SevChip level={x.severity} />
@@ -240,10 +467,15 @@ export default function ExceptionsSection({ fromMonth, toMonth, monthName }: Exc
                 </tbody>
               </table>
             </div>
+            <div style={{ padding: "0 18px" }}>
+              <Pager {...pager} noun="exceptions" />
+            </div>
             <div className="note">
-              Showing {rows.length} exception{rows.length === 1 ? "" : "s"} across{" "}
+              {rows.length.toLocaleString("en-US")} exception{rows.length === 1 ? "" : "s"}
+              {scope === "one" && advisor ? " for the selected advisor" : ""} across{" "}
               {data?.advisor_count ?? 0} advisor{data?.advisor_count === 1 ? "" : "s"}
-              {severity ? " (filtered by severity)" : ""}.
+              {severity ? " (filtered by severity)" : ""}
+              {search ? " (filtered by search)" : ""}.
             </div>
           </>
         ) : null}

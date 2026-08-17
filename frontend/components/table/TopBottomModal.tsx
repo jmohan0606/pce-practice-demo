@@ -90,7 +90,7 @@ export default function TopBottomModal({
             <th className="num">{toLabel}</th>
             <th className="num">Change</th>
             <th className="num">% of Change</th>
-            <th className="num">Accts</th>
+            <th className="num">Accounts</th>
             <th>Dominant Driver</th>
           </tr>
         </thead>
@@ -129,7 +129,10 @@ export default function TopBottomModal({
     </div>
   );
 
-  const productName = `${row.display_prefix || ""}${row.group_name}`;
+  // Review C4 — prefix joined with an en dash, never run together
+  const productName = row.display_prefix
+    ? `${row.display_prefix} – ${row.group_name}`
+    : row.group_name;
   const rankedBy = data?.ranked_by === "change_amt" ? "change amount" : data?.ranked_by;
 
   return (
