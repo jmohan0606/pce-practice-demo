@@ -408,3 +408,8 @@ Reversible: yes
 Context: The spec asks for commits after 6.2/6.4/6.7; Subagent C's work arrived complete from the parallel dispatch (Round E tasks 6+7 precedent).
 Decision: One verified commit per task (6 and 7). Batch insight generation (advisor="all", 21 runs, $1.52) was run by the main thread during the round so exceptions/insights/advisor views verify against real stored runs.
 Reversible: n/a (process note)
+
+## 2026-08-17 · Round 3 (operator, mid-round) · Per-role model defaults are EMPTY — SUPERSEDES the Round A2B/E "deliberately configured" defaults
+Context: coach_model / chat_model / chat_guardrail_model shipped with hardcoded Claude model-id defaults ("the non-empty default deliberately makes the role configured"). In the client environment (LLM_MODE=cdao_openai, CDAO_MODEL=gpt-5.5) those three sent a Claude model id to a cdao endpoint even with the variables absent from .env — unfixable by omission.
+Decision: all three default to "" like the other roles: an unset role falls through to the primary LLM_MODE and its model; setting the variable still overrides per role. Verified by execution with a clean env (all eight roles resolve cdao_openai/gpt-5.5; an explicit CHAT_MODEL still wins). The remaining model defaults (anthropic_model, azure_*, cdao_model) are mode-scoped adapter defaults that cannot leak across modes. This Codespace's .env pins CHAT_MODEL=claude-opus-4-6 / CHAT_GUARDRAIL_MODEL explicitly, so local behaviour is unchanged; .env.example documents the unset-is-correct rule and warns that a Claude id under cdao_openai fails.
+Reversible: yes
