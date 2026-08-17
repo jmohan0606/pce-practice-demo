@@ -1,5 +1,60 @@
 # Build Progress
 
+## Round 2a (docs/ROUND_2A_EXTRACTION_SPEC.md) — extraction ready for the real load
+- [x] Task 1 (main thread, 159e755): ingestion batch size 5000 — the MEASURED
+      default (3,169/5,375/7,706 rows/s at 500/1000/5000, 54ms round trip).
+      New INGESTION_BATCH_SIZE setting (env override beats manifest); both
+      generators + committed data/manifest.json carry 5000; _BATCH_OVERRIDES
+      removed; INGESTION_MAX_BATCH_CALLS_PER_ENTITY 500→10,000 (12.4M/5000 =
+      2,488 legitimate calls — the measurement Round H deferred).
+- [x] Task 2 extraction side (main thread, 72feccb): temp-table scoping —
+      00_session_setup.sql (cohort_adv + scoped_acct ONCE per session,
+      re-created on every reconnect; a token refresh IS a reconnect); NO
+      template inlines SIDs/account keys; five chunk families (balances per
+      month never a UNION; account/eci_rel/eci_map by hashtext --buckets
+      default 4; txn month × 200-advisor batch) = 109 checkpointed resumable
+      chunks at firm scale; dry-run per-chunk projections from committed
+      EXPECTED_COUNTS.json + >2M warning; 20GB disk check; adv_flows extends
+      to June (166,985 aggregated of 19.4M daily); advisor_flags reduced to
+      the four consumed columns. verify_round_1 R1-8b re-pinned.
+- [x] Task 2 build side (main thread, e3eb213): build_real_data STREAMS the
+      four large entities (txns row-by-row with monthly_revenue accumulating
+      in-pass; account/eci_rel/eci_map per bucket; account_month one month at
+      a time from spilled per-month aggregates holding only the prior month's
+      map); stage-then-commit preserves never-a-partial-build;
+      --max-memory-mb guard (4096) with per-entity peak RSS in
+      build_report.json; missing-bucket/both-forms refuse; CRM firm-wide file
+      FILTERED to in-scope advisors/ECIs (out-of-scope count REPORTED,
+      *_CWM_INVALID kept+reported — operator mid-round requirement). FIXED
+      pre-existing bug: opportunity vertex wrote the pre-F2 dummy shape and
+      advisor_nnm was missing from the built manifest (dangling nnm edges) —
+      old-vs-new diff on the same drop differs ONLY in those fixes; chunked
+      == single-file builds proven identical. Validator V-2/V-3 chunk-aware
+      for all five families; transactions stream through V-7..V-10.
+- [x] Task 3 (main thread, e36499f): manifest phase field (1=vertices,
+      2=edges) in generators + committed manifests; load_real_data.py is its
+      own two-phase orchestrator — --max-parallel (default 3) per-phase
+      ThreadPoolExecutor, per-worker IngestionService, stop-flag halts
+      siblings on failure and the phase fails (phase 2 never starts);
+      assert_phase_complete REFUSES phase 2 while any phase-1 checkpoint is
+      not COMPLETED (proven); SQLite 30s busy timeout. Fixture 49/49 loaded,
+      0 mismatches.
+- [x] Task 4 (main thread, 03591a2): reconcile_load.py — three-way
+      source/extracted/built/loaded proof per entity, CRM + NNM included;
+      build_report.json records every explained delta; unexplained difference
+      = hard failure naming entity + both numbers (40k-drop probe proven);
+      committed EXPECTED_COUNTS.json baseline compared by default.
+- [ ] Task 5 (Copilot guide) DELIBERATELY DEFERRED by operator instruction —
+      written separately after reviewing the changed scripts so it describes
+      what exists. Runbook Phases 2/3/5 surgically updated to stay truthful.
+- [x] Task 6 (main thread): scripts/verify_round_2a.py 16/16 (check 11 =
+      the deferred guide, marked SKIP); 12.4M-row streaming proof via
+      scripts/make_scale_proof.py at the client-measured cardinalities;
+      actual output in docs/ROUND_2A_COMPLETE.md. Regression all green
+      (a25 b19 c13 e8 h9 a1-17, flags 8, manual 17, nnm 19, round_1 12/12,
+      round_1b 8/8, parity, npm 8 routes). Servers :8002 (healthy, 0
+      mismatches) / :3002 (200). Session LLM spend $0.00 of the $4 ceiling.
+
 ## Round 1b (docs/spec/ROUND_1B_SPEC.md) — final schema additions (schema closes)
 - [x] Task 1 (main thread, aeffaf4): job_code STRING on phx_dm_pce_advisor
       (confirmed pcr.fpic_employee_tb.job_cd varchar(30) not null) across

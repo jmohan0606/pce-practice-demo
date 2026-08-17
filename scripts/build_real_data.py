@@ -981,7 +981,26 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
     product_ids: set[str] = set()
     rpg_accts: dict[str, set] = defaultdict(set)
     rpg_by_acct: dict[str, str] = {}
-    advisor_by_acct: dict[str, set] = defaultdict(set)
+    # acct -> its advisors, stored COMPACTLY (a bare str for the common
+    # single-advisor case; a tuple only when several) — a python set costs
+    # ~216 bytes even for one member, which at 2.7M accounts is real memory
+    advisor_by_acct: dict[str, str | tuple] = {}
+
+    def _add_advisor(acct: str, sid: str) -> None:
+        cur = advisor_by_acct.get(acct)
+        if cur is None:
+            advisor_by_acct[acct] = sid
+        elif isinstance(cur, str):
+            if cur != sid:
+                advisor_by_acct[acct] = (cur, sid)
+        elif sid not in cur:
+            advisor_by_acct[acct] = (*cur, sid)
+
+    def _advisors_of(acct: str) -> tuple:
+        cur = advisor_by_acct.get(acct)
+        if cur is None:
+            return ()
+        return (cur,) if isinstance(cur, str) else cur
     expected_totals: dict[tuple, dict] = {}
     am_dir = staging / "_am_spill"
     am_dir.mkdir()
@@ -1036,7 +1055,7 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
                 if t["rpg"]:
                     rpg_accts[t["rpg"]].add(acct)
                     rpg_by_acct.setdefault(acct, t["rpg"])
-                advisor_by_acct[acct].add(sid)
+                _add_advisor(acct, sid)
                 cred = float(t["credited_amt"])
                 # validation accumulators
                 cd, sub = split_product_id(pid)
@@ -1200,7 +1219,7 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
         edges.emit("phx_dm_pce_transfer_of_account", t["transfer_id"], t["acct_key"], acct_set)
         edges.emit("phx_dm_pce_transfer_from", t["transfer_id"], t["from_advisor_sid"], advisor_set)
         edges.emit("phx_dm_pce_transfer_to", t["transfer_id"], t["to_advisor_sid"], advisor_set)
-        advisor_by_acct[t["acct_key"]].add(t["to_advisor_sid"])
+        _add_advisor(t["acct_key"], t["to_advisor_sid"])
     for r in build_team_agreements(team_rows):
         edges.emit("phx_dm_pce_team_primary", r["agreement_key"], r["prm_advisor_sid"], advisor_set)
         edges.emit("phx_dm_pce_team_secondary", r["agreement_key"], r["sec_advisor_sid"], advisor_set)
@@ -1306,6 +1325,7 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
         if eci:
             w_hh.write({"eci_id": eci, "account_count": str(len(households[eci]))})
     hh_set = {e for e in households if e}
+    households.clear()  # the per-eci account sets are no longer needed
     agg["pk_duplicates"]["phx_dm_pce_household"] = 0
     guard.check("household")
 
@@ -1422,26 +1442,33 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
     # every (acct, advisor) is carried through ALL scope months so zeroed /
     # gone-quiet accounts still get rows (LOST_ACCOUNT needs them)
     pairs: set[tuple] = set()
-    attributed_by_month: dict[str, set] = {}
     raw_balance_rows = 0
+
+    def month_attribution(month: str, cur_txn: dict, bal: dict) -> set:
+        """(acct, sid) pairs attributed for this month — txn pairs plus
+        balance rows resolved through this month's traders or any-scope
+        advisors. Recomputed per month (never all months held at once)."""
+        attributed: set = set(cur_txn)
+        month_advisors: dict[str, list] = {}
+        for (acct, sid) in cur_txn:
+            month_advisors.setdefault(acct, []).append(sid)
+        for acct in bal:
+            sids = month_advisors.get(acct) or _advisors_of(acct)
+            for sid in sids:
+                attributed.add((acct, sid))
+        return attributed
+
     for month in month_ids:
         cur_txn = read_spill(month)
-        pairs.update(cur_txn)
-        attributed: set = set(cur_txn)
         bal, n = read_balances(month)
         raw_balance_rows += n
-        month_advisors: dict[str, set] = defaultdict(set)
-        for (acct, sid) in cur_txn:
-            month_advisors[acct].add(sid)
+        # skipped-balance-row count belongs to the pre-pass only (a balance
+        # row with no resolvable advisor, counted once)
+        month_traders = {acct for (acct, _s) in cur_txn}
         for acct in bal:
-            sids = month_advisors.get(acct) or advisor_by_acct.get(acct) or set()
-            if not sids:
+            if acct not in month_traders and not _advisors_of(acct):
                 agg["skipped_balance_rows"] += 1
-                continue
-            for sid in sids:
-                pairs.add((acct, sid))
-                attributed.add((acct, sid))
-        attributed_by_month[month] = attributed
+        pairs.update(month_attribution(month, cur_txn, bal))
     report["raw_input_rows"]["raw_monthly_balance.csv"] = raw_balance_rows
 
     # emission: month-major, holding only the prior month's map
@@ -1452,7 +1479,7 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
     for i, month in enumerate(month_ids):
         cur_txn = read_spill(month)
         bal_map, _ = read_balances(month)
-        attributed = attributed_by_month.get(month, set())
+        attributed = month_attribution(month, cur_txn, bal_map)
         new_prior: dict[tuple, tuple] = {}
         for pair in sorted_pairs:
             acct, sid = pair

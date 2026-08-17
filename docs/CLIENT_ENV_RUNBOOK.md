@@ -152,9 +152,12 @@ network where per-batch latency dominates.
 **Correct result:** two measured rows/s figures (one vertex entity, one edge
 entity). Project the load window as
 `total rows (Part A) ÷ measured p95 rows/s × 1.2`.
-**If not / if the window is unworkable:** raise the manifest `batch_size`
-(500 → 2000) and re-measure before concluding anything; if still unworkable,
-plan the load in entity groups overnight.
+**If not / if the window is unworkable:** the default `batch_size` is already
+the measured 5000 (Round 2a: 3,169 / 5,375 / 7,706 rows/s at 500 / 1000 /
+5000 — do NOT lower it); re-measure at 5000 before concluding anything, and
+if still unworkable, plan the load in entity groups overnight.
+`--max-parallel` on `load_real_data.py` (default 3) loads entities
+concurrently within each phase.
 
 ---
 
@@ -186,11 +189,15 @@ python3 scripts/extract_chunked.py \
   --dry-run
 ```
 
-**Correct result:** a printed plan of 11 single-table chunks plus
-(months × advisor batches) transaction chunks, with per-month row estimates
-from the live connection. Compare the estimates with Part A — they should
-match. **If a single chunk projects above ~2M rows:** add
-`--batch-size 100` (then 50) until it does not.
+**Correct result (Round 2a plan):** 7 single-table chunks + one
+monthly-balance chunk per month (never a UNION) + 4 hash buckets each for
+account / acct_eci_rel / acct_eci_map + (months × advisor batches)
+transaction chunks — 109 chunks at firm scale — each with a per-chunk row
+projection from the committed EXPECTED_COUNTS.json, plus live per-month
+counts when connected. Compare with Part A — they should match. **If a
+chunk projects above ~2M rows:** raise `--buckets` (account-scoped tables)
+or lower `--batch-size` (transactions) until it does not; the per-month
+balance chunks are ~2.9M by design (month is their finest split).
 
 ### 3.3 Extract
 
@@ -268,9 +275,13 @@ python3 scripts/build_real_data.py --raw data/real/_raw --out data/real
 ```
 
 **Correct result:** a source-detection line naming all three kinds, then
-`ALL 12 VALIDATIONS PASSED`, then `wrote data/real: 48 files, … manifest.json`.
-The CRM line reports invalid advisor references as **kept + reported** —
-non-zero is expected, not an error.
+`[memory] peak RSS after <entity> …` lines as the build streams, then
+`ALL 12 VALIDATIONS PASSED`, then `wrote data/real: 49 files, …
+manifest.json + build_report.json`. The CRM line reports out-of-scope rows
+**dropped with the count** (the delivered file is firm-wide) and invalid
+advisor references as **kept + reported** — non-zero is expected for both,
+not an error. The build refuses under 20 GB free disk and fails loudly at
+`--max-memory-mb` (default 4096) instead of being OOM-killed.
 **If not:** `BUILD FAILED — ColumnMismatchError/ValidationFailure: …` names
 the exact file/column/check; nothing was written. Fix the extract (Phase 3)
 and rerun.
@@ -281,10 +292,27 @@ and rerun.
 python3 scripts/load_real_data.py --data-dir data/real
 ```
 
-**Correct result:** one line per manifest entity (vertices first, then
-edges) ending with `manifest verification: ok=True … mismatches=0`. The load
-also writes a `data_load` job row (one stage per entity) you can watch at
-`GET /api/jobs` once the API is up.
+**Correct result:** `=== phase 1: 18 entities, up to 3 in parallel ===` then
+one line per vertex entity, the same for phase 2's 31 edge entities, ending
+with `manifest verification: ok=True … mismatches=0`. Phase 2 REFUSES to
+start while any phase-1 entity is incomplete — that refusal is correct
+behaviour, not an error; rerun to resume phase 1. `--max-parallel` defaults
+to 3. The load also writes a `data_load` job row (one stage per entity) you
+can watch at `GET /api/jobs` once the API is up.
+
+After 5.3, run the three-way count reconciliation (Round 2a — this is the
+"all the intended records and counts match" proof):
+
+```bash
+python3 scripts/reconcile_load.py --raw data/real/_raw --data-dir data/real
+```
+
+**Correct result:** a source/extracted/built/loaded table covering every
+entity INCLUDING the CRM export and the four NNM files, ending
+`RECONCILIATION PASSED`, with each row compared against the committed
+`docs/data/extraction/EXPECTED_COUNTS.json` baseline. **If not:** it names
+the entity and the two numbers that differ; do not proceed to the review
+gate until it passes.
 
 **If interrupted** (network, token, restart): rerun the same command. The
 ingestion checkpoints (`data/real/checkpoints/ingestion.db`) resume at the
