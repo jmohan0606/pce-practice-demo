@@ -94,6 +94,15 @@ def evaluate_published_rules(advisor_sid: str, from_month: str, to_month: str,
         matched = result.get("matched") or []
         if not (result.get("evaluated") and matched):
             continue
+        # Round 3 task 3.3 — driver_enabled and exception_enabled are
+        # INDEPENDENT toggles. A driver-disabled rule still evaluates (its
+        # exclusion chain and exception role stand) but produces NO driver
+        # finding; the outcome says so instead of vanishing.
+        if rule.get("driver_enabled") is False:
+            entry["driver_disabled"] = True
+            entry["note"] = ("driver disabled — evaluated for exclusions/"
+                             "exceptions only, no driver finding")
+            continue
         impact = _monetary_impact(rule, matched)
         citations = rule.get("citations") or []
         # Round 3 task 2: no cap anywhere — the store keeps EVERY row behind

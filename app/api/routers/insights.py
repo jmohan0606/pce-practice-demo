@@ -245,9 +245,36 @@ def practice_summary(from_month: str, to_month: str) -> dict:
     }
 
 
+@router.get("/exceptions/advisors")
+def exception_advisors(from_month: str, to_month: str,
+                       version: str = "latest") -> dict:
+    """Round 3 review batch 1 H4 — the advisors that actually HAVE exceptions
+    on this transition (the UI's advisor dropdown lists only these)."""
+    from app.graph.foundation_store import get_foundation_store
+
+    store = get_insight_store()
+    version_id = None if version in ("", "latest") else version
+    names = {sid: (a.get("advisor_name") or "")
+             for sid, a in get_foundation_store()
+             .all_vertices("phx_dm_pce_advisor").items()}
+    counts: dict[str, int] = {}
+    runs = store.runs_for_transition(from_month, to_month)
+    for sid in sorted({r["advisor_sid"] for r in runs if r["advisor_sid"] != "all"}):
+        run = store.latest_run_for(sid, from_month, to_month, version_id)
+        if run is None or run["status"] != "COMPLETE":
+            continue
+        n = len(store.run_findings(run["run_id"]))
+        if n:
+            counts[sid] = n
+    return {"from_month_id": from_month, "to_month_id": to_month,
+            "advisors": [{"advisor_sid": sid, "advisor_name": names.get(sid, ""),
+                          "exception_count": n}
+                         for sid, n in sorted(counts.items())]}
+
+
 @router.get("/exceptions")
 def exceptions(from_month: str, to_month: str, version: str = "latest",
-               severity: str | None = None) -> dict:
+               severity: str | None = None, advisor: str | None = None) -> dict:
     """The practice team's worklist (Round E 6.2c, Round A1 task 2): findings
     from each advisor's latest run on this transition. Rule-cited rows carry
     the rule's severity; rows with no rule are observations at INFO (mockup's
@@ -269,8 +296,13 @@ def exceptions(from_month: str, to_month: str, version: str = "latest",
     advisor_names = {sid: (a.get("advisor_name") or "")
                      for sid, a in get_foundation_store()
                      .all_vertices("phx_dm_pce_advisor").items()}
+    sids = sorted({r["advisor_sid"] for r in advisors if r["advisor_sid"] != "all"})
+    # Round 3 review batch 1 H2/H3 — server-side advisor filter, so the UI's
+    # default one-advisor view never fetches the whole set.
+    if advisor:
+        sids = [s for s in sids if s == advisor]
     rows: list[dict] = []
-    for sid in sorted({r["advisor_sid"] for r in advisors if r["advisor_sid"] != "all"}):
+    for sid in sids:
         run = store.latest_run_for(sid, from_month, to_month, version_id)
         if run is None or run["status"] != "COMPLETE":
             continue

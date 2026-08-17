@@ -370,6 +370,10 @@ def _scoped_rule_findings(scope: str, parts: dict, to_month: str,
         matched = result.get("matched") or []
         if not (result.get("evaluated") and matched):
             continue
+        # Round 3 task 3.3 — driver-disabled rules produce no driver finding
+        # (still evaluated: exclusion chains and exception role stand).
+        if rule.get("driver_enabled") is False:
+            continue
         citations = rule.get("citations") or []
         # Round 3 task 2: no cap anywhere — the store keeps EVERY row behind
         # the number (sorted by contribution, footer totals attached).
