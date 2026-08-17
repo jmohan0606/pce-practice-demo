@@ -119,6 +119,29 @@ def advisor_summary(sid: str,
     aum_rows = _catalog("advisor_aum", {"advisor": sid, "month_id": to_month})
     aum = aum_rows[0] if aum_rows else None
 
+    # Round 3 review D2/B1 — AUM is Managed Accounts only: summed end
+    # balances of the advisor's accounts where the account master says
+    # is_managed, for the to-month and its prior (null when no managed rows).
+    def _managed_aum(month_id: str) -> float | None:
+        managed = {k for k, a in _store().all_vertices("phx_dm_pce_account").items()
+                   if a.get("is_managed") in (True, "True", "true", 1, "1")}
+        rows = [r for r in _store().all_vertices("phx_dm_pce_account_month").values()
+                if str(r.get("advisor_sid")) == sid
+                and str(r.get("month_id")) == str(month_id)
+                and str(r.get("acct_key")) in managed]
+        if not rows:
+            return None
+        return round(sum(float(r.get("end_balance") or 0) for r in rows), 2)
+
+    prior_mid = months[months.index(to_month) - 1] if months.index(to_month) > 0 else None
+    managed_now = _managed_aum(to_month)
+    managed_prior = _managed_aum(prior_mid) if prior_mid else None
+    aum_managed = (None if managed_now is None else {
+        "total_balance": managed_now,
+        "prior_balance": managed_prior,
+        "change_amt": (round(managed_now - managed_prior, 2)
+                       if managed_prior is not None else None)})
+
     # NCF — Net CASH Flows for the to-month (review B3: renamed from the
     # mis-labelled 'net credited flows'; derivation verified — the flow
     # vertex's total_net_flows sums the source's total_net_financial_flows,
@@ -158,6 +181,10 @@ def advisor_summary(sid: str,
             "aum": ({"total_balance": aum["total_balance"],
                      "prior_balance": aum["prior_balance"],
                      "change_amt": aum["change_amt"]} if aum else None),
+            # Round 3 D2/B1 — the UI's AUM tile renders THIS, labelled
+            # "AUM (Managed Accounts only)"; the all-accounts figure above
+            # stays for API compatibility.
+            "aum_managed": aum_managed,
             "ncf": ({"net_flows": ncf["net_flows"], "inflows": ncf["inflows"],
                      "outflows": ncf["outflows"],
                      "credited_flows": ncf["credited_flows"]} if ncf else None),

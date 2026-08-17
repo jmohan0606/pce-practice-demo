@@ -248,14 +248,30 @@ def practice_summary(from_month: str, to_month: str) -> dict:
                 "outflows": round(sum(_f(r.get("total_outflows")) for r in rows), 2),
                 "net_flows": round(sum(_f(r.get("total_net_flows")) for r in rows), 2)}
 
+    # Round 3 review D2 — AUM is Managed Accounts only wherever it renders;
+    # the managed-scoped figure is what the KPI shows, labelled.
+    managed = {k for k, a in store.all_vertices("phx_dm_pce_account").items()
+               if a.get("is_managed") in (True, "True", "true", 1, "1")}
+
+    def _aum_managed(month_id: str) -> float:
+        return round(sum(_f(r.get("end_balance"))
+                         for r in store.all_vertices("phx_dm_pce_account_month").values()
+                         if str(r.get("advisor_sid")) in cohort
+                         and str(r.get("month_id")) == str(month_id)
+                         and str(r.get("acct_key")) in managed), 2)
+
     aum_from, aum_to = _aum(from_month), _aum(to_month)
     aum_change = round(aum_to - aum_from, 2)
+    m_from, m_to = _aum_managed(from_month), _aum_managed(to_month)
+    m_change = round(m_to - m_from, 2)
     return {
         "from_month_id": from_month, "to_month_id": to_month,
         "advisor_count": len(cohort),
         "credited": totals,  # {from_amt, to_amt, change_amt, change_pct}
         "aum": {"from_amt": aum_from, "to_amt": aum_to, "change_amt": aum_change,
                 "change_pct": round(aum_change / aum_from * 100, 2) if aum_from else None},
+        "aum_managed": {"from_amt": m_from, "to_amt": m_to, "change_amt": m_change,
+                        "change_pct": round(m_change / m_from * 100, 2) if m_from else None},
         "flows": {"from": _flows(from_month), "to": _flows(to_month)},
     }
 
