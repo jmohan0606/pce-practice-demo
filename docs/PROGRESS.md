@@ -975,11 +975,17 @@ Round: 3 (docs/spec/ROUND_3_SPEC.md) — COMPLETE. The last build round: the
       in, verified by scripts/verify_round_3.py (10/10) plus a full
       headless-chromium pass over every screen
       (docs/ROUND_3_COMPLETE.md). The schema stayed frozen at 31V/44E —
-      no migration was needed. Open items carried out of the round:
-      (1) 13 advisor insight runs on RSV_v12 are unfunded (Anthropic credit
-      balance exhausted mid-batch; serving falls back to their prior
-      COMPLETE runs) — rerun the advisor="all" batch once credits exist,
-      which also live-proves the cost-weighted token ceiling;
+      no migration was needed.
+POST-ROUND RERUN (2026-08-17, operator-funded then operator-stopped): the
+      advisor="all" batch was relaunched after the credit top-up and stopped
+      at 10 of 21 runs ("enough testing"): 0 failures, 0 limits on ALL 10
+      runs, 67 findings, $2.15 — the COST-WEIGHTED token ceiling is now
+      LIVE-PROVEN (aggregate run: natural completion, 24 queries,
+      limits_hit []; every pre-fix run was cut at ~16 of 35 turns).
+      Open items carried out of the round:
+      (1) 10 advisors (V000002/6/9/10/11/12/16/17/18/19/20) still serve
+      their prior COMPLETE runs — one advisor="all" batch rerun supersedes
+      them whenever wanted; nothing else is pending on it;
       (2) port visibility for 8002/3002 still needs the Ports panel
       (gh token lacks the codespace scope);
       (3) subagent-noted polish: an AdvisorLink cell-renderer hook on the

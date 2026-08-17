@@ -36,8 +36,10 @@ diagnosis showed WHY: the ceiling counted every re-READ of the ~15k-token
 cached opening at full weight, though those tokens bill at 10%. It had
 become a hidden turn cap, not a spend guard. **Fixed:** the ceiling is now
 COST-WEIGHTED (input + 0.1×cache-read + 1.25×cache-write — the providers'
-actual billing weights; default 250k unchanged; DECISIONS.md). Unit-proven;
-the live zero-limit rerun is blocked on API credits (below).
+actual billing weights; default 250k unchanged; DECISIONS.md).
+**Live-proven in the post-round rerun** (see "API credits" below): 10 of 10
+completed runs hit ZERO limits, the aggregate at natural completion with
+24 queries — check 2's target met on real runs.
 
 ### Check 5/6 on the SERVED store (live config, RSV_v9–v11 edits)
 
@@ -185,18 +187,34 @@ Every screen was opened and read; screenshots taken at each stop.
    proven by execution on a simulated cdao_openai/gpt-5.5 env; .env.example
    documents the rule.
 
-## API credits — the 13 unfunded runs (carried)
+## API credits — the unfunded runs, and the post-round rerun (RESOLVED in part)
 
-The RSV_v12 regeneration batch (advisor="all", 21 runs) exhausted the
-Anthropic API credit balance after 8 completed runs (the aggregate + 7
-advisors; ~$1.25 of trace-measured spend). The 13 remaining advisors failed
-with `Your credit balance is too low`; batch isolation held (every failure
-recorded, nothing aborted) and the serving fallback keeps their prior
-COMPLETE runs (RSV_v8 content, old-style driver text) on screen. **First
-action once credits exist**: rerun
+During the round, the RSV_v12 regeneration batch exhausted the Anthropic
+credit balance after 8 completed runs; the 13 remaining advisors failed with
+`Your credit balance is too low` (batch isolation held; serving fell back to
+their prior COMPLETE runs).
+
+**Post-round rerun (2026-08-17, after the operator topped up credits):** the
+advisor="all" batch was relaunched. (A first relaunch failed instantly on
+all 21 runs — the top-up had not yet propagated; a direct API probe then
+succeeded and the second relaunch ran healthily. The failed attempt cost
+nothing and, per the round's serve-latest-COMPLETE fix, displaced nothing.)
+The operator stopped the batch at **10 of 21 runs complete** ("enough
+testing"): the aggregate book + V000001/3/4/5/7/8/13/14/15, **0 failures,
+0 limits hit on ALL 10 runs, 67 findings, $2.15 trace-measured** (~$0.22/run
+— runs now go their full depth instead of being cut at turn 16).
+
+**The cost-weighted ceiling is LIVE-PROVEN**: the aggregate run reached
+generation 4 with `limits_hit: []` at 24 queries / 8 findings — natural
+completion, where every pre-fix run tripped MAX_RUN_INPUT_TOKENS at ~16 of
+35 turns. Check 2's zero-limit target is now met on real runs, not just the
+unit proof.
+
+Remaining carried item: 10 advisors (V000002/6/9/10/11/12/16/17/18/19/20 —
+V000011 was mid-generation at the stop) still serve their prior COMPLETE
+runs. Rerunning
 `POST /api/insights/generate {"advisor":"all","from_month":"202604","to_month":"202605"}`
-— it supersedes the stale runs and also live-proves the cost-weighted
-ceiling (expected: zero limits at full 35-turn depth).
+at any time supersedes them; nothing else is pending on it.
 
 ## Regression — every suite re-run (actual tallies)
 
