@@ -119,7 +119,10 @@ def advisor_summary(sid: str,
     aum_rows = _catalog("advisor_aum", {"advisor": sid, "month_id": to_month})
     aum = aum_rows[0] if aum_rows else None
 
-    # NCF — net credited flows for the to-month
+    # NCF — Net CASH Flows for the to-month (review B3: renamed from the
+    # mis-labelled 'net credited flows'; derivation verified — the flow
+    # vertex's total_net_flows sums the source's total_net_financial_flows,
+    # never a credited-revenue field; credited_flows is the separate column)
     flows_rows = _catalog("advisor_flows_summary",
                           {"advisor": sid, "month_id": to_month})
     ncf = flows_rows[0] if flows_rows else None
@@ -128,7 +131,7 @@ def advisor_summary(sid: str,
     # real NNM category files now load into phx_dm_pce_advisor_nnm and the
     # dedicated GET /api/advisor/{sid}/nnm endpoint serves the real figures
     # (latest-month YTD, threshold resolved from the extracted plan rule).
-    # Net credited flows remain above as NCF, which is what the flow table
+    # Net cash flows remain above as NCF, which is what the flow table
     # actually measures.
 
     # trades per month for this advisor (the months query's txn_count)

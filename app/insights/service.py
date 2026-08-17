@@ -17,7 +17,7 @@ import uuid
 
 from app.agents.insights_miner import mine
 from app.agents.insights_reporter import report
-from app.insights.describe import describe_rule_finding
+from app.insights.describe import describe_rule_finding, dominant_group
 from app.graph.queries.catalog import run_catalog_query
 from app.insights.store import get_insight_store
 from app.insights.tools import MinerTools
@@ -123,7 +123,11 @@ def evaluate_published_rules(advisor_sid: str, from_month: str, to_month: str,
             # store strips it, the API re-resolves it at read time.
             "driver_code": rule.get("driver_code") or "OTHER",
             "driver_tag": rule.get("driver_label") or rule.get("driver_tag") or "Other",
-            "group_id": None,
+            # Round 3 review F2 — product attribution where determinable: the
+            # group holding >=50% of the matched accounts' revenue this month;
+            # None (never guessed) when no group dominates.
+            "group_id": (dominant_group(matched, to_month)[0]
+                         if rule.get("grain") == "account" else None),
             "rule_key": result.get("rule_key"),
             "provenance": "REAL",
             "confidence": 1.0,

@@ -818,6 +818,11 @@ def account_lifecycle_counts(store: FoundationGraphStore, params: dict) -> list[
             continue
         if result.get("empty_reason"):
             notes.append(f"{result['rule_code']}: {result['empty_reason']}")
+        # Round 3 review B2 — a SKIPPED lifecycle rule (e.g. deactivated) must
+        # never read as a true zero: the note says why the count is absent.
+        if result.get("skipped"):
+            notes.append(f"{result['rule_code']}: not counted — "
+                         f"{result.get('skip_reason') or 'skipped'}")
         keys = {str(entry["key"]) for entry in result.get("matched", [])}
         if group_accts is not None:
             keys &= group_accts

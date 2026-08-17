@@ -145,7 +145,49 @@ def verify_coaching_points(raw_points: list, excerpts: dict[str, dict],
     # the gate's backing assertion — nothing citation-less leaves this function
     assert all(p.get("citation", {}).get("document_name") for p in kept), \
         "coaching gate breach: a kept point has no resolvable citation"
+    # Round 3 review B7 — coaching points are RANKED BY SEVERITY, using the
+    # same severity model as rules and exceptions: a point whose text matches
+    # a published rule's subject inherits that rule's severity (the highest
+    # when several match); no matching rule = INFO, never guessed higher.
+    for point in kept:
+        point["severity"], point["severity_basis"] = _point_severity(point["text"])
+    from app.rules.store import SEVERITIES
+
+    rank = {level: i for i, level in enumerate(SEVERITIES)}
+    kept.sort(key=lambda p: rank.get(p.get("severity") or "INFO", len(rank)))
     return kept, dropped
+
+
+def _point_severity(text: str) -> tuple[str, str]:
+    """Severity via subject-match against the published rules (rule_code words
+    of 4+ letters, e.g. 'discount'/'sharing'/'concentration')."""
+    try:
+        from app.rules.seed import ensure_v0_seed
+        from app.rules.store import SEVERITIES, get_rule_store
+
+        ensure_v0_seed()
+        store = get_rule_store()
+        version = store.latest_version("PUBLISHED")
+        if version is None:
+            return "INFO", "no published rule set"
+        lowered = text.lower()
+        best: tuple[int, str, str] | None = None
+        rank = {level: i for i, level in enumerate(SEVERITIES)}
+        for rule in store.version_rules(version["version_id"]):
+            if rule.get("active") is False:
+                continue
+            words = [w.lower() for w in str(rule.get("rule_code") or "").split("_")
+                     if len(w) >= 4]
+            if words and any(w in lowered for w in words):
+                sev = rule.get("severity") or "INFO"
+                candidate = (rank.get(sev, len(rank)), sev, rule.get("rule_code"))
+                if best is None or candidate[0] < best[0]:
+                    best = candidate
+        if best is None:
+            return "INFO", "no matching rule — informational"
+        return best[1], f"matches rule {best[2]} ({best[1]})"
+    except Exception:  # noqa: BLE001 — severity is triage sugar, never a crash
+        return "INFO", "severity resolution unavailable"
 
 
 # ------------------------------------------------------------------ generation

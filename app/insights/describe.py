@@ -41,6 +41,37 @@ def _advisor_names() -> dict[str, str]:
             for sid, a in get_foundation_store().all_vertices(V_ADVISOR).items()}
 
 
+def dominant_group(matched: list[dict], month: str) -> tuple[str | None, str | None]:
+    """Round 3 review F2 — the product group a rule finding belongs to, where
+    determinable: the group holding the MAJORITY (>=50%) of the matched
+    accounts' credited revenue in the month. (group_id, group_name), or
+    (None, None) when no group dominates — attribution is never guessed."""
+    from app.graph.foundation_store import get_foundation_store
+
+    store = get_foundation_store()
+    keys = {str(m.get("key")) for m in matched}
+    if not keys:
+        return None, None
+    from app.graph.queries.catalog import _product_group_map
+
+    group_of = _product_group_map(store)
+    by_group: dict[str, float] = {}
+    for r in store.all_vertices("phx_dm_pce_revenue_transaction").values():
+        if str(r.get("month_id")) != str(month) or str(r.get("acct_key")) not in keys:
+            continue
+        gid = group_of.get(str(r.get("product_id") or ""))
+        if gid:
+            by_group[gid] = by_group.get(gid, 0.0) + abs(_f(r.get("credited_amt")))
+    total = sum(by_group.values())
+    if not total:
+        return None, None
+    gid, amt = max(by_group.items(), key=lambda kv: kv[1])
+    if amt / total < 0.5:
+        return None, None
+    group = store.all_vertices("phx_dm_pce_product_group").get(gid) or {}
+    return gid, group.get("group_name") or gid
+
+
 def describe_rule_finding(rule: dict, matched: list[dict], month: str,
                           advisor_sid: str, impact: float | None) -> str:
     """A data-driven description of a rule outcome: totals, concentration,

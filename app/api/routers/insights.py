@@ -54,6 +54,8 @@ def _serialize_finding(finding: dict) -> dict:
         # Round A1 task 2: inherited from the producing rule; INFO when no rule
         "severity": finding.get("severity") or "INFO",
         "group_id": finding.get("group_id"),
+        # Round 3 review F2 — the display name for the By Product pivot
+        "group_name": _group_name(finding.get("group_id")),
         "rule_key": finding.get("rule_key"), "provenance": finding.get("provenance"),
         "confidence": finding.get("confidence"),
         "evidence_columns": finding.get("evidence_columns") or [],
@@ -66,6 +68,19 @@ def _serialize_finding(finding: dict) -> dict:
         "source_query": finding.get("source_query"),
         "rank_order": finding.get("rank_order"),
     }
+
+
+def _group_name(group_id: str | None) -> str | None:
+    if not group_id:
+        return None
+    try:
+        from app.graph.foundation_store import get_foundation_store
+
+        group = get_foundation_store().all_vertices(
+            "phx_dm_pce_product_group").get(str(group_id)) or {}
+        return group.get("group_name") or str(group_id)
+    except Exception:  # noqa: BLE001 — display sugar, never invented
+        return str(group_id)
 
 
 def _document_name(document_id: str | None) -> str | None:
