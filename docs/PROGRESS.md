@@ -1,5 +1,42 @@
 # Build Progress
 
+## Round 4 (docs/spec/ROUND_4_SPEC.md) — CLI generation scripts + Round 3 on-screen fixes
+- [x] Task 1 (e1aac70): AI Insights renders the NARRATIVE ONLY — the
+      duplication was InsightsSection mapping findings into bullets; finding
+      cards now render once, in Revenue Drivers (observed: 0 vs 8 .finding
+      elements).
+- [x] Task 2 (c12267c): practice narratives regenerated for BOTH transitions
+      and pasted verbatim from the API (cross-cutting, limits none). Three
+      material fixes found by running: the numeric gate now accepts
+      whole-dollar roundings and REPRODUCIBLE two-figure combinations of
+      headline figures (it re-computes the arithmetic; four consecutive
+      template fallbacks on correct sums exposed the gate/mandate conflict);
+      the repair round stopped contradicting the contract; NON_CHANGE_DRIVERS
+      (RETAINED_ACCOUNT, a stock) leave the residual — a served narrative had
+      carried a confidently-wrong "-$911K residual".
+- [x] Task 3 (e4d713e): "New To Product: false" ON SCREEN was real — the
+      level-2 drill-down METRIC STRIP tile (metricValue passed booleans
+      through raw), not the table cell the code reading exonerated. Fixed;
+      observed Yes/No at all levels after a clean rebuild.
+- [x] Task 4 (sweep commit): every §C/§D/§F item re-checked ON SCREEN on a
+      clean rebuild — all pass; found+fixed: By Product led with "No product
+      attribution" (attributed groups now first). Open nit: NarrativeText
+      colours parenthetical positives red (pre-existing heuristic, listed).
+- [x] Task 5: .gitattributes (LF, binaries) + one renormalisation commit of
+      the 112 CRLF-committed files; data suites green after; git status clean.
+- [x] Tasks 6–10 (f132aa8): the four scripts + shared
+      _generate_insights_common (checkpointed resume, trace-sourced cost
+      projection, skip-existing/--regenerate, --parallel default 1,
+      per-target trace-sourced report lines, failure isolation, honest exit
+      codes, four prerequisite checks) + practice_only on the generate
+      endpoint (one practice run per transition; UI keeps the fan-out).
+      Script 2 RAN FOR REAL against managed_accounts 202604→202605: 19
+      selected (the dashboard modal's own ranking), 8 skipped as stored, 6
+      generated (~$0.19/run, zero limits), 5 failed ISOLATED when the
+      Anthropic account hit its monthly usage cap (resets 2026-09-01);
+      rerun resumed with 14 skips and exit 1. Full output in
+      docs/ROUND_4_COMPLETE.md. Session spend ≈ $2.88 of $8.
+
 ## Round 3 (docs/spec/ROUND_3_SPEC.md) — aggregate querying, exceptions model, full UI review
 - [x] Task 1 (main thread, 366f746): queries return SHAPES, not rows — 14
       large-result catalog queries reduce in code over EVERY row (totals,
@@ -968,7 +1005,19 @@ Note: per Round E/G/H precedent, subagents reported and the MAIN THREAD
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: 3 (docs/spec/ROUND_3_SPEC.md) — COMPLETE. The last build round: the
+Round: 4 (docs/spec/ROUND_4_SPEC.md) — COMPLETE. Part A closed the Round 3
+      items the operator found still wrong ON SCREEN (the AI-Insights/
+      Revenue-Drivers duplication, the metric-strip boolean, the sweep) with
+      browser observation as the only closing evidence, plus the numeric-gate
+      /cross-cutting-mandate conflict and the stock-measure residual bug the
+      regenerations exposed. Part B delivered the four CLI generation
+      scripts (resumable, cost-projected from trace actuals, skip-existing,
+      failure-isolated, honest exit codes) and ran script 2 for real. Open:
+      five advisors' runs + a live --regenerate demo blocked on the Anthropic
+      MONTHLY usage cap (resets 2026-09-01); the NarrativeText parenthetical
+      nit; port visibility (Ports panel). Session spend ≈ $2.88 of $8.
+
+Previous position — Round: 3 (docs/spec/ROUND_3_SPEC.md) — COMPLETE. The last build round: the
       behaviour changes (shape queries over every row, evidence without a
       cap, the exceptions rate model over the Round-1 fields, cross-cutting
       AI Insights, jobs API) and all 73 review items from both batches are
