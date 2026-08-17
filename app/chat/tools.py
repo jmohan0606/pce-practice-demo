@@ -108,7 +108,10 @@ class ChatTools:
         start = time.perf_counter()
         self.calls_made += 1
         try:
-            result = run_catalog_query(query_name, params)
+            # Round 3 task 1: shape-capable queries default to shape mode for
+            # the chat agent too — complete aggregates, never a sample. The
+            # agent may pass mode='rows' explicitly to name specific rows.
+            result = run_catalog_query(query_name, params, default_mode="shape")
         except CatalogError as exc:
             # a malformed call is still a logged call — the trace shows it
             self.queries_run += 1

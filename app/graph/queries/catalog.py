@@ -1336,11 +1336,47 @@ CATALOG: dict[str, dict] = {
 }
 
 
+# Round 3 task 1 — shape-capable queries advertise their envelope parameters
+# in the agent-facing signature. The three are handled by run_catalog_query
+# (popped before the implementation runs); through agent tool layers the
+# DEFAULT is mode="shape" — aggregates computed over every row — and a rows
+# drill is capped for naming specifics, never re-acquiring the full set.
+from app.graph.queries.shapes import (  # noqa: E402
+    DRILL_ROW_CAP as _DRILL_ROW_CAP,
+    SHAPE_SPECS as _SHAPE_SPECS,
+)
+
+for _name in _SHAPE_SPECS:
+    if _name in CATALOG:
+        CATALOG[_name] = dict(CATALOG[_name])
+        CATALOG[_name]["description"] = (
+            CATALOG[_name]["description"]
+            + " LARGE-RESULT QUERY: by default returns a SHAPE computed over "
+              "EVERY row (totals, named counts, per-column stats, top-10 "
+              "concentration, >3-sigma outliers) — complete, never sampled. "
+              "Pass group_by=<column> for a per-group cut. Pass mode='rows' "
+              f"(up to {_DRILL_ROW_CAP} rows) ONLY to name specific rows in a "
+              "finding.")
+        CATALOG[_name]["params"] = CATALOG[_name]["params"] + [
+            _p("mode", "shape|rows — shape is the default and covers every row",
+               required=False),
+            _p("group_by", "column name for a per-group breakdown (shape mode)",
+               required=False),
+            _p("limit", f"int <= {_DRILL_ROW_CAP} (rows mode)", required=False),
+        ]
+
+
 def catalog_signatures() -> list[dict]:
     """The catalog as the Miner's get_schema tool serves it."""
     return [{"query_name": name, "description": spec["description"],
              "params": spec["params"], "returns": spec["returns"]}
             for name, spec in CATALOG.items()]
+
+
+# Round 3 task 1 — envelope parameters handled by run_catalog_query itself,
+# never passed to a query implementation. Accepted only on shape-capable
+# queries (app/graph/queries/shapes.py).
+_ENVELOPE_PARAMS = ("mode", "group_by", "limit")
 
 
 def validate_params(query_name: str, params: dict) -> dict:
@@ -1366,14 +1402,52 @@ def validate_params(query_name: str, params: dict) -> dict:
     return params
 
 
-def run_catalog_query(query_name: str, params: dict | None = None) -> dict:
-    """Validate → tiered graph client → {"rows": [...], "row_count": n}."""
-    from app.graph.client import get_graph_client
+def run_catalog_query(query_name: str, params: dict | None = None, *,
+                      default_mode: str = "rows") -> dict:
+    """Validate → tiered graph client → {"rows": [...], "row_count": n}.
 
-    checked = validate_params(query_name, params or {})
+    Round 3 task 1 — shape-capable queries (app/graph/queries/shapes.py) accept
+    three envelope parameters, handled HERE (the implementations never see
+    them):
+
+    - ``mode``: "shape" reduces the FULL result to aggregates computed over
+      every row (the agent-facing default — agent tool layers pass
+      ``default_mode="shape"``); "rows" returns the row list (API/service
+      default, backwards-compatible).
+    - ``group_by``: a column name — the shape gains a per-group breakdown.
+    - ``limit``: rows mode only — cap the returned list (the full underlying
+      rows still ride ``source_rows`` and ``row_count`` stays the full count,
+      so nothing is silently dropped).
+
+    Shape-mode results carry ``shape`` plus ``source_rows`` (the complete row
+    set) so evidence attached to a finding is every row behind the number.
+    """
+    from app.graph.client import get_graph_client
+    from app.graph.queries.shapes import compute_shape, shape_capable
+
+    params = dict(params or {})
+    envelope = {name: params.pop(name, None) for name in _ENVELOPE_PARAMS}
+    if any(v not in (None, "") for v in envelope.values()) \
+            and not shape_capable(query_name):
+        raise CatalogError(
+            f"{query_name}: mode/group_by/limit apply only to shape-capable "
+            f"queries — this one returns a bounded result already")
+    checked = validate_params(query_name, params)
     result = get_graph_client().run_query(query_name, checked)
     rows = result.get("results") or []
-    return {"rows": rows, "row_count": len(rows)}
+    if not shape_capable(query_name):
+        return {"rows": rows, "row_count": len(rows)}
+    mode = str(envelope.get("mode") or default_mode).lower()
+    if mode not in ("shape", "rows"):
+        raise CatalogError(f"{query_name}: mode must be 'shape' or 'rows', got {mode!r}")
+    if mode == "shape":
+        shape = compute_shape(query_name, rows, group_by=envelope.get("group_by") or None)
+        return {"rows": [shape], "row_count": len(rows), "shape": shape,
+                "source_rows": rows, "mode": "shape"}
+    limit = envelope.get("limit")
+    shown = rows if limit in (None, "") else rows[:max(0, int(limit))]
+    return {"rows": shown, "row_count": len(rows), "source_rows": rows,
+            "mode": "rows"}
 
 
 # ------------------------------------------------------------------- Round F2
