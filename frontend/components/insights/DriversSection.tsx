@@ -82,7 +82,11 @@ export default function DriversSection({ fromMonth, toMonth, monthName }: Driver
       entry.findings.push(f);
       map.set(key, entry);
     }
-    return Array.from(map.values());
+    // Round 4 sweep — attributed product groups lead; the honest
+    // "No product attribution" bucket renders last, never first.
+    return Array.from(map.values()).sort(
+      (a, b) => Number(a.label === NO_ATTRIBUTION) - Number(b.label === NO_ATTRIBUTION),
+    );
   }, [ranked, pivot]);
 
   return (

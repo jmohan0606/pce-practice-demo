@@ -12,12 +12,10 @@
  *   - `toMonth: string`    — to-month id, e.g. "202605"
  *   - `monthName: (id: string) => string` — month id -> display name
  *
- * Behaviour:
- *   - Narrative + finding bullets ranked by |impact_amt|; every movable figure
- *     goes through `<NarrativeText>` / `<Delta>` (Task 1.2).
- *   - Every bullet with a rule carries a `.rulecite` line (`<RuleCitation>`) —
- *     the client's central ask: insight -> rule -> document passage. Findings
- *     with no rule keep their driver chip and show no rule line.
+ * Behaviour (Round 4 task 1):
+ *   - The CROSS-CUTTING NARRATIVE ONLY — the reporter's paragraphs and its
+ *     own narrative bullets. The ranked finding cards render exactly once,
+ *     in Revenue Drivers; this section never maps findings.
  *   - Generate / Re-Generate is per-transition ONLY (no batch anywhere): shows
  *     the projection estimate from `/api/trace/summary`; with no run history it
  *     says "no history yet — first run cost unknown", never an invented number.
@@ -35,10 +33,8 @@ import {
 import Chip from "@/components/Chip";
 import EmptyState from "@/components/EmptyState";
 import { LimitNotice } from "@/components/InsightPanel";
-import { Delta, NarrativeText } from "@/components/Num";
-import RuleCitationLine from "@/components/RuleCitation";
 import { useTerm } from "@/components/Term";
-import { Prose, driverCode, rankFindings, ruleSetLabel, useInsightRun } from "@/components/insights/shared";
+import { Prose, ruleSetLabel, useInsightRun } from "@/components/insights/shared";
 
 export interface InsightsSectionProps {
   fromMonth: string;
@@ -93,7 +89,6 @@ export default function InsightsSection({ fromMonth, toMonth, monthName }: Insig
   };
 
   const complete = run && run.status === "COMPLETE" ? run : null;
-  const findings = complete ? rankFindings(complete.findings) : [];
 
   return (
     <div className="card">
@@ -147,36 +142,24 @@ export default function InsightsSection({ fromMonth, toMonth, monthName }: Insig
                     <Prose text={p} />
                   </p>
                 ))}
-              {findings.length ? (
+              {/* Round 4 task 1 — AI Insights renders the NARRATIVE ONLY:
+                  the reporter's cross-cutting paragraphs and its own four
+                  narrative bullets. The ranked finding cards render ONCE, in
+                  Revenue Drivers — the operator saw the finding list twice
+                  on one page because this section also mapped findings. */}
+              {complete.bullets?.length ? (
                 <ul>
-                  {findings.map((f, i) => (
-                    <li key={f.finding_id ?? i}>
-                      <b>
-                        {f.title} <Delta value={f.impact_amt} />
-                      </b>{" "}
-                      <FindingDriverChip
-                        code={driverCode(f)}
-                        label={f.driver_tag}
-                        statement={f.rule_citation?.statement ?? null}
-                      />{" "}
-                      <NarrativeText text={f.summary} />
-                      {f.rule_citation ? (
-                        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4 }}>
-                          {/* Review F8 — links prefixed "Source / Citation" */}
-                          <span style={{ fontSize: "11.5px", color: "var(--slate)" }}>
-                            Source / Citation:
-                          </span>
-                          <RuleCitationLine
-                            ruleKey={f.rule_citation.rule_key}
-                            ruleName={f.rule_citation.rule_name || f.rule_citation.rule_code}
-                            citation={f.rule_citation.citation}
-                          />
-                        </span>
-                      ) : null}
+                  {complete.bullets.map((b, i) => (
+                    <li key={i}>
+                      <Prose text={b} />
                     </li>
                   ))}
                 </ul>
               ) : null}
+              <p style={{ margin: "10px 0 0", fontSize: "12px", color: "var(--slate)" }}>
+                The per-driver findings behind these figures are in Revenue
+                Drivers below.
+              </p>
             </div>
           </>
         ) : null}

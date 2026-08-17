@@ -102,6 +102,10 @@ function metricLabel(key: string, labels: { from: string; to: string }): string 
 
 function metricValue(key: string, v: number | null | undefined): string {
   if (v === null || v === undefined) return "—";
+  // Round 4 task 3 — the operator's "false" on screen was THIS tile, not the
+  // table cell: the advisor-accounts level's metric strip carries
+  // is_new_to_product and the formatter let the boolean fall through raw.
+  if (isBooleanish(v)) return yesNo(v);
   if (/bps/.test(key)) return `${Number.isInteger(v) ? v : v.toFixed(1)} bps`;
   if (/aum|balance/.test(key)) return moneyAxis(v);
   if (/_amt$|^amt|revenue/.test(key)) return money(v);

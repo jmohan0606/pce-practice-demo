@@ -191,8 +191,19 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
     except Exception as exc:
         jobs.fail(job["job_id"], f"{type(exc).__name__}: {exc}")
         raise
+    # Round 4 (found by observation): RETAINED_ACCOUNT measures a STOCK
+    # (revenue held), not a change contribution — summing its $800k impact
+    # into the residual produced a confidently-wrong "-$911K residual" in the
+    # served narrative. Same exclusion Round A1 applied to the dominant-driver
+    # competition (NON_CHANGE_DRIVERS); the finding still displays its total.
+    from app.graph.queries.noncredited import NON_CHANGE_DRIVERS
+
+    def _is_stock_measure(finding: dict) -> bool:
+        key = str(finding.get("rule_key") or "")
+        return any(key.startswith(f"R_{code}_") for code in NON_CHANGE_DRIVERS)
+
     rule_impacts = sum(f["impact_amt"] for f in rule_findings
-                       if f["impact_amt"] is not None)
+                       if f["impact_amt"] is not None and not _is_stock_measure(f))
     residual_amt = round(float(transition.get("change_amt") or 0.0) - rule_impacts, 2)
 
     run = store.begin_run(advisor_sid, from_month, to_month, version["version_id"])
@@ -279,8 +290,16 @@ class JobManager:
         self.jobs: dict[str, dict] = {}
 
     def start(self, advisor: str, from_month: str, to_month: str,
-              version_id: str | None = None) -> dict:
-        advisors = (["all", *cohort_advisors()] if advisor == "all" else [advisor])
+              version_id: str | None = None,
+              practice_only: bool = False) -> dict:
+        """Round 4 task 7: practice_only=True with advisor="all" runs ONLY the
+        aggregate book run — the CLI practice script's unit is one run per
+        transition, not the cohort fan-out (which stays the default for the
+        UI's Generate button, Round C decision)."""
+        if advisor == "all":
+            advisors = ["all"] if practice_only else ["all", *cohort_advisors()]
+        else:
+            advisors = [advisor]
         job_id = uuid.uuid4().hex[:12]
         job = {
             "job_id": job_id, "status": "running", "completed": 0,

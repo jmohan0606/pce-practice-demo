@@ -28,6 +28,9 @@ class GenerateRequest(BaseModel):
     from_month: str
     to_month: str
     version_id: str | None = None
+    # Round 4 task 7 — advisor="all" + practice_only runs ONLY the aggregate
+    # book run (the CLI practice script's unit); default keeps the fan-out.
+    practice_only: bool = False
 
 
 def _driver_label(finding: dict) -> str:
@@ -167,7 +170,8 @@ def generate(body: GenerateRequest) -> dict:
         if version is None:
             raise HTTPException(404, f"unknown rule-set version '{body.version_id}'")
     return get_job_manager().start(body.advisor, body.from_month, body.to_month,
-                                   body.version_id)
+                                   body.version_id,
+                                   practice_only=body.practice_only)
 
 
 @router.get("/status/{job_id}")
