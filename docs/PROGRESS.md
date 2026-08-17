@@ -1,18 +1,18 @@
 # Build Progress
 
 ## Round 3 (docs/spec/ROUND_3_SPEC.md) — aggregate querying, exceptions model, full UI review
-- [x] Task 1 (main thread, 9de468e): queries return SHAPES, not rows — 14
+- [x] Task 1 (main thread, 366f746): queries return SHAPES, not rows — 14
       large-result catalog queries reduce in code over EVERY row (totals,
       named counts, per-column stats, top-10 concentration, >3σ outliers,
       optional group_by cut) via app/graph/queries/shapes.py;
       mode/group_by/limit envelope on run_catalog_query (rows default keeps
       API/services untouched); MinerTools + ChatTools default shape; agent
       rows-drill capped at 20; full rows always retained for evidence.
-- [x] Task 2 (main thread, 1d7525d): EVIDENCE_STORED_CAP + EVIDENCE_DISPLAY_CAP
+- [x] Task 2 (main thread, c7404e6): EVIDENCE_STORED_CAP + EVIDENCE_DISPLAY_CAP
       REMOVED — every row behind a finding stored, sorted by contribution
       desc, per-column footer totals (evidence_totals) reconcile to the
       headline; API serves the full set; verify_round_h H-4 re-pinned.
-- [x] Task 3 (main thread, 0e9838f): exceptions model — rates not counts
+- [x] Task 3 (main thread, bf8eead): exceptions model — rates not counts
       (app/insights/exceptions.py): affected/denominator vs the cohort
       distribution; denominator resolves by its own language (revenue →
       dollar-weighted prior-month credited; managed → managed accounts;
@@ -25,7 +25,7 @@
       driver_enabled/exception_enabled independent (driver-disabled rules
       still evaluate, produce no driver finding). Worklist ?advisor= filter
       + /api/insights/exceptions/advisors (H4).
-- [x] Task 4 (main thread, 071cdf1): AI Insights cross-cutting — the
+- [x] Task 4 (main thread, d5163fd): AI Insights cross-cutting — the
       aggregate run's opening carries the CROSS-CUTTING MANDATE (connections
       / concentration / what-did-not-happen / what-is-about-to-matter);
       reporter cross_cutting flag on practice runs. Driver descriptions
@@ -65,21 +65,21 @@
       model defaults were hardcoded Claude ids — now empty (unset role
       falls through to the primary LLM_MODE; proven by execution on a
       simulated cdao_openai/gpt-5.5 env). scripts/verify_round_3.py 10/10.
-- [x] Task 10 (Subagent A, verified in main thread, 6dcd512 + 7c4ef08): all
+- [x] Task 10 (Subagent A, verified in main thread, a3823eb + 50d3540): all
       31 batch-1 B–H items + the firm exceptions altitude (one row per RULE
       from /api/exceptions/firm, drill-in ranked by rate); AUM off the
       chart; en-dash prefixes; drill-down LifecycleStrip/volume tile/
       managed-only AUM tile; shared EvidenceTable everywhere; worklist
       one-advisor default + advisors-with-exceptions dropdown; F2 pivot
-      renders group_name. Follow-up 7c4ef08: contribution rows resolve
+      renders group_name. Follow-up 50d3540: contribution rows resolve
       Name (SID) via a cached /api/advisors map (found by observation).
-- [x] Task 11 (Subagent B, verified in main thread, 950c2b3): batch-2 §B —
+- [x] Task 11 (Subagent B, verified in main thread, c92c3b8): batch-2 §B —
       ASSUMED/Dummy/apology text gone; aum_managed tile labelled; NCF (Net
       Cash Flows); Revenue Drivers + fixed pivot; value-based peer-ranking
       colour (thirds, rule stated); coaching reordered with severity chips;
       opportunities Amount/red-negative-days/Stalled-column-removed/
       glossary tooltips; NNM section properly titled.
-- [x] Task 12 (Subagent C, verified in main thread, 6d37f18): Documents &
+- [x] Task 12 (Subagent C, verified in main thread, ad4dcb0): Documents &
       Rules redesigned into four tabs (Documents/Rules/Exceptions/Write a
       Rule) — full-width paginated rules, compiled query collapsed, attempts
       on click, NO horizontal scroll bar; NEW Exceptions tab with the
