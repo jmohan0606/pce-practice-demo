@@ -87,6 +87,15 @@
       "out_of_scope_or_deduplicated": 0,
       "rows": 5
     },
+    "team_agreement": {
+      "raw_rows": 3,
+      "deduplicated": 0,
+      "rows": 3
+    },
+    "month": {
+      "raw_rows": 3,
+      "rows": 3
+    },
     "advisor_flow_month": {
       "raw_rows": 48,
       "out_of_scope_or_deduplicated": 0,
@@ -134,7 +143,7 @@
     "account_eci_rel": 24,
     "account_eci_map": 24,
     "household": 24,
-    "opportunity": 24,
+    "opportunity": 25,
     "advisor_nnm": 25,
     "account_month": 25
   }

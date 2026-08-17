@@ -1173,6 +1173,12 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
         "raw_rows": len(rr_rows),
         "out_of_scope_or_deduplicated": len(rr_rows) - len(transfers),
         "rows": len(transfers)}
+    report["transform_deltas"]["team_agreement"] = {
+        "raw_rows": len(team_rows),
+        "deduplicated": len(team_rows) - vw["phx_dm_pce_team_agreement"].rows,
+        "rows": vw["phx_dm_pce_team_agreement"].rows}
+    report["transform_deltas"]["month"] = {
+        "raw_rows": len(meta_rows), "rows": len(meta_rows)}
     report["transform_deltas"]["advisor_flow_month"] = {
         "raw_rows": len(flow_rows),
         "out_of_scope_or_deduplicated": len(flow_rows)
