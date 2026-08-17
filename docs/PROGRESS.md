@@ -1,5 +1,109 @@
 # Build Progress
 
+## Round 3 (docs/spec/ROUND_3_SPEC.md) — aggregate querying, exceptions model, full UI review
+- [x] Task 1 (main thread, 366f746): queries return SHAPES, not rows — 14
+      large-result catalog queries reduce in code over EVERY row (totals,
+      named counts, per-column stats, top-10 concentration, >3σ outliers,
+      optional group_by cut) via app/graph/queries/shapes.py;
+      mode/group_by/limit envelope on run_catalog_query (rows default keeps
+      API/services untouched); MinerTools + ChatTools default shape; agent
+      rows-drill capped at 20; full rows always retained for evidence.
+- [x] Task 2 (main thread, c7404e6): EVIDENCE_STORED_CAP + EVIDENCE_DISPLAY_CAP
+      REMOVED — every row behind a finding stored, sorted by contribution
+      desc, per-column footer totals (evidence_totals) reconcile to the
+      headline; API serves the full set; verify_round_h H-4 re-pinned.
+- [x] Task 3 (main thread, bf8eead): exceptions model — rates not counts
+      (app/insights/exceptions.py): affected/denominator vs the cohort
+      distribution; denominator resolves by its own language (revenue →
+      dollar-weighted prior-month credited; managed → managed accounts;
+      else accounts-in-month, labelled); product_scope narrows denominator
+      AND cohort; floor (accounts|dollars) suppresses with the reason named;
+      sensitivity flags rate > median + s×stdev (null→1.0 stated). Three
+      altitudes: /api/exceptions/firm (one row per RULE) /rule/{key} (ranked
+      by rate) /advisor/{sid}. PATCH /api/rules/{key}/exception-config
+      (plan-preserving) applied plan-derived config → RSV_v9-11.
+      driver_enabled/exception_enabled independent (driver-disabled rules
+      still evaluate, produce no driver finding). Worklist ?advisor= filter
+      + /api/insights/exceptions/advisors (H4).
+- [x] Task 4 (main thread, d5163fd): AI Insights cross-cutting — the
+      aggregate run's opening carries the CROSS-CUTTING MANDATE (connections
+      / concentration / what-did-not-happen / what-is-about-to-matter);
+      reporter cross_cutting flag on practice runs. Driver descriptions
+      (4.1) built in CODE from the full match set (app/insights/describe.py):
+      accounts named, top-3 share, advisor attribution, tail contribution —
+      never the rule definition plus a count.
+- [x] Task 5 (main thread, no change needed): jobs API verified live —
+      GET /api/jobs (+kind/scope_key filters), GET /api/jobs/{id},
+      POST /api/jobs/{id}/resume (INTERRUPTED-only, explicit, never
+      automatic) all delivered in Round 1 task 2; smoke-tested this round.
+- [x] Tasks 6+7 (main thread): shared UI foundations — Pager (usePager,
+      5/10/20 default 5), CompareValue (every number carries its prior-month
+      comparison), EvidenceTable (collapsed+note, labelized headers,
+      paginated, shrink-to-content, reconciling footer totals),
+      lib/labels.ts (labelize/yesNo); globals.css full-width .wrap, bold
+      section/metric headers, .rowhead, .chip.newtag, and the ONE
+      segmented-toggle rule (.pivot selected bold blue highlighted /
+      unselected pale; switches keep their own styling).
+- [x] Tasks 8+9 (main thread, shared surfaces): REAL/DERIVED/DUMMY finding
+      chips removed from the shared FindingRow (driver tag stays, bold +
+      nowrap); 'Source / Citation' prefix on rule links; 'Ask iPerform' →
+      'Ask Connect Coach' in ChatPanel/ChatDock/agent persona/flags
+      registry/mockup. Page-level removals ride the Phase 3 briefs.
+- [x] Pre-dispatch fixes (main thread): B2 retained bug — RETAINED_ACCOUNT
+      had been deactivated in the Round C demo trail; reactivated (RSV_v12),
+      firm retained 177 == raw continuing-with-revenue count 177; lifecycle
+      query now NOTES skipped rules (never a silent zero). B3 NCF derivation
+      verified (total_net_financial_flows end to end — it IS Net Cash
+      Flows). F2 root cause: rule findings carried group_id null —
+      dominant_group() attribution (>=50% of matched revenue, never
+      guessed) + group_name serialized. B7 coaching points gain severity
+      from the rules' own severity model, sorted Critical→Info. D8:
+      GET /api/dashboard/lifecycle (scope = group|advisor|all). D2/B1:
+      aum_managed on advisor + practice summaries. FOUND+FIXED: shape
+      results were mislabelled 'a SAMPLE' and recorded a phantom ROWS_SHOWN
+      limit (miner + chat). Operator mid-round bug: coach/chat/guardrail
+      model defaults were hardcoded Claude ids — now empty (unset role
+      falls through to the primary LLM_MODE; proven by execution on a
+      simulated cdao_openai/gpt-5.5 env). scripts/verify_round_3.py 10/10.
+- [x] Task 10 (Subagent A, verified in main thread, a3823eb + 50d3540): all
+      31 batch-1 B–H items + the firm exceptions altitude (one row per RULE
+      from /api/exceptions/firm, drill-in ranked by rate); AUM off the
+      chart; en-dash prefixes; drill-down LifecycleStrip/volume tile/
+      managed-only AUM tile; shared EvidenceTable everywhere; worklist
+      one-advisor default + advisors-with-exceptions dropdown; F2 pivot
+      renders group_name. Follow-up 50d3540: contribution rows resolve
+      Name (SID) via a cached /api/advisors map (found by observation).
+- [x] Task 11 (Subagent B, verified in main thread, c92c3b8): batch-2 §B —
+      ASSUMED/Dummy/apology text gone; aum_managed tile labelled; NCF (Net
+      Cash Flows); Revenue Drivers + fixed pivot; value-based peer-ranking
+      colour (thirds, rule stated); coaching reordered with severity chips;
+      opportunities Amount/red-negative-days/Stalled-column-removed/
+      glossary tooltips; NNM section properly titled.
+- [x] Task 12 (Subagent C, verified in main thread, ad4dcb0): Documents &
+      Rules redesigned into four tabs (Documents/Rules/Exceptions/Write a
+      Rule) — full-width paginated rules, compiled query collapsed, attempts
+      on click, NO horizontal scroll bar; NEW Exceptions tab with the
+      independent toggles + materiality editing via exception-config PATCH
+      (honest em-dash nulls, scope-source provenance, refetch-after-mint);
+      Rule Versions paginated with v0 visible/editable; Trace paginated with
+      the amber tint documented in a legend.
+- [x] Phase 4 (main thread): verify_round_3 10/10; ALL suites green (a25
+      b19 c13 e8 h9 a1-17, r1 12, r1b 8, r2a 16, flags 8, manual 17, nnm 19,
+      parity, npm 8 routes); every screen OPENED and read in headless
+      chromium (checks 11–25 in docs/ROUND_3_COMPLETE.md with what was
+      actually seen). RSV_v12 regeneration: aggregate + 7 advisor runs
+      landed (cross-cutting narrative pasted; data-driven driver text on
+      screen; ROWS_SHOWN truncations 5→0) before the Anthropic credit
+      balance ran out — 13 advisor runs failed isolated-and-recorded;
+      serving falls back to their prior COMPLETE runs. FOUND+FIXED en
+      route: shape results mislabelled as samples (phantom limit);
+      version-id STRING comparison served RSV_v8 over RSV_v12; FAILED
+      regenerations displaced served content; token ceiling now
+      COST-WEIGHTED (cache reads 0.1×) — was a hidden ~16-turn cap;
+      coaching severity resolves at read time. Session app-LLM spend
+      ≈ $1.25 of the $15 ceiling. Servers :8002/:3002 left running;
+      public visibility still needs the Ports panel (carried).
+
 ## Round 2a (docs/ROUND_2A_EXTRACTION_SPEC.md) — extraction ready for the real load
 - [x] Task 1 (main thread, f6a1b42): ingestion batch size 5000 — the MEASURED
       default (3,169/5,375/7,706 rows/s at 500/1000/5000, 54ms round trip).
@@ -864,7 +968,34 @@ Note: per Round E/G/H precedent, subagents reported and the MAIN THREAD
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: 1 (docs/spec/ROUND_1_SCHEMA_FREEZE_SPEC.md) — COMPLETE. THE SCHEMA IS
+Round: 3 (docs/spec/ROUND_3_SPEC.md) — COMPLETE. The last build round: the
+      behaviour changes (shape queries over every row, evidence without a
+      cap, the exceptions rate model over the Round-1 fields, cross-cutting
+      AI Insights, jobs API) and all 73 review items from both batches are
+      in, verified by scripts/verify_round_3.py (10/10) plus a full
+      headless-chromium pass over every screen
+      (docs/ROUND_3_COMPLETE.md). The schema stayed frozen at 31V/44E —
+      no migration was needed.
+POST-ROUND RERUN (2026-08-17, operator-funded then operator-stopped): the
+      advisor="all" batch was relaunched after the credit top-up and stopped
+      at 10 of 21 runs ("enough testing"): 0 failures, 0 limits on ALL 10
+      runs, 67 findings, $2.15 — the COST-WEIGHTED token ceiling is now
+      LIVE-PROVEN (aggregate run: natural completion, 24 queries,
+      limits_hit []; every pre-fix run was cut at ~16 of 35 turns).
+      Open items carried out of the round:
+      (1) 10 advisors (V000002/6/9/10/11/12/16/17/18/19/20) still serve
+      their prior COMPLETE runs — one advisor="all" batch rerun supersedes
+      them whenever wanted; nothing else is pending on it;
+      (2) port visibility for 8002/3002 still needs the Ports panel
+      (gh token lacks the codespace scope);
+      (3) subagent-noted polish: an AdvisorLink cell-renderer hook on the
+      shared EvidenceTable, group-level pagination inside Revenue Driver
+      groups, glossary keys for the CRM column tooltips (ColHead falls back
+      to labelize), and lib/api.ts exporting its base URL for the newer
+      per-domain API clients.
+Round 3 session app-LLM spend ≈ $1.25 of the $15 ceiling (trace-measured).
+
+Previous position — Round: 1 (docs/spec/ROUND_1_SCHEMA_FREEZE_SPEC.md) — COMPLETE. THE SCHEMA IS
       FROZEN at 31 vertices / 44 edges: a client environment installs fresh
       (01→02→03) or migrates from F2 (migrations/001_exceptions_and_jobs.gsql,
       additive-only, one GLOBAL SCHEMA_CHANGE JOB) and verify_schema_parity.py

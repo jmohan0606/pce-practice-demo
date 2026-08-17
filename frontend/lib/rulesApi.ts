@@ -139,6 +139,36 @@ export function pickAttempt(
   return req("POST", `/api/rules/${encodeURIComponent(ruleKey)}/attempts/${attemptNo}/pick`, {});
 }
 
+// ---------- Round 3 Task 3 — exception configuration ----------
+
+/** The eight Round-1 exception-configuration fields plus the audit pair.
+ * Send only the fields being changed; an explicit null clears a field
+ * (honest-null — "the document states nothing"). */
+export interface ExceptionConfigChanges {
+  driver_enabled?: boolean;
+  exception_enabled?: boolean;
+  exception_denominator?: string | null;
+  exception_floor?: number | null;
+  /** "accounts" | "dollars" */
+  exception_floor_unit?: string | null;
+  exception_sensitivity?: number | null;
+  product_scope?: string | null;
+  product_scope_source?: string | null;
+  reason?: string;
+  approved_by?: string;
+}
+
+/** PATCH /api/rules/{key}/exception-config — edits a rule's exception
+ * configuration. Version-bound rules mint AND publish a new version in one
+ * call (rule_keys change per mint — refetch the list after a save); draft-pool
+ * rules just get the fields updated (version: null). */
+export function setExceptionConfig(
+  ruleKey: string,
+  changes: ExceptionConfigChanges,
+): Promise<{ rule: RuleDetail; version: RuleVersion | null; note?: string | null }> {
+  return req("PATCH", `/api/rules/${encodeURIComponent(ruleKey)}/exception-config`, changes);
+}
+
 // ---------- Task 3 — document category (backend: Subagent A) ----------
 
 export const DOCUMENT_CATEGORIES = [

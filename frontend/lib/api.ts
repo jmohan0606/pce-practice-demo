@@ -296,6 +296,8 @@ export interface Finding {
   evidence_columns: string[];
   evidence_rows: Record<string, unknown>[];
   evidence_total: number;
+  /** Round 3 task 2 — per-column footer totals reconciling to the headline */
+  evidence_totals?: Record<string, number>;
   evidence_reason?: string | null;
   source_query?: { query_name: string; params: Record<string, unknown> } | null;
   rule_citation?: {

@@ -1,9 +1,13 @@
 "use client";
 
-/** Round A2B 4.2 — the dashboard's Drivers card.
+/** Round A2B 4.2 + Round 3 Task 10 (§E/F) — the dashboard's Revenue Drivers
+ * card.
  *
  * Self-contained: fetches the SAME stored run as the AI Insights section but
  * independently (no shared loading gate), and renders its own empty state.
+ * Revenue Drivers speaks for the individual drivers, purely rule-driven; the
+ * AI Insights section is the cross-cutting firm-level narrative — the two are
+ * deliberately NOT merged (review §E).
  *
  * Props (the common section contract — the main thread composes this into
  * `app/page.tsx`):
@@ -13,27 +17,26 @@
  *
  * Behaviour:
  *   - Findings ranked by |impact_amt|. "By Driver" / "By Product" pivot
- *     regroups CLIENT-SIDE without refetching: By Driver groups on
- *     driver_code; By Product groups on the finding's product group where
- *     determinable (finding.group_id, else group_id/group_name on evidence
- *     rows), else an honest "No product attribution" group.
- *   - Each entry is a `.finding` accordion: title, `<DriverChip>` (definition
- *     from the matched rule's statement or the glossary), rule citation line,
- *     impact `<Delta>` with provenance chips (Dummy whenever any evidence row
- *     has data_source='DUMMY'); expands to the evidence table with advisor
- *     columns rendered through `<AdvisorLink>` and "Showing N of M" honesty
- *     from evidence_total.
+ *     regroups CLIENT-SIDE without refetching. Review F2 fix: By Product
+ *     groups on the finding's group_id but LABELS with the served group_name
+ *     (never the raw id); findings with no attribution go under "No product
+ *     attribution".
+ *   - Each entry is a `.finding` accordion: title, driver tag (bold,
+ *     unwrapped — F9; provenance REAL/DUMMY chips removed per Task 8),
+ *     impact, a "Source / Citation" rule line (F8), and the SHARED
+ *     <EvidenceTable> (F3–F7: collapsed with a note, labelized headers,
+ *     paginated, shrinks to content, footer totals).
  */
 
 import { useMemo, useState } from "react";
 import type { Finding } from "@/lib/api";
-import AdvisorLink from "@/components/AdvisorLink";
 import Chip from "@/components/Chip";
 import EmptyState from "@/components/EmptyState";
-import { Money, NarrativeText } from "@/components/Num";
+import { EvidenceTable } from "@/components/EvidenceTable";
+import { NarrativeText } from "@/components/Num";
 import RuleCitationLine from "@/components/RuleCitation";
+import { useTerm } from "@/components/Term";
 import { money } from "@/lib/format";
-import { FindingDriverChip } from "@/components/insights/InsightsSection";
 import { driverCode, rankFindings, useInsightRun } from "@/components/insights/shared";
 
 export interface DriversSectionProps {
@@ -44,15 +47,20 @@ export interface DriversSectionProps {
 
 type Pivot = "driver" | "product";
 
-/** The product group a finding belongs to, where determinable. */
-function productGroup(f: Finding): string | null {
-  if (f.group_id) return f.group_id;
-  for (const row of f.evidence_rows) {
-    const g = row["group_name"] ?? row["group_id"];
-    if (typeof g === "string" && g) return g;
-  }
+/** The API serializes group_name alongside group_id on every finding (Round 3
+ * — the F2 fix); lib/api.ts's Finding type predates it, typed locally here
+ * rather than editing the shared file (gap reported). */
+type FindingWithGroup = Finding & { group_name?: string | null };
+
+/** [key, label] of the product group a finding belongs to — key groups, the
+ * served group_name labels (never the raw id). */
+function productGroup(f: Finding): { key: string; label: string } | null {
+  const fg = f as FindingWithGroup;
+  if (f.group_id) return { key: f.group_id, label: fg.group_name || "No product attribution" };
   return null;
 }
+
+const NO_ATTRIBUTION = "No product attribution";
 
 export default function DriversSection({ fromMonth, toMonth, monthName }: DriversSectionProps) {
   const { run, notGenerated, error, loading } = useInsightRun(fromMonth, toMonth);
@@ -65,12 +73,11 @@ export default function DriversSection({ fromMonth, toMonth, monthName }: Driver
   const groups = useMemo(() => {
     const map = new Map<string, { label: string; findings: Finding[] }>();
     for (const f of ranked) {
+      const product = productGroup(f);
       const key =
-        pivot === "driver"
-          ? driverCode(f)
-          : productGroup(f) ?? "No product attribution";
+        pivot === "driver" ? driverCode(f) : product?.key ?? NO_ATTRIBUTION;
       const label =
-        pivot === "driver" ? f.driver_tag || key : productGroup(f) ?? "No product attribution";
+        pivot === "driver" ? f.driver_tag || key : product?.label ?? NO_ATTRIBUTION;
       const entry = map.get(key) ?? { label, findings: [] };
       entry.findings.push(f);
       map.set(key, entry);
@@ -82,12 +89,13 @@ export default function DriversSection({ fromMonth, toMonth, monthName }: Driver
     <div className="card">
       <div className="card-h">
         <div>
-          <h2>Drivers</h2>
+          {/* Review F1 — renamed from "Drivers" */}
+          <h2>Revenue Drivers</h2>
           <p>
             What moved the number, ranked by impact · {monthName(fromMonth)} → {monthName(toMonth)}
           </p>
         </div>
-        <div className="pivot">
+        <div className="pivot" role="tablist" aria-label="Group findings">
           <button aria-selected={pivot === "driver"} onClick={() => setPivot("driver")}>
             By Driver
           </button>
@@ -99,7 +107,7 @@ export default function DriversSection({ fromMonth, toMonth, monthName }: Driver
       <div className="card-b flush" style={{ padding: 0 }}>
         {error ? (
           <div style={{ padding: 18 }}>
-            <EmptyState title="Drivers failed to load" message={error} />
+            <EmptyState title="Revenue Drivers failed to load" message={error} />
           </div>
         ) : null}
         {loading ? (
@@ -111,7 +119,7 @@ export default function DriversSection({ fromMonth, toMonth, monthName }: Driver
           <div style={{ padding: 18 }}>
             <EmptyState
               title="AI Insights not generated yet"
-              message="Drivers come from the same stored run as the AI Insights section — generate it there."
+              message="Revenue Drivers come from the same stored run as the AI Insights section — generate it there."
             />
           </div>
         ) : null}
@@ -128,13 +136,12 @@ export default function DriversSection({ fromMonth, toMonth, monthName }: Driver
                     style={{
                       padding: "8px 15px",
                       background: "var(--panel)",
-                      fontWeight: 600,
                       fontSize: 12,
-                      color: "var(--slate)",
                       borderBottom: "1px solid var(--rule-2)",
                     }}
                   >
-                    {label}
+                    {/* Review F7 — product / driver group names are headers */}
+                    <span className="rowhead">{label}</span>
                   </div>
                 ) : null}
                 {findings.map((f, i) => (
@@ -148,42 +155,55 @@ export default function DriversSection({ fromMonth, toMonth, monthName }: Driver
   );
 }
 
-function cellText(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "number") return Number.isInteger(value) ? value.toLocaleString("en-US") : value.toFixed(2);
-  if (typeof value === "boolean") return value ? "true" : "false";
-  return String(value);
-}
-
-const MONEY_COL = /amt|amount|value|revenue|credited/i;
-
-/** One driver entry: `.finding` accordion with the evidence table. */
+/** One driver entry: `.finding` accordion over the SHARED evidence table. */
 function DriverFinding({ finding, defaultOpen }: { finding: Finding; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(Boolean(defaultOpen));
   const impact = finding.impact_amt;
-  const hasDummy = finding.evidence_rows.some((r) => r["data_source"] === "DUMMY");
+  const term = useTerm(`driver.${driverCode(finding)}`);
 
   const rawColumns = finding.evidence_columns.length
     ? finding.evidence_columns
     : Object.keys(finding.evidence_rows[0] ?? {});
-  // advisor_sid renders as one <AdvisorLink> cell; the name column folds into it
+  // Advisor identity folds to one "Name (SID)" column (A3 naming; the shared
+  // EvidenceTable renders plain cells, so the name and SID merge as text)
   const hasAdvisor = rawColumns.includes("advisor_sid");
   const columns = hasAdvisor ? rawColumns.filter((c) => c !== "advisor_name") : rawColumns;
+  const rows = useMemo(
+    () =>
+      hasAdvisor
+        ? finding.evidence_rows.map((row) => {
+            const sid = row["advisor_sid"];
+            const name = row["advisor_name"];
+            if (typeof sid === "string" && typeof name === "string" && name.trim()) {
+              const merged: Record<string, unknown> = { ...row, advisor_sid: `${name.trim()} (${sid})` };
+              delete merged["advisor_name"];
+              return merged;
+            }
+            return row;
+          })
+        : finding.evidence_rows,
+    [finding.evidence_rows, hasAdvisor],
+  );
 
   return (
     <div className={`finding${open ? " open" : ""}`}>
       <div className="finding-h" onClick={() => setOpen((o) => !o)}>
         <div>
-          <div className="finding-t">{finding.title}</div>
+          {/* Review F7 — the driver/finding name is a header in the row */}
+          <div className="finding-t rowhead">{finding.title}</div>
           <div className="finding-m">
             <NarrativeText text={finding.summary} />
           </div>
           {finding.rule_citation ? (
-            <RuleCitationLine
-              ruleKey={finding.rule_citation.rule_key}
-              ruleName={finding.rule_citation.rule_name || finding.rule_citation.rule_code}
-              citation={finding.rule_citation.citation}
-            />
+            <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4 }}>
+              {/* Review F8 — rule/document links prefixed "Source / Citation" */}
+              <span style={{ fontSize: "11.5px", color: "var(--slate)" }}>Source / Citation:</span>
+              <RuleCitationLine
+                ruleKey={finding.rule_citation.rule_key}
+                ruleName={finding.rule_citation.rule_name || finding.rule_citation.rule_code}
+                citation={finding.rule_citation.citation}
+              />
+            </span>
           ) : null}
         </div>
         <div style={{ textAlign: "right" }}>
@@ -194,70 +214,30 @@ function DriverFinding({ finding, defaultOpen }: { finding: Finding; defaultOpen
             {impact === null ? "—" : `${impact < 0 ? "▼" : "▲"} ${money(impact)}`}
           </div>
           <div className="chips">
-            <Chip variant={finding.provenance === "REAL" ? "real" : "derived"}>
-              {finding.provenance === "REAL" ? "Real" : "Derived"}
+            {/* Task 8 — REAL / DERIVED / DUMMY provenance chips removed.
+                F9 — the driver tag stays: bold, never wrapped. */}
+            <Chip
+              variant="tag"
+              title={finding.rule_citation?.statement || term?.definition || undefined}
+            >
+              <span style={{ whiteSpace: "nowrap", fontWeight: 700 }}>
+                {finding.driver_tag || driverCode(finding)}
+              </span>
             </Chip>
-            {hasDummy ? <Chip variant="dummy">Dummy Data</Chip> : null}
-            <FindingDriverChip
-              code={driverCode(finding)}
-              label={finding.driver_tag}
-              statement={finding.rule_citation?.statement ?? null}
-            />
           </div>
         </div>
       </div>
       <div className="finding-b">
-        {finding.evidence_rows.length ? (
-          <>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ marginTop: 10 }}>
-                <thead>
-                  <tr>
-                    {columns.map((c) => (
-                      <th key={c} className={MONEY_COL.test(c) ? "num" : undefined}>
-                        {c === "advisor_sid" ? "Advisor" : c}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {finding.evidence_rows.map((row, i) => (
-                    <tr key={i}>
-                      {columns.map((c) => {
-                        if (c === "advisor_sid" && typeof row["advisor_sid"] === "string") {
-                          return (
-                            <td key={c}>
-                              <AdvisorLink
-                                sid={row["advisor_sid"] as string}
-                                name={(row["advisor_name"] as string | undefined) ?? null}
-                              />
-                            </td>
-                          );
-                        }
-                        if (MONEY_COL.test(c) && typeof row[c] === "number") {
-                          return (
-                            <td key={c} className="num">
-                              <Money value={row[c] as number} />
-                            </td>
-                          );
-                        }
-                        return (
-                          <td key={c} className={typeof row[c] === "number" ? "num" : undefined}>
-                            {cellText(row[c])}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {finding.evidence_total > finding.evidence_rows.length ? (
-              <div className="ev-more">
-                Showing {finding.evidence_rows.length} of {finding.evidence_total}
-              </div>
-            ) : null}
-          </>
+        {rows.length ? (
+          // Review F3–F7 — the ONE shared evidence surface: collapsed by
+          // default with a note, labelized headers, paginated, shrinks to
+          // content, footer totals reconciling to the headline
+          <EvidenceTable
+            rows={rows}
+            columns={columns}
+            totals={finding.evidence_totals}
+            total={finding.evidence_total}
+          />
         ) : (
           <p style={{ color: "var(--slate)", fontSize: "12.5px", margin: "10px 0 0" }}>
             {finding.evidence_reason || "No evidence rows for this finding."}

@@ -211,7 +211,10 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     sanctioned_queries = {"advisor_nnm_position", "advisor_nnm_all_categories",
                           "nnm_threshold_position"}
     catalog_ok = sanctioned_queries <= set(CATALOG)
-    allowed_fe = {"frontend/app/advisor/page.tsx", "frontend/lib/advisorApi.ts"}
+    # Round 3: frontend/lib/labels.ts is the shared label dictionary (6.5) —
+    # "NNM" there is an abbreviation-casing entry, not an NNM data surface.
+    allowed_fe = {"frontend/app/advisor/page.tsx", "frontend/lib/advisorApi.ts",
+                  "frontend/lib/labels.ts"}
     fe_hits = [str(p) for p in list(Path("frontend/app").rglob("*.ts*"))
                + list(Path("frontend/components").rglob("*.ts*"))
                + list(Path("frontend/lib").rglob("*.ts*"))

@@ -340,6 +340,7 @@ def _scoped_rule_findings(scope: str, parts: dict, to_month: str,
                           version: dict) -> tuple[list[dict], list[dict]]:
     """Evaluate the published rules at the mapped rule scope — rules not
     applicable there are skipped, never errored (Round G task 1)."""
+    from app.insights.describe import describe_rule_finding
     from app.insights.service import _monetary_impact
     from app.rules.service import evaluate_rule_set
     from app.rules.store import get_rule_store
@@ -370,17 +371,22 @@ def _scoped_rule_findings(scope: str, parts: dict, to_month: str,
         matched = result.get("matched") or []
         if not (result.get("evaluated") and matched):
             continue
+        # Round 3 task 3.3 — driver-disabled rules produce no driver finding
+        # (still evaluated: exclusion chains and exception role stand).
+        if rule.get("driver_enabled") is False:
+            continue
         citations = rule.get("citations") or []
-        # Round H: no cap here — the store applies EVIDENCE_STORED_CAP and
-        # records the bind (same fix as app/insights/service.py; a hardcoded
-        # [:50] silently under-reported evidence_total past 50 matches).
+        # Round 3 task 2: no cap anywhere — the store keeps EVERY row behind
+        # the number (sorted by contribution, footer totals attached).
         evidence_rows = list(matched)
         findings.append({
             "title": f"{rule.get('rule_name') or result.get('rule_code')} — "
                      f"{len(matched)} match(es) in {to_month}",
-            "summary": (f"Rule {result.get('rule_code')} fired for {len(matched)} "
-                        f"{rule.get('grain') or 'entity'}(s) in {to_month} at "
-                        f"{rule_scope} scope. {rule.get('statement') or ''}").strip(),
+            # Round 3 task 4.1 — data-driven description (concentration,
+            # attribution), never the rule definition plus a count.
+            "summary": describe_rule_finding(
+                rule, matched, to_month, advisor_sid or "all",
+                _monetary_impact(rule, matched)),
             "impact_amt": _monetary_impact(rule, matched),
             # Round A1 task 1: driver_code stored; driver_tag is the
             # creation-time label (stripped by the store, resolved at read).

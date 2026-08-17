@@ -97,6 +97,23 @@ def _check_view(view: str) -> str:
     return view
 
 
+@router.get("/dashboard/lifecycle")
+def get_dashboard_lifecycle(
+    from_month: str = Query(..., alias="from"),
+    to_month: str = Query(..., alias="to"),
+    scope: str = Query("all", description="advisor_sid | group_id | 'all'"),
+) -> dict:
+    """Round 3 review D8 — New / Lost / Retained counts scoped to a drill-down
+    level (a product group's counts at product level, an advisor's at advisor
+    level, the firm's at 'all'). Straight from account_lifecycle_counts (rule
+    outcomes — deterministic, exclusion-chain honest; skipped rules are named
+    in notes, never a silent zero)."""
+    rows = _catalog("account_lifecycle_counts",
+                    {"from_month": from_month, "to_month": to_month,
+                     "scope": scope})
+    return {"from": from_month, "to": to_month, **rows[0]}
+
+
 @router.get("/dashboard/definitions")
 def get_dashboard_definitions() -> dict:
     """The dashboard's metric definitions — the same METRIC_DEFINITIONS the

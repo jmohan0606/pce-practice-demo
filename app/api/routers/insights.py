@@ -38,9 +38,9 @@ def _driver_label(finding: dict) -> str:
 
 
 def _serialize_finding(finding: dict) -> dict:
-    from app.config.settings import get_settings
-
-    display_cap = get_settings().evidence_display_cap
+    # Round 3 task 2: the API serves EVERY evidence row (sorted by
+    # contribution at storage, footer totals attached) — the UI paginates,
+    # the payload is never truncated.
     evidence = finding.get("evidence_rows") or []
     return {
         "finding_id": finding.get("finding_id"),
@@ -54,18 +54,33 @@ def _serialize_finding(finding: dict) -> dict:
         # Round A1 task 2: inherited from the producing rule; INFO when no rule
         "severity": finding.get("severity") or "INFO",
         "group_id": finding.get("group_id"),
+        # Round 3 review F2 — the display name for the By Product pivot
+        "group_name": _group_name(finding.get("group_id")),
         "rule_key": finding.get("rule_key"), "provenance": finding.get("provenance"),
         "confidence": finding.get("confidence"),
         "evidence_columns": finding.get("evidence_columns") or [],
-        "evidence_rows": evidence[:display_cap],
-        # Round H 2.3/4.4: the TRUE producing count — "showing N of M", never a
-        # silent cap. evidence_total is what the query produced (pre-storage
-        # cap when recorded; stored count for legacy runs).
+        "evidence_rows": evidence,
         "evidence_total": finding.get("evidence_source_total") or len(evidence),
+        # Round 3 task 2 — per-column footer totals so the evidence table
+        # reconciles to the finding's headline figure.
+        "evidence_totals": finding.get("evidence_totals") or {},
         "evidence_reason": finding.get("evidence_reason"),
         "source_query": finding.get("source_query"),
         "rank_order": finding.get("rank_order"),
     }
+
+
+def _group_name(group_id: str | None) -> str | None:
+    if not group_id:
+        return None
+    try:
+        from app.graph.foundation_store import get_foundation_store
+
+        group = get_foundation_store().all_vertices(
+            "phx_dm_pce_product_group").get(str(group_id)) or {}
+        return group.get("group_name") or str(group_id)
+    except Exception:  # noqa: BLE001 — display sugar, never invented
+        return str(group_id)
 
 
 def _document_name(document_id: str | None) -> str | None:
@@ -233,21 +248,64 @@ def practice_summary(from_month: str, to_month: str) -> dict:
                 "outflows": round(sum(_f(r.get("total_outflows")) for r in rows), 2),
                 "net_flows": round(sum(_f(r.get("total_net_flows")) for r in rows), 2)}
 
+    # Round 3 review D2 — AUM is Managed Accounts only wherever it renders;
+    # the managed-scoped figure is what the KPI shows, labelled.
+    managed = {k for k, a in store.all_vertices("phx_dm_pce_account").items()
+               if a.get("is_managed") in (True, "True", "true", 1, "1")}
+
+    def _aum_managed(month_id: str) -> float:
+        return round(sum(_f(r.get("end_balance"))
+                         for r in store.all_vertices("phx_dm_pce_account_month").values()
+                         if str(r.get("advisor_sid")) in cohort
+                         and str(r.get("month_id")) == str(month_id)
+                         and str(r.get("acct_key")) in managed), 2)
+
     aum_from, aum_to = _aum(from_month), _aum(to_month)
     aum_change = round(aum_to - aum_from, 2)
+    m_from, m_to = _aum_managed(from_month), _aum_managed(to_month)
+    m_change = round(m_to - m_from, 2)
     return {
         "from_month_id": from_month, "to_month_id": to_month,
         "advisor_count": len(cohort),
         "credited": totals,  # {from_amt, to_amt, change_amt, change_pct}
         "aum": {"from_amt": aum_from, "to_amt": aum_to, "change_amt": aum_change,
                 "change_pct": round(aum_change / aum_from * 100, 2) if aum_from else None},
+        "aum_managed": {"from_amt": m_from, "to_amt": m_to, "change_amt": m_change,
+                        "change_pct": round(m_change / m_from * 100, 2) if m_from else None},
         "flows": {"from": _flows(from_month), "to": _flows(to_month)},
     }
 
 
+@router.get("/exceptions/advisors")
+def exception_advisors(from_month: str, to_month: str,
+                       version: str = "latest") -> dict:
+    """Round 3 review batch 1 H4 — the advisors that actually HAVE exceptions
+    on this transition (the UI's advisor dropdown lists only these)."""
+    from app.graph.foundation_store import get_foundation_store
+
+    store = get_insight_store()
+    version_id = None if version in ("", "latest") else version
+    names = {sid: (a.get("advisor_name") or "")
+             for sid, a in get_foundation_store()
+             .all_vertices("phx_dm_pce_advisor").items()}
+    counts: dict[str, int] = {}
+    runs = store.runs_for_transition(from_month, to_month)
+    for sid in sorted({r["advisor_sid"] for r in runs if r["advisor_sid"] != "all"}):
+        run = store.latest_run_for(sid, from_month, to_month, version_id)
+        if run is None or run["status"] != "COMPLETE":
+            continue
+        n = len(store.run_findings(run["run_id"]))
+        if n:
+            counts[sid] = n
+    return {"from_month_id": from_month, "to_month_id": to_month,
+            "advisors": [{"advisor_sid": sid, "advisor_name": names.get(sid, ""),
+                          "exception_count": n}
+                         for sid, n in sorted(counts.items())]}
+
+
 @router.get("/exceptions")
 def exceptions(from_month: str, to_month: str, version: str = "latest",
-               severity: str | None = None) -> dict:
+               severity: str | None = None, advisor: str | None = None) -> dict:
     """The practice team's worklist (Round E 6.2c, Round A1 task 2): findings
     from each advisor's latest run on this transition. Rule-cited rows carry
     the rule's severity; rows with no rule are observations at INFO (mockup's
@@ -269,8 +327,13 @@ def exceptions(from_month: str, to_month: str, version: str = "latest",
     advisor_names = {sid: (a.get("advisor_name") or "")
                      for sid, a in get_foundation_store()
                      .all_vertices("phx_dm_pce_advisor").items()}
+    sids = sorted({r["advisor_sid"] for r in advisors if r["advisor_sid"] != "all"})
+    # Round 3 review batch 1 H2/H3 — server-side advisor filter, so the UI's
+    # default one-advisor view never fetches the whole set.
+    if advisor:
+        sids = [s for s in sids if s == advisor]
     rows: list[dict] = []
-    for sid in sorted({r["advisor_sid"] for r in advisors if r["advisor_sid"] != "all"}):
+    for sid in sids:
         run = store.latest_run_for(sid, from_month, to_month, version_id)
         if run is None or run["status"] != "COMPLETE":
             continue

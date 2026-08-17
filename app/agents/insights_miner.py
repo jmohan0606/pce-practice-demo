@@ -87,6 +87,14 @@ def build_system_prompt() -> str:
         "list below carries each rule's key); null for discovered surprises — those are "
         "expected and desirable.\n"
         "- driver_tag: one of " + ", ".join(VALID_TAGS) + ".\n\n"
+        "Large-result queries return SHAPES, not rows (marked LARGE-RESULT in the "
+        "catalog): aggregates computed in code over EVERY row — totals, named "
+        "counts, per-column stats, top-10 concentration, outliers. A shape is "
+        "COMPLETE, never a sample — reason from it directly. Pass "
+        "group_by=<column> when you have a hypothesis about a cut. Pass "
+        "mode='rows' (<=20 rows) ONLY when you need to NAME specific rows in a "
+        "finding; evidence rows attach automatically from the FULL result of the "
+        "query you cite in source_seq, so you never need the raw list yourself.\n\n"
         "Guidance (judgement, not hard rules):\n"
         "- Start broad (which products moved), then narrow to the accounts behind the move.\n"
         "- When a number does not add up, say so and keep looking — an unexplained "
@@ -157,6 +165,24 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
     # NOT explain. Round G diagnosis: the residual now LEADS the opening (the
     # rules are already-handled context), because stating it last produced
     # runs that chased the headline change the rules already explained.
+    # Round 3 task 4 — the aggregate-book run feeds AI INSIGHTS, which must be
+    # CROSS-CUTTING: things no single rule outcome could produce. The per-rule
+    # story already lives in Revenue Drivers (the rule findings below).
+    cross_cutting = ""
+    if advisor_sid == "all":
+        cross_cutting = (
+            "\nCROSS-CUTTING MANDATE (this is the aggregate book run): your "
+            "findings must say things NO SINGLE rule outcome could — "
+            "(1) CONNECTIONS across drivers ('the fee-discount exceptions and "
+            "the transferred-in accounts are the same two advisors'); "
+            "(2) CONCENTRATION ('68% of the increase is four advisors; the "
+            "other sixteen were flat'); (3) WHAT DID NOT HAPPEN ('no advisor "
+            "lost a top-10 account this month, unusual vs the prior two'); "
+            "(4) WHAT IS ABOUT TO MATTER ('nine advisors are within $1M of a "
+            "threshold'). If a narrative can be produced by reading one "
+            "rule's outcome, it belongs in Revenue Drivers, not here — do not "
+            "emit it. Shapes (group_by cuts, concentration, outliers) are "
+            "your raw material for exactly this.\n")
     task_head = "Explain this transition.\n\n"
     if rule_outcomes is not None:
         task_head = (
@@ -168,6 +194,7 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
             f"surprises beyond the rule set are expected and desirable. If the "
             f"data cannot explain the residual, say so explicitly "
             f"(unanswerable) — silence is not an acceptable outcome.\n\n")
+    task_head += cross_cutting
     rule_block = ""
     if rule_outcomes is not None:
         outcome_lines = []
@@ -477,8 +504,13 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
                 on_turn(turns, max_turns)
             except Exception:  # noqa: BLE001
                 _log.exception("on_turn progress hook failed — ignored")
+        # Round 3 task 1.2: the ceiling is COST-WEIGHTED (cache reads 0.1x,
+        # writes 1.25x — app/llm/usage.py) so it binds on spend, not on the
+        # cheap re-read of the cached opening every turn. Wrappers without the
+        # weighted counter fall back to the raw total (never unmetered).
         if wrapup_left is None \
-                and getattr(llm, "prompt_tokens_total", 0) >= max_prompt_tokens:
+                and getattr(llm, "budget_tokens_total",
+                            getattr(llm, "prompt_tokens_total", 0)) >= max_prompt_tokens:
             budget_hit_tokens = True
             limits_hit.append({
                 "limit_name": "MAX_RUN_INPUT_TOKENS",
@@ -566,15 +598,32 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
             try:
                 result = tools.run_graph_query(query_name, action.get("params") or {})
                 shown = result["rows"][:rows_shown_cap]
-                clipped = result["row_count"] > len(shown)
-                # Round H 2.3: a truncated result set must tell the model it is
-                # a SAMPLE — "showing N of M" — so it queries more narrowly
-                # instead of reasoning from a partial set as if complete.
-                head = (f"seq {result['seq_no']} — {query_name} showing "
-                        f"{len(shown)} of {result['row_count']} rows"
-                        + (" (a SAMPLE — the result is larger than the display "
-                           "cap; query more narrowly for the full set)"
-                           if clipped else "") + ":\n")
+                # Round 3 task 1: a SHAPE result is COMPLETE — aggregates
+                # computed over every row. row_count is the full underlying
+                # count while rows is the one shape object; that is never a
+                # clip and never a limit. A rows-mode drill is likewise the
+                # agent's own explicit cap, not a bind.
+                if result.get("mode") == "shape":
+                    clipped = False
+                    head = (f"seq {result['seq_no']} — {query_name} SHAPE "
+                            f"computed over all {result['row_count']} rows "
+                            f"(complete, not sampled):\n")
+                elif result.get("mode") == "rows":
+                    clipped = False
+                    head = (f"seq {result['seq_no']} — {query_name} drill: "
+                            f"{len(shown)} of {result['row_count']} rows (your "
+                            f"requested cap; the full set backs any finding "
+                            f"citing this seq):\n")
+                else:
+                    clipped = result["row_count"] > len(shown)
+                    # Round H 2.3: a truncated result set must tell the model
+                    # it is a SAMPLE — "showing N of M" — so it queries more
+                    # narrowly instead of reasoning from a partial set.
+                    head = (f"seq {result['seq_no']} — {query_name} showing "
+                            f"{len(shown)} of {result['row_count']} rows"
+                            + (" (a SAMPLE — the result is larger than the "
+                               "display cap; query more narrowly for the full "
+                               "set)" if clipped else "") + ":\n")
                 if clipped:
                     limits_hit.append({
                         "limit_name": "ROWS_SHOWN_TO_MODEL",

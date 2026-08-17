@@ -33,7 +33,6 @@ import {
   getTraceSummary,
 } from "@/lib/api";
 import Chip from "@/components/Chip";
-import DriverChip from "@/components/DriverChip";
 import EmptyState from "@/components/EmptyState";
 import { LimitNotice } from "@/components/InsightPanel";
 import { Delta, NarrativeText } from "@/components/Num";
@@ -162,11 +161,17 @@ export default function InsightsSection({ fromMonth, toMonth, monthName }: Insig
                       />{" "}
                       <NarrativeText text={f.summary} />
                       {f.rule_citation ? (
-                        <RuleCitationLine
-                          ruleKey={f.rule_citation.rule_key}
-                          ruleName={f.rule_citation.rule_name || f.rule_citation.rule_code}
-                          citation={f.rule_citation.citation}
-                        />
+                        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4 }}>
+                          {/* Review F8 — links prefixed "Source / Citation" */}
+                          <span style={{ fontSize: "11.5px", color: "var(--slate)" }}>
+                            Source / Citation:
+                          </span>
+                          <RuleCitationLine
+                            ruleKey={f.rule_citation.rule_key}
+                            ruleName={f.rule_citation.rule_name || f.rule_citation.rule_code}
+                            citation={f.rule_citation.citation}
+                          />
+                        </span>
                       ) : null}
                     </li>
                   ))}
@@ -181,7 +186,8 @@ export default function InsightsSection({ fromMonth, toMonth, monthName }: Insig
 }
 
 /** Driver chip whose definition resolves from the matched rule's statement
- * first, else the glossary (`driver.<CODE>`) — never a hardcoded string. */
+ * first, else the glossary (`driver.<CODE>`) — never a hardcoded string.
+ * Review F9 — the driver tag renders bold and never wraps. */
 export function FindingDriverChip({
   code,
   label,
@@ -192,5 +198,11 @@ export function FindingDriverChip({
   statement?: string | null;
 }) {
   const term = useTerm(`driver.${code}`);
-  return <DriverChip code={code} label={label} definition={statement || term?.definition || null} />;
+  return (
+    <Chip variant="tag" title={statement || term?.definition || undefined}>
+      <span style={{ whiteSpace: "nowrap", fontWeight: 700 }}>
+        {label && label.trim() ? label : code}
+      </span>
+    </Chip>
+  );
 }

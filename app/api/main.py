@@ -11,6 +11,7 @@ from app.api.routers.dashboard import router as dashboard_router
 from app.api.routers.flags import router as flags_router
 from app.api.routers.documents import router as documents_router
 from app.api.routers.drilldown import router as drilldown_router
+from app.api.routers.exceptions_api import router as exceptions_model_router
 from app.api.routers.export import router as export_router
 from app.api.routers.glossary import router as glossary_router
 from app.api.routers.nnm import router as nnm_router
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(rules_router)
     app.include_router(insights_router)
     app.include_router(exceptions_alias_router)
+    app.include_router(exceptions_model_router)
     app.include_router(jobs_router)
     app.include_router(trace_router)
 

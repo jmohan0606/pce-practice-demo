@@ -170,11 +170,12 @@ class Settings(BaseSettings):
     insights_reporter_deployment: str = Field(default="", alias="INSIGHTS_REPORTER_DEPLOYMENT")
     insights_reporter_api_version: str = Field(default="", alias="INSIGHTS_REPORTER_API_VERSION")
     insights_reporter_temperature: float = Field(default=1.0, alias="INSIGHTS_REPORTER_TEMPERATURE")
-    # Round A2B 6.7 — the Coach agent (Haiku by default; its own role config).
-    # The non-empty model default deliberately makes the role "configured", so
-    # the coach always runs on Haiku unless the operator overrides COACH_*.
+    # Round A2B 6.7 — the Coach agent's role config. Round 3 fix: the model
+    # default is EMPTY — an unset role falls through to the primary LLM_MODE
+    # and its model (a hardcoded Claude id leaked into cdao_openai requests
+    # in the client environment). Set COACH_* to pin a model per role.
     coach_mode: str = Field(default="", alias="COACH_MODE")
-    coach_model: str = Field(default="claude-haiku-4-5-20251001", alias="COACH_MODEL")
+    coach_model: str = Field(default="", alias="COACH_MODEL")
     coach_deployment: str = Field(default="", alias="COACH_DEPLOYMENT")
     coach_api_version: str = Field(default="", alias="COACH_API_VERSION")
     coach_temperature: float = Field(default=1.0, alias="COACH_TEMPERATURE")
@@ -205,10 +206,9 @@ class Settings(BaseSettings):
     miner_wrapup_turns: int = Field(default=3, alias="MINER_WRAPUP_TURNS")
     # Queries that must remain for free exploration after the opening queries.
     miner_exploration_reserve: int = Field(default=6, alias="MINER_EXPLORATION_RESERVE")
-    # Evidence rows stored per finding / returned per finding by the API. The
-    # API always reports evidence_total so a capped table says "showing N of M".
-    evidence_stored_cap: int = Field(default=200, alias="EVIDENCE_STORED_CAP")
-    evidence_display_cap: int = Field(default=20, alias="EVIDENCE_DISPLAY_CAP")
+    # Round 3 task 2: EVIDENCE_STORED_CAP and EVIDENCE_DISPLAY_CAP are REMOVED
+    # — evidence carries every row behind a finding (sorted by contribution,
+    # footer totals reconcile); the UI paginates, storage never truncates.
     # Drill-down budgets (query budget, turn cap) per scope tier — ROUND_G 3.3.
     drilldown_product_query_budget: int = Field(default=8, alias="DRILLDOWN_PRODUCT_QUERY_BUDGET")
     drilldown_product_turn_cap: int = Field(default=12, alias="DRILLDOWN_PRODUCT_TURN_CAP")
@@ -235,19 +235,19 @@ class Settings(BaseSettings):
     # set in the env overrides the manifest (entity_registry resolves it).
     ingestion_batch_size: int = Field(default=5000, alias="INGESTION_BATCH_SIZE")
 
-    # --- Round E chat (ROUND_E_CHAT_SPEC). The chat agent runs on Opus — the
-    # one place a subtle reasoning failure is expensive and hard to spot; the
-    # non-empty model default deliberately makes the role "configured" (coach
-    # precedent) so it never silently inherits the Haiku default. The guardrail
-    # classifier is a cheap, fast tagging pass — Haiku.
+    # --- Round E chat (ROUND_E_CHAT_SPEC). Round 3 fix: chat and guardrail
+    # model defaults are EMPTY — an unset role falls through to the primary
+    # LLM_MODE and its model (hardcoded Claude ids broke cdao_openai client
+    # environments). On Claude-mode deployments set CHAT_MODEL (Opus
+    # recommended — the one place a subtle reasoning failure is expensive)
+    # and CHAT_GUARDRAIL_MODEL (Haiku — a cheap, fast tagging pass).
     chat_mode: str = Field(default="", alias="CHAT_MODE")
-    chat_model: str = Field(default="claude-opus-4-6", alias="CHAT_MODEL")
+    chat_model: str = Field(default="", alias="CHAT_MODEL")
     chat_deployment: str = Field(default="", alias="CHAT_DEPLOYMENT")
     chat_api_version: str = Field(default="", alias="CHAT_API_VERSION")
     chat_temperature: float = Field(default=1.0, alias="CHAT_TEMPERATURE")
     chat_guardrail_mode: str = Field(default="", alias="CHAT_GUARDRAIL_MODE")
-    chat_guardrail_model: str = Field(default="claude-haiku-4-5-20251001",
-                                      alias="CHAT_GUARDRAIL_MODEL")
+    chat_guardrail_model: str = Field(default="", alias="CHAT_GUARDRAIL_MODEL")
     chat_guardrail_deployment: str = Field(default="", alias="CHAT_GUARDRAIL_DEPLOYMENT")
     chat_guardrail_api_version: str = Field(default="", alias="CHAT_GUARDRAIL_API_VERSION")
     chat_guardrail_temperature: float = Field(default=1.0, alias="CHAT_GUARDRAIL_TEMPERATURE")

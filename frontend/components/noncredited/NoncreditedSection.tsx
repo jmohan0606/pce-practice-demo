@@ -36,6 +36,7 @@ import {
   getNoncreditedSummary,
 } from "@/lib/api";
 import Chip from "@/components/Chip";
+import { CompareValue } from "@/components/CompareValue";
 import EmptyState from "@/components/EmptyState";
 import { Money } from "@/components/Num";
 import { useTerm } from "@/components/Term";
@@ -64,11 +65,14 @@ function CodeChip({ code }: { code: string }) {
   );
 }
 
-export default function NoncreditedSection({ toMonth, monthName }: NoncreditedSectionProps) {
+export default function NoncreditedSection({ fromMonth, toMonth, monthName }: NoncreditedSectionProps) {
   const [summary, setSummary] = useState<NoncreditedSummary | null>(null);
+  // Review G3 — the from-month summary feeds the month-over-month deltas
+  const [priorSummary, setPriorSummary] = useState<NoncreditedSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState<NoncreditedDetail | null>(null);
+  const [priorDetail, setPriorDetail] = useState<NoncreditedDetail | null>(null);
   const [detailRow, setDetailRow] = useState<NoncreditedRow | null>(null);
   const [busyCause, setBusyCause] = useState<string | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
@@ -77,6 +81,7 @@ export default function NoncreditedSection({ toMonth, monthName }: NoncreditedSe
     setLoading(true);
     setError(null);
     setDetail(null);
+    setPriorDetail(null);
     getNoncreditedSummary(toMonth)
       .then((s) => {
         setSummary(s);
@@ -87,21 +92,34 @@ export default function NoncreditedSection({ toMonth, monthName }: NoncreditedSe
         setError(String((e as Error)?.message || e));
         setLoading(false);
       });
-  }, [toMonth]);
+    // the prior month's figures power the comparisons; a miss means the
+    // comparison line is simply absent — never an error
+    getNoncreditedSummary(fromMonth)
+      .then(setPriorSummary)
+      .catch(() => setPriorSummary(null));
+  }, [fromMonth, toMonth]);
 
   const openCause = useCallback(
     (row: NoncreditedRow) => {
       setBusyCause(row.cause);
-      getNoncreditedDetail(row.cause, toMonth)
-        .then((d) => {
+      Promise.all([
+        getNoncreditedDetail(row.cause, toMonth),
+        // Review G3 — the per-cause detail carries the same comparison
+        getNoncreditedDetail(row.cause, fromMonth).catch(() => null),
+      ])
+        .then(([d, prior]) => {
           setDetail(d);
+          setPriorDetail(prior);
           setDetailRow(row);
         })
         .catch((e) => setError(String((e as Error)?.message || e)))
         .finally(() => setBusyCause(null));
     },
-    [toMonth],
+    [fromMonth, toMonth],
   );
+
+  const priorByReason = new Map((priorSummary?.rows ?? []).map((r) => [r.reason_cd, r]));
+  const fromLabel = monthName(fromMonth);
 
   const doExport = async (format: (typeof EXPORT_FORMATS)[number][0]) => {
     setExportBusy(true);
@@ -173,22 +191,54 @@ export default function NoncreditedSection({ toMonth, monthName }: NoncreditedSe
                     <th className="num">Trades</th>
                     <th className="num">Value</th>
                     <th className="num">Advisors</th>
-                    <th style={{ width: "34%" }}>What it means</th>
+                    {/* Review G1 — naming convention on the label */}
+                    <th style={{ width: "34%" }}>What It Means</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {summary.rows.map((row) => (
+                  {summary.rows.map((row) => {
+                    const prior = priorByReason.get(row.reason_cd);
+                    return (
                     <tr key={row.reason_cd}>
                       <td>
-                        <b>{row.cause_label}</b> <CodeChip code={row.reason_cd} />
+                        {/* Review F7-style row header */}
+                        <span className="rowhead">{row.cause_label}</span>{" "}
+                        <CodeChip code={row.reason_cd} />
                       </td>
-                      <td className="num">{row.account_count.toLocaleString("en-US")}</td>
-                      <td className="num">{row.trade_count.toLocaleString("en-US")}</td>
+                      {/* Review G3 — month-over-month deltas on every figure */}
                       <td className="num">
-                        <Money value={row.value} />
+                        <CompareValue
+                          current={row.account_count}
+                          prior={prior?.account_count}
+                          kind="count"
+                          priorLabel={fromLabel}
+                        />
                       </td>
-                      <td className="num">{row.advisor_count.toLocaleString("en-US")}</td>
+                      <td className="num">
+                        <CompareValue
+                          current={row.trade_count}
+                          prior={prior?.trade_count}
+                          kind="count"
+                          priorLabel={fromLabel}
+                        />
+                      </td>
+                      <td className="num">
+                        <CompareValue
+                          current={row.value}
+                          prior={prior?.value}
+                          kind="money"
+                          priorLabel={fromLabel}
+                        />
+                      </td>
+                      <td className="num">
+                        <CompareValue
+                          current={row.advisor_count}
+                          prior={prior?.advisor_count}
+                          kind="count"
+                          priorLabel={fromLabel}
+                        />
+                      </td>
                       {/* the server's description IS the plain-English column */}
                       <td style={{ color: "var(--slate)" }}>{row.description}</td>
                       <td>
@@ -201,13 +251,34 @@ export default function NoncreditedSection({ toMonth, monthName }: NoncreditedSe
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   <tr className="tot">
-                    <td>Total non-credited</td>
-                    <td className="num">{summary.total.account_count.toLocaleString("en-US")}</td>
-                    <td className="num">{summary.total.trade_count.toLocaleString("en-US")}</td>
+                    {/* Review G1 — naming convention on the label */}
+                    <td>Total Non-Credited</td>
                     <td className="num">
-                      <Money value={summary.total.value} />
+                      <CompareValue
+                        current={summary.total.account_count}
+                        prior={priorSummary?.total.account_count}
+                        kind="count"
+                        priorLabel={fromLabel}
+                      />
+                    </td>
+                    <td className="num">
+                      <CompareValue
+                        current={summary.total.trade_count}
+                        prior={priorSummary?.total.trade_count}
+                        kind="count"
+                        priorLabel={fromLabel}
+                      />
+                    </td>
+                    <td className="num">
+                      <CompareValue
+                        current={summary.total.value}
+                        prior={priorSummary?.total.value}
+                        kind="money"
+                        priorLabel={fromLabel}
+                      />
                     </td>
                     <td className="num">—</td>
                     <td>—</td>
@@ -223,10 +294,13 @@ export default function NoncreditedSection({ toMonth, monthName }: NoncreditedSe
       {detail ? (
         <CauseDetailModal
           detail={detail}
+          priorDetail={priorDetail}
           summaryRow={detailRow}
           monthLabel={monthName(toMonth)}
+          priorMonthLabel={fromLabel}
           onClose={() => {
             setDetail(null);
+            setPriorDetail(null);
             setDetailRow(null);
           }}
         />

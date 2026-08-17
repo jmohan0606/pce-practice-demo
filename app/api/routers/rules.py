@@ -482,6 +482,65 @@ def set_severity(rule_key: str, body: SeverityRequest) -> dict:
             "version": version}
 
 
+class ExceptionConfigRequest(BaseModel):
+    """Round 3 task 3 — the eight Round-1 exception-configuration fields.
+    Only fields present in the body change; a field explicitly set to null
+    clears (honest-null is a legitimate state — 'the document states
+    nothing')."""
+    driver_enabled: bool | None = None
+    exception_enabled: bool | None = None
+    exception_denominator: str | None = None
+    exception_floor: float | None = None
+    exception_floor_unit: str | None = None
+    exception_sensitivity: float | None = None
+    product_scope: str | None = None
+    product_scope_source: str | None = None
+    reason: str = ""
+    approved_by: str = "OPERATOR"
+
+
+@router.patch("/{rule_key}/exception-config")
+def set_exception_config(rule_key: str, body: ExceptionConfigRequest) -> dict:
+    """Round 3 task 3 — edit a rule's exception configuration (denominator,
+    floor, sensitivity, product scope, independent driver/exception toggles).
+    All eight fields are plan-preserving (Round 1: they govern how exception
+    evaluation READS the rule, never what the compiled query computes), so
+    the edit mints and publishes a new version in one call — severity-PATCH
+    precedent. A draft-pool rule just gets the fields updated."""
+    store = get_rule_store()
+    rule = store.get(rule_key)
+    if rule is None:
+        raise HTTPException(status_code=404, detail=f"unknown rule_key {rule_key!r}")
+    changes = {k: v for k, v in body.model_dump(exclude_unset=True).items()
+               if k not in ("reason", "approved_by")}
+    if not changes:
+        raise HTTPException(status_code=400,
+                            detail="no exception-configuration field in the body")
+    unit = changes.get("exception_floor_unit")
+    if unit not in (None, "accounts", "dollars"):
+        raise HTTPException(status_code=400,
+                            detail=f"exception_floor_unit must be 'accounts' or "
+                                   f"'dollars', got {unit!r}")
+    try:
+        if not rule.get("version_id"):
+            updated = store._update_rule_fields(rule_key, **changes)  # noqa: SLF001
+            return {"rule": _serialize(updated), "version": None,
+                    "note": "draft rule — fields updated; a version mints at publish"}
+        draft = store.edit(rule_key, changes)
+        store.approve(draft["rule_key"], approved_by=body.approved_by)
+        version = store.publish(
+            approved_by=body.approved_by,
+            notes=(f"exception config change on {rule.get('rule_code')}: "
+                   f"{', '.join(sorted(changes))}"
+                   + (f" — {body.reason}" if body.reason else "")))
+    except RuleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    published = [r for r in store.version_rules(version["version_id"])
+                 if r["rule_code"] == rule.get("rule_code")]
+    return {"rule": _serialize(published[0]) if published else _serialize(draft),
+            "version": version}
+
+
 class ActiveRequest(BaseModel):
     active: bool
     reason: str = ""

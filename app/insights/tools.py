@@ -53,13 +53,30 @@ class MinerTools:
 
     def run_graph_query(self, query_name: str, params: dict) -> dict:
         """{"rows": [...], "row_count": n, "seq_no": s} — or raises. A budget
-        overrun raises BudgetExhausted (the loop wraps up; budget_hit recorded)."""
+        overrun raises BudgetExhausted (the loop wraps up; budget_hit recorded).
+
+        Round 3 task 1: shape-capable queries default to mode="shape" here —
+        the agent reads aggregates computed over EVERY row, never a sample. A
+        rows drill is capped at DRILL_ROW_CAP (naming specifics only); the
+        FULL underlying rows are retained either way, so evidence attached to
+        a finding is every row behind the number."""
         if self.queries_run >= self.budget:
             self.budget_hit = True
             raise BudgetExhausted(f"query budget of {self.budget} exhausted")
+        from app.graph.queries.shapes import DRILL_ROW_CAP, shape_capable
+
+        params = dict(params or {})
+        if shape_capable(query_name) \
+                and str(params.get("mode") or "shape").lower() == "rows":
+            limit = params.get("limit")
+            try:
+                limit = int(limit) if limit not in (None, "") else DRILL_ROW_CAP
+            except (TypeError, ValueError):
+                limit = DRILL_ROW_CAP
+            params["limit"] = min(max(1, limit), DRILL_ROW_CAP)
         start = time.perf_counter()
         try:
-            result = run_catalog_query(query_name, params)
+            result = run_catalog_query(query_name, params, default_mode="shape")
         except CatalogError as exc:
             # a malformed call is still a logged call — the log shows the mistake
             self.queries_run += 1
@@ -72,11 +89,14 @@ class MinerTools:
         row = self._store.log_query(self.run_id, self.agent_name, query_name,
                                     params or {}, result["row_count"], latency)
         seq_no = row["seq_no"]
+        # Evidence rows are the FULL underlying set (source_rows) — a shape or
+        # a capped drill never thins what a finding can prove (task 2).
         self.results_by_seq[seq_no] = {"query_name": query_name,
                                        "params": dict(params or {}),
-                                       "rows": result["rows"]}
+                                       "rows": result.get("source_rows",
+                                                          result["rows"])}
         return {"rows": result["rows"], "row_count": result["row_count"],
-                "seq_no": seq_no}
+                "seq_no": seq_no, "mode": result.get("mode")}
 
     def get_schema(self) -> dict:
         start = time.perf_counter()

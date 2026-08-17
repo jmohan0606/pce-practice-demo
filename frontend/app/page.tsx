@@ -168,7 +168,8 @@ export default function DashboardPage() {
         from: activeTransition.from,
         to: activeTransition.to,
         labels: {
-          title: `${row.display_prefix || ""}${row.group_name}`,
+          // Review C4 — prefix joined with an en dash, never run together
+          title: row.display_prefix ? `${row.display_prefix} – ${row.group_name}` : row.group_name,
           from: monthName(activeTransition.from),
           to: monthName(activeTransition.to),
           sub: CLASS_LABELS[row.class_id],

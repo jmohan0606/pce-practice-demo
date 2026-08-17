@@ -11,8 +11,15 @@ signature every agent already uses, so it drops in anywhere a plain LLM
 callable is expected. Callers that know what the turn was for tag it after the
 fact with ``tag_last(action_kind, query_name)``.
 
-``prompt_tokens_total`` accumulates input + cache-read + cache-write tokens —
-the figure the MAX_RUN_INPUT_TOKENS hard budget is enforced against.
+``prompt_tokens_total`` accumulates input + cache-read + cache-write tokens
+(the raw volume figure). ``budget_tokens_total`` is the COST-WEIGHTED figure
+the MAX_RUN_INPUT_TOKENS hard budget is enforced against (Round 3 task 1.2):
+a cache-read token bills at ~10% of an input token and a cache-write at
+~125%, so the ceiling weights them 0.1 / 1.25 — it caps what a run can
+SPEND, which is the cap's purpose, instead of silently acting as a ~16-turn
+cap once the cached opening dominates the token stream. The 250k default is
+unchanged: it now buys a full 35-turn run whose prefix re-reads are cheap,
+while still stopping a runaway loop at the same worst-case dollar spend.
 """
 from __future__ import annotations
 
@@ -32,6 +39,7 @@ class TurnLoggingLLM:
         self.run_id = run_id
         self.agent_name = agent_name
         self.prompt_tokens_total = 0
+        self.budget_tokens_total = 0.0
         self.output_tokens_total = 0
         self._last_turn: dict | None = None
 
@@ -57,6 +65,9 @@ class TurnLoggingLLM:
         usage = result.get("usage") or dict(ZERO_USAGE)
         self.prompt_tokens_total += (usage["input_tokens"] + usage["cache_read_tokens"]
                                      + usage["cache_write_tokens"])
+        self.budget_tokens_total += (usage["input_tokens"]
+                                     + 0.1 * usage["cache_read_tokens"]
+                                     + 1.25 * usage["cache_write_tokens"])
         self.output_tokens_total += usage["output_tokens"]
         try:
             self._last_turn = self._store().log_turn(

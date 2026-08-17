@@ -281,9 +281,9 @@ export default function ChatPanel({
   const barLabel = answeredLabel ?? (effectiveCtx ? effectiveCtx.label : null);
 
   return (
-    <aside className="chatpanel" aria-label="Ask iPerform chat panel">
+    <aside className="chatpanel" aria-label="Ask Connect Coach chat panel">
       <div className="chat-h">
-        <div className="t">Ask iPerform</div>
+        <div className="t">Ask Connect Coach</div>
         <div className="btns">
           <button
             type="button"

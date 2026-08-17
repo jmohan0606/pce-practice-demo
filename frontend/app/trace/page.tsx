@@ -13,6 +13,7 @@ import {
 } from "@/lib/api";
 import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
+import { Pager, usePager } from "@/components/Pager";
 import GuardrailTab from "@/components/trace/GuardrailTab";
 
 const cost = (v: number | null | undefined) =>
@@ -75,6 +76,12 @@ export default function TracePage() {
     getTraceRunDetail(runId).then(setDetail).catch(() => setDetail(null));
   };
 
+  // Task 12c — pagination on every Trace table (5/10/20, default 5). Totals
+  // rows keep summing over EVERY row, not just the visible page.
+  const runsPager = usePager(runs);
+  const advisorPager = usePager(summary?.per_advisor ?? []);
+  const turnsPager = usePager(detail?.turn_rows ?? []);
+
   const maxTurnTokens = detail
     ? Math.max(1, ...detail.turn_rows.map((t) => t.input_tokens + t.cache_read_tokens + t.cache_write_tokens))
     : 1;
@@ -84,15 +91,13 @@ export default function TracePage() {
       <PageHeader title="Cost &amp; Trace" meta="Token spend per run and per turn · figures from provider usage counts, never estimated" />
 
       {/* Round E chat task 7: tab switch — Runs (the existing cost views) vs
-          the Guardrail classification log */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <button className={tab === "runs" ? "btn primary" : "btn"} onClick={() => setTab("runs")}>
+          the Guardrail classification log. Batch 2 B5: segmented toggles use
+          the .pivot pattern (selected bold blue, unselected pale). */}
+      <div className="pivot" role="tablist" aria-label="Trace sections" style={{ display: "inline-flex", marginBottom: 16 }}>
+        <button role="tab" aria-selected={tab === "runs"} onClick={() => setTab("runs")}>
           Runs
         </button>
-        <button
-          className={tab === "guardrail" ? "btn primary" : "btn"}
-          onClick={() => setTab("guardrail")}
-        >
+        <button role="tab" aria-selected={tab === "guardrail"} onClick={() => setTab("guardrail")}>
           Guardrail
         </button>
       </div>
@@ -191,6 +196,7 @@ export default function TracePage() {
               </div>
             </div>
             {summary.per_advisor.length ? (
+              <>
               <table>
                 <thead>
                   <tr>
@@ -199,7 +205,7 @@ export default function TracePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {summary.per_advisor.map((a) => (
+                  {advisorPager.rows.map((a) => (
                     <tr key={a.advisor_sid}>
                       <td>{a.advisor_sid}</td>
                       <td>{a.turns}</td>
@@ -213,6 +219,8 @@ export default function TracePage() {
                   ))}
                 </tbody>
               </table>
+              <Pager {...advisorPager} noun="advisors" />
+              </>
             ) : null}
           </div>
         </div>
@@ -228,6 +236,25 @@ export default function TracePage() {
         <div className="card-b">
           {error ? <EmptyState title="Trace unavailable" message={error} /> : null}
           {runs.length ? (
+            <>
+            {/* Task 12c / D3 — the row colour coding, documented. The coding
+                stays; it now says what it means. */}
+            <div className="meta" style={{ marginBottom: 8 }}>
+              <span
+                aria-hidden="true"
+                style={{
+                  display: "inline-block",
+                  width: 12,
+                  height: 12,
+                  background: "var(--der-bg)",
+                  border: "1px solid var(--rule)",
+                  borderRadius: 2,
+                  verticalAlign: "-1px",
+                  marginRight: 6,
+                }}
+              />
+              Amber rows hit a limit during the run — the Limits column names it.
+            </div>
             <div style={{ overflowX: "auto" }}>
               <table>
                 <thead>
@@ -239,13 +266,19 @@ export default function TracePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {runs.map((r) => (
+                  {runsPager.rows.map((r) => (
                     <tr
                       key={r.run_id}
                       onClick={() => open(r.run_id)}
                       // Round H 4.2: a run that hit a limit is visually distinct
-                      // (the legacy budget flags count — same class of event)
+                      // (the legacy budget flags count — same class of event).
+                      // Task 12c / D3: the tint carries its own explanation.
                       className={limitNames(r).length ? "limit-hit" : undefined}
+                      title={
+                        limitNames(r).length
+                          ? `This run hit a limit: ${limitNames(r).join(", ")} — the amber tint marks limit-hit runs`
+                          : undefined
+                      }
                       style={{ cursor: "pointer" }}
                     >
                       <td style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.run_id}>
@@ -292,6 +325,8 @@ export default function TracePage() {
                 </tbody>
               </table>
             </div>
+            <Pager {...runsPager} noun="runs" />
+            </>
           ) : !error ? (
             <EmptyState
               title="No runs traced yet"
@@ -351,7 +386,7 @@ export default function TracePage() {
                 </tr>
               </thead>
               <tbody>
-                {detail.turn_rows.map((t) => {
+                {turnsPager.rows.map((t) => {
                   const promptTokens = t.input_tokens + t.cache_read_tokens + t.cache_write_tokens;
                   return (
                     <tr key={t.seq_no}>
@@ -396,6 +431,7 @@ export default function TracePage() {
                 </tr>
               </tbody>
             </table>
+            <Pager {...turnsPager} noun="turns" />
             <div className="note" style={{ border: "1px solid var(--rule)", borderRadius: 4, marginTop: 10 }}>
               Cache reads bill at roughly a tenth of the input rate; cache writes at 1.25x. A run
               where the write column outweighs the read column is not caching — that is the first

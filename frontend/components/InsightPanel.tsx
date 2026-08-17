@@ -6,6 +6,7 @@ import Chip from "@/components/Chip";
 import SourceLink from "@/components/SourceLink";
 import { driverDefinition } from "@/lib/driverDefinitions";
 import { money, percent } from "@/lib/format";
+import { EvidenceTable } from "@/components/EvidenceTable";
 
 /** Renders **bold** markdown-lite the reporter emits — nothing else. */
 export function Bold({ text }: { text: string }) {
@@ -147,72 +148,38 @@ export function FindingRow({ finding, defaultOpen }: { finding: Finding; default
             {impact === null ? "—" : money(impact)}
           </div>
           <div className="chips">
-            <Chip variant={finding.provenance === "REAL" ? "real" : "derived"}>
-              {finding.provenance === "REAL" ? "Real" : "Derived"}
-            </Chip>
-            {/* Round F 5.1 — hover explains the driver: the matched rule's
-                statement, or the shared definition table for rule-less findings */}
+            {/* Round 3 task 8 — REAL/DERIVED/DUMMY provenance tags removed.
+                The driver tag stays, unwrapped and bold (F9); hover explains
+                it: the matched rule's statement, or the shared definitions. */}
             <Chip
               variant="tag"
               title={finding.rule_citation?.statement || driverDefinition(finding.driver_tag)}
             >
-              {finding.driver_tag}
+              <span style={{ whiteSpace: "nowrap", fontWeight: 700 }}>{finding.driver_tag}</span>
             </Chip>
-            {/* honesty flag: any finding built on opportunity (or other DUMMY-
-                sourced) rows says so — same pattern V2 used for MARKET/NET_FLOW */}
-            {finding.evidence_rows.some((r) => r["data_source"] === "DUMMY") ||
-            (finding.source_query?.query_name ?? "").includes("opportunit") ? (
-              <Chip variant="dummy">Dummy Data</Chip>
-            ) : null}
           </div>
         </div>
       </div>
       <div className="finding-b">
         {finding.rule_citation ? (
           <SourceLink>
-            {finding.rule_citation.rule_name || finding.rule_citation.rule_code}
+            Source / Citation: {finding.rule_citation.rule_name || finding.rule_citation.rule_code}
             {citation?.page_no ? ` · p. ${citation.page_no}` : ""}
             {citation?.section_path ? ` · ${citation.section_path}` : ""}
           </SourceLink>
         ) : null}
-        <div className="ev">
-          {finding.evidence_rows.length ? (
-            <>
-              <h4>Evidence</h4>
-              <div style={{ overflowX: "auto" }}>
-                <table>
-                  <thead>
-                    <tr>
-                      {columns.map((c) => (
-                        <th key={c}>{c}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {finding.evidence_rows.map((row, i) => (
-                      <tr key={i}>
-                        {columns.map((c) => (
-                          <td key={c} className={typeof row[c] === "number" ? "num" : undefined}>
-                            {cell(row[c])}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {finding.evidence_total > finding.evidence_rows.length ? (
-                <div className="ev-more">
-                  Showing {finding.evidence_rows.length} of {finding.evidence_total}
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <p style={{ color: "var(--slate)", fontSize: "12.5px", margin: 0 }}>
-              {finding.evidence_reason || "No evidence rows for this finding."}
-            </p>
-          )}
-        </div>
+        {finding.evidence_rows.length ? (
+          <EvidenceTable
+            rows={finding.evidence_rows}
+            columns={columns}
+            totals={finding.evidence_totals}
+            total={finding.evidence_total}
+          />
+        ) : (
+          <p style={{ color: "var(--slate)", fontSize: "12.5px", margin: 0 }}>
+            {finding.evidence_reason || "No evidence rows for this finding."}
+          </p>
+        )}
       </div>
     </div>
   );

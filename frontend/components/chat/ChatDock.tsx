@@ -74,7 +74,7 @@ export default function ChatDock() {
   if (!open) {
     return (
       <button type="button" className="chat-dock" onClick={() => setOpenPersist(true)}>
-        💬 Ask iPerform
+        💬 Ask Connect Coach
       </button>
     );
   }

@@ -17,6 +17,7 @@ import uuid
 
 from app.agents.insights_miner import mine
 from app.agents.insights_reporter import report
+from app.insights.describe import describe_rule_finding, dominant_group
 from app.graph.queries.catalog import run_catalog_query
 from app.insights.store import get_insight_store
 from app.insights.tools import MinerTools
@@ -94,27 +95,39 @@ def evaluate_published_rules(advisor_sid: str, from_month: str, to_month: str,
         matched = result.get("matched") or []
         if not (result.get("evaluated") and matched):
             continue
+        # Round 3 task 3.3 — driver_enabled and exception_enabled are
+        # INDEPENDENT toggles. A driver-disabled rule still evaluates (its
+        # exclusion chain and exception role stand) but produces NO driver
+        # finding; the outcome says so instead of vanishing.
+        if rule.get("driver_enabled") is False:
+            entry["driver_disabled"] = True
+            entry["note"] = ("driver disabled — evaluated for exclusions/"
+                             "exceptions only, no driver finding")
+            continue
         impact = _monetary_impact(rule, matched)
         citations = rule.get("citations") or []
-        # Round H: no cap here — the store applies EVIDENCE_STORED_CAP, records
-        # the bind on limits_hit, and keeps the honest pre-cap total. A
-        # hardcoded [:50] here (found at scale) silently under-reported
-        # evidence_total on rule findings bigger than 50 and starved the
-        # store's own limit accounting.
+        # Round 3 task 2: no cap anywhere — the store keeps EVERY row behind
+        # the number (sorted by contribution, footer totals attached).
         evidence_rows = list(matched)
         findings.append({
             "title": f"{rule.get('rule_name') or result.get('rule_code')} — "
                      f"{len(matched)} match(es) in {to_month}",
-            "summary": (f"Rule {result.get('rule_code')} fired for "
-                        f"{len(matched)} {rule.get('grain') or 'entity'}(s) in {to_month}. "
-                        f"{rule.get('statement') or ''}").strip(),
+            # Round 3 task 4.1 — the description speaks to the DATA (which
+            # accounts, how concentrated, at which advisors), never the rule
+            # definition plus a count. Built in code from the full match set.
+            "summary": describe_rule_finding(rule, matched, to_month,
+                                             advisor_sid, impact),
             "impact_amt": impact,
             # Round A1 task 1: driver_code is the stored identity; driver_tag
             # here is the creation-time label for the reporter's prompt — the
             # store strips it, the API re-resolves it at read time.
             "driver_code": rule.get("driver_code") or "OTHER",
             "driver_tag": rule.get("driver_label") or rule.get("driver_tag") or "Other",
-            "group_id": None,
+            # Round 3 review F2 — product attribution where determinable: the
+            # group holding >=50% of the matched accounts' revenue this month;
+            # None (never guessed) when no group dominates.
+            "group_id": (dominant_group(matched, to_month)[0]
+                         if rule.get("grain") == "account" else None),
             "rule_key": result.get("rule_key"),
             "provenance": "REAL",
             "confidence": 1.0,
@@ -210,7 +223,11 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
         from app.insights.reporter_sources import build_reporter_search
 
         reported = report(mined["findings"], transition, reporter,
-                          search_documents=build_reporter_search(run["run_id"]))
+                          search_documents=build_reporter_search(run["run_id"]),
+                          # Round 3 task 4 — the practice narrative is
+                          # cross-cutting; per-driver text lives in Revenue
+                          # Drivers.
+                          cross_cutting=advisor_sid == "all")
         jobs.update(job["job_id"], stage="persist")
         agent_findings = [f for f in mined["findings"] if f.get("origin") != "rule"]
         agent_impacts = sum(abs(f["impact_amt"]) for f in agent_findings

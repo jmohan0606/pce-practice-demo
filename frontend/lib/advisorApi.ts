@@ -66,6 +66,13 @@ export interface AdvisorSummary {
   metrics: {
     lifecycle: { new_count: number; lost_count: number; retained_count: number; notes: string };
     aum: { total_balance: number; prior_balance: number | null; change_amt: number | null } | null;
+    /** Round 3 review B1/D2 — AUM scoped to Managed Accounts only (null when
+     * the advisor holds no managed account rows). The tile renders THIS. */
+    aum_managed?: {
+      total_balance: number;
+      prior_balance: number | null;
+      change_amt: number | null;
+    } | null;
     ncf: { net_flows: number; inflows: number; outflows: number; credited_flows: number } | null;
     nnm?: NnmBlock;
     trades: { from_count: number; to_count: number; delta: number };
@@ -116,6 +123,10 @@ export interface CoachingPoint {
   implication: string;
   citation: CoachCitation;
   facts: Record<string, unknown>;
+  /** Round 3 review B7 — same severity model as rules/exceptions; the list
+   * arrives sorted Critical → Info. Older stored runs may lack these. */
+  severity?: string | null;
+  severity_basis?: string | null;
 }
 export interface CoachingResult {
   generated?: boolean;
