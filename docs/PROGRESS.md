@@ -65,6 +65,44 @@
       model defaults were hardcoded Claude ids — now empty (unset role
       falls through to the primary LLM_MODE; proven by execution on a
       simulated cdao_openai/gpt-5.5 env). scripts/verify_round_3.py 10/10.
+- [x] Task 10 (Subagent A, verified in main thread, 6dcd512 + 7c4ef08): all
+      31 batch-1 B–H items + the firm exceptions altitude (one row per RULE
+      from /api/exceptions/firm, drill-in ranked by rate); AUM off the
+      chart; en-dash prefixes; drill-down LifecycleStrip/volume tile/
+      managed-only AUM tile; shared EvidenceTable everywhere; worklist
+      one-advisor default + advisors-with-exceptions dropdown; F2 pivot
+      renders group_name. Follow-up 7c4ef08: contribution rows resolve
+      Name (SID) via a cached /api/advisors map (found by observation).
+- [x] Task 11 (Subagent B, verified in main thread, 950c2b3): batch-2 §B —
+      ASSUMED/Dummy/apology text gone; aum_managed tile labelled; NCF (Net
+      Cash Flows); Revenue Drivers + fixed pivot; value-based peer-ranking
+      colour (thirds, rule stated); coaching reordered with severity chips;
+      opportunities Amount/red-negative-days/Stalled-column-removed/
+      glossary tooltips; NNM section properly titled.
+- [x] Task 12 (Subagent C, verified in main thread, 6d37f18): Documents &
+      Rules redesigned into four tabs (Documents/Rules/Exceptions/Write a
+      Rule) — full-width paginated rules, compiled query collapsed, attempts
+      on click, NO horizontal scroll bar; NEW Exceptions tab with the
+      independent toggles + materiality editing via exception-config PATCH
+      (honest em-dash nulls, scope-source provenance, refetch-after-mint);
+      Rule Versions paginated with v0 visible/editable; Trace paginated with
+      the amber tint documented in a legend.
+- [x] Phase 4 (main thread): verify_round_3 10/10; ALL suites green (a25
+      b19 c13 e8 h9 a1-17, r1 12, r1b 8, r2a 16, flags 8, manual 17, nnm 19,
+      parity, npm 8 routes); every screen OPENED and read in headless
+      chromium (checks 11–25 in docs/ROUND_3_COMPLETE.md with what was
+      actually seen). RSV_v12 regeneration: aggregate + 7 advisor runs
+      landed (cross-cutting narrative pasted; data-driven driver text on
+      screen; ROWS_SHOWN truncations 5→0) before the Anthropic credit
+      balance ran out — 13 advisor runs failed isolated-and-recorded;
+      serving falls back to their prior COMPLETE runs. FOUND+FIXED en
+      route: shape results mislabelled as samples (phantom limit);
+      version-id STRING comparison served RSV_v8 over RSV_v12; FAILED
+      regenerations displaced served content; token ceiling now
+      COST-WEIGHTED (cache reads 0.1×) — was a hidden ~16-turn cap;
+      coaching severity resolves at read time. Session app-LLM spend
+      ≈ $1.25 of the $15 ceiling. Servers :8002/:3002 left running;
+      public visibility still needs the Ports panel (carried).
 
 ## Round 2a (docs/ROUND_2A_EXTRACTION_SPEC.md) — extraction ready for the real load
 - [x] Task 1 (main thread, f6a1b42): ingestion batch size 5000 — the MEASURED
@@ -930,7 +968,28 @@ Note: per Round E/G/H precedent, subagents reported and the MAIN THREAD
       Servers left running on :8001 / :3001 forwarded URLs.
 
 ## Current position
-Round: 1 (docs/spec/ROUND_1_SCHEMA_FREEZE_SPEC.md) — COMPLETE. THE SCHEMA IS
+Round: 3 (docs/spec/ROUND_3_SPEC.md) — COMPLETE. The last build round: the
+      behaviour changes (shape queries over every row, evidence without a
+      cap, the exceptions rate model over the Round-1 fields, cross-cutting
+      AI Insights, jobs API) and all 73 review items from both batches are
+      in, verified by scripts/verify_round_3.py (10/10) plus a full
+      headless-chromium pass over every screen
+      (docs/ROUND_3_COMPLETE.md). The schema stayed frozen at 31V/44E —
+      no migration was needed. Open items carried out of the round:
+      (1) 13 advisor insight runs on RSV_v12 are unfunded (Anthropic credit
+      balance exhausted mid-batch; serving falls back to their prior
+      COMPLETE runs) — rerun the advisor="all" batch once credits exist,
+      which also live-proves the cost-weighted token ceiling;
+      (2) port visibility for 8002/3002 still needs the Ports panel
+      (gh token lacks the codespace scope);
+      (3) subagent-noted polish: an AdvisorLink cell-renderer hook on the
+      shared EvidenceTable, group-level pagination inside Revenue Driver
+      groups, glossary keys for the CRM column tooltips (ColHead falls back
+      to labelize), and lib/api.ts exporting its base URL for the newer
+      per-domain API clients.
+Round 3 session app-LLM spend ≈ $1.25 of the $15 ceiling (trace-measured).
+
+Previous position — Round: 1 (docs/spec/ROUND_1_SCHEMA_FREEZE_SPEC.md) — COMPLETE. THE SCHEMA IS
       FROZEN at 31 vertices / 44 edges: a client environment installs fresh
       (01→02→03) or migrates from F2 (migrations/001_exceptions_and_jobs.gsql,
       additive-only, one GLOBAL SCHEMA_CHANGE JOB) and verify_schema_parity.py
