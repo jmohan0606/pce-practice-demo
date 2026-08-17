@@ -1,19 +1,10 @@
-Fix both, then resume.
+Stop the extraction loop. You are retrying a failing chunk rather than making progress.
 
-1 · Flows join — both columns are 100% populated, so use a single indexed equality:
+Report, without running any extraction:
 
-sql
-JOIN pcr.fpic_prm_rr_tb r ON r.standard_id = f.rep_wrkr_sid
+cat data/real/_raw/extract_checkpoint.json — how many chunks completed, and the last one
+ls -la data/real/_raw/*.csv | wc -l
+The exact error from the most recent failed attempt, in full
+Was the rpg::text cast actually applied? Show the line from scripts/generate_extraction_sql.py
 
-Remove the OR entirely and also split flows into three month chunks as previously instructed.
-
-2 · rpg type error — rpg is an integer, so COALESCE(d.rpg,'') is invalid. Cast first:
-
-sql
-COALESCE(d.rpg::text, '') AS rpg
-
-The graph column is a STRING, so casting to text is correct.
-
-Before rerunning, check every other COALESCE(col,'') in the extraction templates for the same mistake. Report the column types for any you find rather than fixing blind — a second type error would cost another failed chunk. EXPLAIN or information_schema.columns will tell you in seconds.
-
-Then resume without --skip so flows extracts too, and report progress.
+Do not retry anything until you have reported these four things.
