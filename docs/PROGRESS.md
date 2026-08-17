@@ -36,6 +36,35 @@
       GET /api/jobs (+kind/scope_key filters), GET /api/jobs/{id},
       POST /api/jobs/{id}/resume (INTERRUPTED-only, explicit, never
       automatic) all delivered in Round 1 task 2; smoke-tested this round.
+- [x] Tasks 6+7 (main thread): shared UI foundations — Pager (usePager,
+      5/10/20 default 5), CompareValue (every number carries its prior-month
+      comparison), EvidenceTable (collapsed+note, labelized headers,
+      paginated, shrink-to-content, reconciling footer totals),
+      lib/labels.ts (labelize/yesNo); globals.css full-width .wrap, bold
+      section/metric headers, .rowhead, .chip.newtag, and the ONE
+      segmented-toggle rule (.pivot selected bold blue highlighted /
+      unselected pale; switches keep their own styling).
+- [x] Tasks 8+9 (main thread, shared surfaces): REAL/DERIVED/DUMMY finding
+      chips removed from the shared FindingRow (driver tag stays, bold +
+      nowrap); 'Source / Citation' prefix on rule links; 'Ask iPerform' →
+      'Ask Connect Coach' in ChatPanel/ChatDock/agent persona/flags
+      registry/mockup. Page-level removals ride the Phase 3 briefs.
+- [x] Pre-dispatch fixes (main thread): B2 retained bug — RETAINED_ACCOUNT
+      had been deactivated in the Round C demo trail; reactivated (RSV_v12),
+      firm retained 177 == raw continuing-with-revenue count 177; lifecycle
+      query now NOTES skipped rules (never a silent zero). B3 NCF derivation
+      verified (total_net_financial_flows end to end — it IS Net Cash
+      Flows). F2 root cause: rule findings carried group_id null —
+      dominant_group() attribution (>=50% of matched revenue, never
+      guessed) + group_name serialized. B7 coaching points gain severity
+      from the rules' own severity model, sorted Critical→Info. D8:
+      GET /api/dashboard/lifecycle (scope = group|advisor|all). D2/B1:
+      aum_managed on advisor + practice summaries. FOUND+FIXED: shape
+      results were mislabelled 'a SAMPLE' and recorded a phantom ROWS_SHOWN
+      limit (miner + chat). Operator mid-round bug: coach/chat/guardrail
+      model defaults were hardcoded Claude ids — now empty (unset role
+      falls through to the primary LLM_MODE; proven by execution on a
+      simulated cdao_openai/gpt-5.5 env). scripts/verify_round_3.py 10/10.
 
 ## Round 2a (docs/ROUND_2A_EXTRACTION_SPEC.md) — extraction ready for the real load
 - [x] Task 1 (main thread, f6a1b42): ingestion batch size 5000 — the MEASURED
