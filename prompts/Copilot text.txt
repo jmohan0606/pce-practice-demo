@@ -1,5 +1,18 @@
-Run the PCL login from CONNECTION_DETAILS.md section 1, re-export PCE_PG_DSN with the fresh token, then rerun the identical extraction command without --skip.
+Skip flows and extract the 87 transaction chunks now. They are the bulk of the load and are no longer blocked.
 
-The 21 completed chunks are checkpointed and will be skipped. Expect the token to expire again during the remaining 87 — refresh and rerun each time. Do not pass --restart.
+bash
+python3 -u scripts/extract_chunked.py --months 202604,202605,202606 \
+  --advisors-file data/real/cohort.txt --out data/real/_raw \
+  --skip raw_adv_flows.sql
 
-Report every 20 chunks: completed count, elapsed time for those chunks, and any failure.
+Report every 20 completed chunks: count, elapsed time, any failure. Do not retry a chunk that fails twice with the same error — skip it, note it, keep going.
+
+Separately, and only while that runs, diagnose flows without extracting:
+
+Print the generated SQL and confirm the join reads ON r.standard_id = f.rep_wrkr_sid with no OR:
+bash
+python3 -c "from scripts.generate_extraction_sql import templates; print(templates()['raw_adv_flows.sql'])"
+If the OR is still there, the fix did not reach the template — find where, as with the rpg cast.
+If the join is correct, run EXPLAIN on one month and report the plan. A nested loop means it is still wrong; a hash aggregate over 6.5M rows means it simply needs splitting further — by month and advisor batch.
+
+Flows aggregates to 166,985 rows total. It is one entity of eighteen and must not hold up the other 87 chunks.
