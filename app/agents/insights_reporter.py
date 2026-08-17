@@ -63,8 +63,11 @@ def build_system_prompt(search_available: bool = False,
         "identifiers, no query names.\n"
         "- Negatives in parentheses: ($18,400). Dollar figures with commas. "
         "Percentages like 3.6%.\n"
-        "- Use ONLY numbers that appear in the findings or transition totals. "
-        "Do not compute new figures, do not round differently, do not estimate.\n\n"
+        "- Use ONLY numbers that appear in the findings or transition totals — "
+        "plus, when connecting drivers, the SUM or DIFFERENCE of two headline "
+        "figures or a percentage of one headline figure over another (the "
+        "system re-computes and verifies these; any other derived figure is "
+        "rejected). Never estimate.\n\n"
         + ("CROSS-CUTTING (Round 3 task 4 — this is the practice-level "
            "narrative): say what the whole picture means, never restate a "
            "single driver — the per-driver story already renders as Revenue "
@@ -193,14 +196,76 @@ def extract_numbers(text: str) -> list[float]:
     return numbers
 
 
+def _is_rounding_of_allowed(n: float, allowed: set[float]) -> bool:
+    """Round 4 task 2 (found by observation): Sonnet writes "$34,166" for the
+    transition's 34165.52 — standard whole-dollar rounding, not an invented
+    figure — and the exact-match gate killed real narratives for it (two
+    consecutive template fallbacks on the same transition). An INTEGER token
+    is accepted when some non-integer allowed figure rounds or truncates to
+    it. Non-integer tokens keep exact matching; derived arithmetic (sums and
+    differences the model computed itself) still has no allowed source and
+    still falls."""
+    if n != int(n):
+        return False
+    target = abs(n)
+    return any(not float(f).is_integer()
+               and (round(abs(f)) == target or int(abs(f)) == target)
+               for f in allowed)
+
+
+def _headline_figures(findings: list[dict], transition: dict) -> list[float]:
+    """The small set two-figure combinations are verified against: finding
+    impact_amts plus the transition totals — never evidence cells (a
+    combinatorial base of hundreds of rows would accept almost anything)."""
+    values: list[float] = []
+    for f in findings:
+        if isinstance(f.get("impact_amt"), (int, float)):
+            values.append(abs(float(f["impact_amt"])))
+    for key in ("from_amt", "to_amt", "change_amt"):
+        v = transition.get(key)
+        if isinstance(v, (int, float)):
+            values.append(abs(float(v)))
+    return values
+
+
+def _is_verified_combination(n: float, headline: list[float]) -> bool:
+    """Round 4 task 2 (found by observation): the Round 3 cross-cutting
+    mandate ASKS for connection statements ("together these added $85,341",
+    "7.2% of the book") while the gate banned every computed figure — the
+    same transition fell back to the template three times on correct
+    arithmetic. Resolution: the gate now VERIFIES the arithmetic instead of
+    banning it. A token is accepted only when it provably equals a sum or
+    difference of TWO headline figures (to the dollar) or a percentage of
+    one headline figure over another (to 0.1pp). Anything the gate cannot
+    reproduce from two verified figures still falls — the no-invented-figures
+    guarantee is unchanged; the accepted set is now checked arithmetic."""
+    target = abs(n)
+    for i, a in enumerate(headline):
+        for b in headline[i:]:
+            if abs((a + b) - target) < 0.51 or abs(abs(a - b) - target) < 0.51:
+                return True
+    if 0 < target <= 100:  # percent-shaped tokens: a of b
+        for a in headline:
+            for b in headline:
+                if b and abs(round(a / b * 100, 1) - target) < 0.051:
+                    return True
+    return False
+
+
 def verify_numbers(narrative: str, bullets: list[str],
                    findings: list[dict], transition: dict) -> list[float]:
     """The numbers in the output that do NOT appear in the findings (empty =
-    verified). Membership is exact-after-normalisation on value or |value|."""
+    verified). Membership is exact-after-normalisation on value or |value|,
+    plus whole-dollar roundings of allowed figures, plus VERIFIED two-figure
+    combinations of headline figures (sum/difference/percentage — the gate
+    reproduces the arithmetic; nothing unreproducible passes)."""
     allowed = allowed_numbers(findings, transition)
+    headline = _headline_figures(findings, transition)
     text = " ".join([narrative or "", *[b or "" for b in bullets or []]])
     return [n for n in extract_numbers(text)
-            if n not in allowed and abs(n) not in allowed]
+            if n not in allowed and abs(n) not in allowed
+            and not _is_rounding_of_allowed(n, allowed)
+            and not _is_verified_combination(n, headline)]
 
 
 # --------------------------------------------------------------------------- recommendations (task 5)
@@ -426,16 +491,20 @@ def report(findings: list[dict], transition: dict,
             repair_prompt = (
                 prompt + "\n\nYOUR PREVIOUS ANSWER:\n"
                 + json.dumps({"narrative": narrative, "bullets": bullets})
-                + f"\n\nREJECTED — these figures appear nowhere in the findings or "
-                  f"transition totals (you computed or misremembered them): {bad}. "
-                  f"Rewrite the narrative and bullets using ONLY figures copied "
-                  f"verbatim from the findings and transition totals. Do not sum, "
-                  f"difference or extrapolate. Keep your recommendations. JSON only.")
+                + f"\n\nREJECTED — these figures are neither in the findings/"
+                  f"transition totals nor a verifiable sum/difference/percentage "
+                  f"of TWO headline figures: {bad}. For each, either replace it "
+                  f"with an exact figure from the findings or DROP the claim "
+                  f"entirely. Keep your recommendations. JSON only.")
             redecoded = _decode_reply(llm(repair_prompt, {
-                "system_prompt": build_system_prompt(search_documents is not None)}))
+                "system_prompt": build_system_prompt(search_documents is not None,
+                                                     cross_cutting=cross_cutting)}))
             new_narrative = str(redecoded.get("narrative") or "").strip()
             new_bullets = [str(b).strip() for b in redecoded.get("bullets") or []
                            if str(b).strip()]
+            if not (new_narrative and new_bullets):
+                _log.warning("reporter repair returned no usable rewrite — "
+                             "original rejection list stands")
             if new_narrative and new_bullets:
                 bad2 = verify_numbers(new_narrative, new_bullets, findings, transition)
                 if not bad2:

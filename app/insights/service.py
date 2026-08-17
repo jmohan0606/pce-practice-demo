@@ -191,8 +191,19 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
     except Exception as exc:
         jobs.fail(job["job_id"], f"{type(exc).__name__}: {exc}")
         raise
+    # Round 4 (found by observation): RETAINED_ACCOUNT measures a STOCK
+    # (revenue held), not a change contribution — summing its $800k impact
+    # into the residual produced a confidently-wrong "-$911K residual" in the
+    # served narrative. Same exclusion Round A1 applied to the dominant-driver
+    # competition (NON_CHANGE_DRIVERS); the finding still displays its total.
+    from app.graph.queries.noncredited import NON_CHANGE_DRIVERS
+
+    def _is_stock_measure(finding: dict) -> bool:
+        key = str(finding.get("rule_key") or "")
+        return any(key.startswith(f"R_{code}_") for code in NON_CHANGE_DRIVERS)
+
     rule_impacts = sum(f["impact_amt"] for f in rule_findings
-                       if f["impact_amt"] is not None)
+                       if f["impact_amt"] is not None and not _is_stock_measure(f))
     residual_amt = round(float(transition.get("change_amt") or 0.0) - rule_impacts, 2)
 
     run = store.begin_run(advisor_sid, from_month, to_month, version["version_id"])
