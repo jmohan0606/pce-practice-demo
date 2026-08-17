@@ -109,8 +109,9 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
         "miner_query_budget", "max_run_input_tokens", "miner_max_turns",
         "miner_rows_shown", "miner_recent_results_kept",
         "miner_tool_result_char_cap", "miner_wrapup_turns",
-        "miner_exploration_reserve", "evidence_stored_cap",
-        "evidence_display_cap", "drilldown_product_query_budget",
+        # Round 3 task 2: evidence_stored_cap / evidence_display_cap REMOVED —
+        # evidence carries every row behind a finding; nothing to configure.
+        "miner_exploration_reserve", "drilldown_product_query_budget",
         "drilldown_product_turn_cap", "drilldown_sub_query_budget",
         "drilldown_sub_turn_cap", "reporter_max_searches",
         "rule_compiler_max_searches", "rule_compiler_max_repairs",
@@ -142,7 +143,6 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
                   and get_settings().max_run_input_tokens == 250_000
                   and get_settings().miner_max_turns == 35
                   and get_settings().miner_rows_shown == 40
-                  and get_settings().evidence_stored_cap == 200
                   and get_settings().miner_tool_result_char_cap == 4_000)
     check(4, "all limits resolve from settings with env aliases; no module "
              "constants; 2.2 defaults resized",

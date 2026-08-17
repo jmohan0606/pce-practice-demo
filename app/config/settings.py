@@ -205,10 +205,9 @@ class Settings(BaseSettings):
     miner_wrapup_turns: int = Field(default=3, alias="MINER_WRAPUP_TURNS")
     # Queries that must remain for free exploration after the opening queries.
     miner_exploration_reserve: int = Field(default=6, alias="MINER_EXPLORATION_RESERVE")
-    # Evidence rows stored per finding / returned per finding by the API. The
-    # API always reports evidence_total so a capped table says "showing N of M".
-    evidence_stored_cap: int = Field(default=200, alias="EVIDENCE_STORED_CAP")
-    evidence_display_cap: int = Field(default=20, alias="EVIDENCE_DISPLAY_CAP")
+    # Round 3 task 2: EVIDENCE_STORED_CAP and EVIDENCE_DISPLAY_CAP are REMOVED
+    # — evidence carries every row behind a finding (sorted by contribution,
+    # footer totals reconcile); the UI paginates, storage never truncates.
     # Drill-down budgets (query budget, turn cap) per scope tier — ROUND_G 3.3.
     drilldown_product_query_budget: int = Field(default=8, alias="DRILLDOWN_PRODUCT_QUERY_BUDGET")
     drilldown_product_turn_cap: int = Field(default=12, alias="DRILLDOWN_PRODUCT_TURN_CAP")

@@ -61,13 +61,45 @@ _TURN_LOG_ATTRS = ("turn_id", "run_id", "seq_no", "agent_name", "model",
                    "est_cost_usd")
 
 
-def _evidence_caps() -> tuple[int, int]:
-    """(stored_cap, display_cap) — Round H task 2: settings-resolved with env
-    aliases (EVIDENCE_STORED_CAP / EVIDENCE_DISPLAY_CAP), no module constants."""
-    from app.config.settings import get_settings
+def _sort_evidence(rows: list[dict]) -> list[dict]:
+    """Round 3 task 2 — evidence sorted by contribution descending, so page
+    one holds what matters. The contribution column is the numeric column with
+    the largest absolute total (rule matches carry 'value'; query rows carry
+    their own monetary column)."""
+    if not rows:
+        return rows
+    numeric = [c for c, v in rows[0].items()
+               if isinstance(v, (int, float)) and not isinstance(v, bool)]
+    if not numeric:
+        return rows
 
-    s = get_settings()
-    return s.evidence_stored_cap, s.evidence_display_cap
+    def _f(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return 0.0
+
+    col = max(numeric, key=lambda c: sum(abs(_f(r.get(c))) for r in rows))
+    return sorted(rows, key=lambda r: -abs(_f(r.get(col))))
+
+
+def _evidence_totals(rows: list[dict]) -> dict[str, float]:
+    """Round 3 task 2 — footer totals per numeric column, so the evidence
+    table reconciles to the finding's headline figure."""
+    if not rows:
+        return {}
+    numeric = [c for c, v in rows[0].items()
+               if isinstance(v, (int, float)) and not isinstance(v, bool)]
+    totals: dict[str, float] = {}
+    for col in numeric:
+        total = 0.0
+        for r in rows:
+            try:
+                total += float(r.get(col) or 0)
+            except (TypeError, ValueError):
+                pass
+        totals[col] = round(total, 2)
+    return totals
 
 
 def _now() -> str:
@@ -306,12 +338,10 @@ class InsightStore:
                      budget_hit_tokens: bool = False,
                      recommendations: list[dict] | None = None,
                      limits_hit: list[dict] | None = None) -> dict:
-        stored_cap, _ = _evidence_caps()
         # Round H 2.3: every limit that binds is recorded on the run —
-        # {limit_name, limit_value, limit_effect} — including the evidence cap
-        # applied right here. SQLite + in-process only (limits_json rides the
-        # persisted run dict; the graph mirror's attribute set is unchanged,
-        # same precedent as scope/scope_key).
+        # {limit_name, limit_value, limit_effect}. SQLite + in-process only
+        # (limits_json rides the persisted run dict; the graph mirror's
+        # attribute set is unchanged, same precedent as scope/scope_key).
         limits = [dict(entry) for entry in (limits_hit or [])]
         with self._lock:
             run = self.runs[run_id]
@@ -332,18 +362,16 @@ class InsightStore:
                 finding["finding_id"] = finding_id
                 finding["run_id"] = run_id
                 finding["rank_order"] = rank
-                all_evidence = list(finding.get("evidence_rows") or [])
-                evidence = all_evidence[:stored_cap]
-                if len(all_evidence) > stored_cap:
-                    limits.append({
-                        "limit_name": "EVIDENCE_STORED_CAP",
-                        "limit_value": stored_cap,
-                        "limit_effect": (
-                            f"finding {finding.get('title')!r} produced "
-                            f"{len(all_evidence)} evidence rows; {stored_cap} "
-                            f"were stored")})
+                # Round 3 task 2 — EVIDENCE_STORED_CAP is REMOVED: a claim
+                # that cannot be verified in full is not evidence. Every row
+                # behind the number is stored, sorted by contribution
+                # descending, with per-column footer totals that reconcile to
+                # the headline figure. The UI paginates; storage never
+                # truncates.
+                evidence = _sort_evidence(list(finding.get("evidence_rows") or []))
                 finding["evidence_rows"] = evidence
-                finding["evidence_source_total"] = len(all_evidence)
+                finding["evidence_source_total"] = len(evidence)
+                finding["evidence_totals"] = _evidence_totals(evidence)
                 stored.append(finding)
                 self._mirror(FINDING_VERTEX, "finding_id", _FINDING_ATTRS, {
                     **finding,

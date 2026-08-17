@@ -38,9 +38,9 @@ def _driver_label(finding: dict) -> str:
 
 
 def _serialize_finding(finding: dict) -> dict:
-    from app.config.settings import get_settings
-
-    display_cap = get_settings().evidence_display_cap
+    # Round 3 task 2: the API serves EVERY evidence row (sorted by
+    # contribution at storage, footer totals attached) — the UI paginates,
+    # the payload is never truncated.
     evidence = finding.get("evidence_rows") or []
     return {
         "finding_id": finding.get("finding_id"),
@@ -57,11 +57,11 @@ def _serialize_finding(finding: dict) -> dict:
         "rule_key": finding.get("rule_key"), "provenance": finding.get("provenance"),
         "confidence": finding.get("confidence"),
         "evidence_columns": finding.get("evidence_columns") or [],
-        "evidence_rows": evidence[:display_cap],
-        # Round H 2.3/4.4: the TRUE producing count — "showing N of M", never a
-        # silent cap. evidence_total is what the query produced (pre-storage
-        # cap when recorded; stored count for legacy runs).
+        "evidence_rows": evidence,
         "evidence_total": finding.get("evidence_source_total") or len(evidence),
+        # Round 3 task 2 — per-column footer totals so the evidence table
+        # reconciles to the finding's headline figure.
+        "evidence_totals": finding.get("evidence_totals") or {},
         "evidence_reason": finding.get("evidence_reason"),
         "source_query": finding.get("source_query"),
         "rank_order": finding.get("rank_order"),
