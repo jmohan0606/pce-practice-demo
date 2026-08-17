@@ -176,16 +176,22 @@ def _point_severity(text: str) -> tuple[str, str]:
         for rule in store.version_rules(version["version_id"]):
             if rule.get("active") is False:
                 continue
+            # subject words only: 6+ letters, minus terms generic to every
+            # coaching point ("rate" matched everything at 4 letters)
+            generic = {"account", "accounts", "revenue", "monthly", "market"}
             words = [w.lower() for w in str(rule.get("rule_code") or "").split("_")
-                     if len(w) >= 4]
-            if words and any(w in lowered for w in words):
+                     if len(w) >= 6 and w.lower() not in generic]
+            hits = sum(1 for w in words if w in lowered)
+            if hits:
                 sev = rule.get("severity") or "INFO"
-                candidate = (rank.get(sev, len(rank)), sev, rule.get("rule_code"))
-                if best is None or candidate[0] < best[0]:
+                # most-specific subject match wins; severity breaks ties
+                candidate = (-hits, rank.get(sev, len(rank)), sev,
+                             rule.get("rule_code"))
+                if best is None or candidate[:2] < best[:2]:
                     best = candidate
         if best is None:
             return "INFO", "no matching rule — informational"
-        return best[1], f"matches rule {best[2]} ({best[1]})"
+        return best[2], f"matches rule {best[3]} ({best[2]})"
     except Exception:  # noqa: BLE001 — severity is triage sugar, never a crash
         return "INFO", "severity resolution unavailable"
 
