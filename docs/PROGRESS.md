@@ -1,5 +1,47 @@
 # Build Progress
 
+## Round 1b (docs/spec/ROUND_1B_SPEC.md) — final schema additions (schema closes)
+- [x] Task 1 (main thread, aeffaf4): job_code STRING on phx_dm_pce_advisor
+      (confirmed pcr.fpic_employee_tb.job_cd varchar(30) not null) across
+      DDL/schema_catalog/SCHEMA_SPEC/loading job/manifest; raw_advisor.sql
+      selects COALESCE(e.job_cd,'') on the existing em_standard_id join;
+      blank stays blank (V000008 mock + counterparties). Committed advisor
+      CSV updated by deterministic column-append post-pass (no RNG); field
+      CARRIED only — no plan-applicability logic (client mapping pending).
+- [x] Task 2 (main thread, 9d6ad1f): l1_pay_type_cd/l2_pay_type_cd on
+      phx_dm_pce_product — the export's parallel snake_case taxonomy carried
+      ALONGSIDE the unchanged grouping; extraction SQL selects
+      level_one/two_pay_type_product_cd; build_real_data passes through
+      (txn-only products blank, never guessed); mock PAY_TYPE_CODES
+      transcribed from PRODUCT_HIERARCHY_FULL.md; committed product CSV
+      post-passed.
+- [x] Task 3 (main thread, a6835be): referrals_private_bank 26th group —
+      PCS splits on sub-code like ELIS/LEND (PCS/SP RECURRING unchanged,
+      PCS/PBR NON_RECURRING, unknown sub -> unmapped, sub-less PCS kept as
+      SP for the committed pre-split rows — documented alias). Committed
+      data additive post-pass only (group row + PCS|PBR product + edge,
+      manifest 26/32/32, NO transaction touched — PBR honestly revenue-less
+      in mock, B1-5 re-pinned). Fixtures reshuffled legitimately and now
+      prove the split end-to-end. Pins widened: verify_round_a 3a/3b.
+- [x] Task 4 (main thread, 48f6338): migrations/002_schema_additions.gsql —
+      one GLOBAL SCHEMA_CHANGE JOB, two ALTERs, no data statement; grown
+      task-by-task so every commit stayed parity-green.
+      verify_schema_parity.py applies ALL migrations/0NN_*.gsql in order:
+      baseline_f2 + 001 + 002 == clean install 31V/44E; corrupted-002 probe
+      fails SP-4 naming l2_pay_type_cd (proven). Four DECISIONS recorded.
+- [x] Task 5 (main thread, 439912a): runbook Phase 1 = three explicit
+      install paths (fresh DDL-only / F2 -> 001+002 / Round-1 -> 002 only),
+      parity required after every path; Phase 5.4 rollback (resumable rerun
+      normal; 90_drop_all + reinstall the stated-destructive last resort;
+      never hand-edit CSVs).
+- [x] Task 6 (main thread): NEW scripts/verify_round_1b.py — 8/8 PASS run
+      twice; all spec checks with actual output in docs/ROUND_1B_COMPLETE.md.
+      Regression all green (a25 b19 c13 e8 h9 a1-17, flags 8, manual 17,
+      nnm 19, verify_round_1 12/12, parity, npm build 8 routes). Servers
+      restarted on this round's code/data (:8002 healthy 0 mismatches,
+      :3002 200); public visibility still needs the Ports panel (carried).
+      Session LLM spend $0.00 of the $3 ceiling.
+
 ## Round 1 (docs/spec/ROUND_1_SCHEMA_FREEZE_SPEC.md) — schema freeze + client runbook
 - [x] Task 1 (main thread): eight exception-configuration attributes on
       phx_dm_pce_rule (DDL / schema_catalog / SCHEMA_SPEC / store mirror
