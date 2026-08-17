@@ -3,6 +3,8 @@
 -- Run manually against PostgreSQL db fpicdb, schema pcr (IAM token auth; on
 -- PAM/auth failure the token expired: aws sts get-caller-identity, refresh SSO,
 -- retry). ALWAYS run first:  SET statement_timeout = '600s';
+-- THEN run 00_session_setup.sql (temp tables die with the session — a token
+-- refresh is a reconnect, so re-run it after ANY reconnect).
 -- Save the result as CSV (header row, comma, UTF-8): data/real/_raw/raw_advisor.csv
 -- Cohort advisors (in_cohort=true) PLUS every transfer counterparty
 -- (in_cohort=false) — miss them and every transfer edge pointing at them
@@ -10,10 +12,7 @@
 -- job_code (Round 1b): fpic_employee_tb.job_cd, carried for plan
 -- eligibility (SAG p.9). No employee row -> blank; a blank stays blank.
 WITH cohort(advisor_sid) AS (
-  SELECT unnest(ARRAY['T000001','T000002','T000003','T000005','T000004',
-                         'T000018','T000019','T000020','T000006','T000007',
-                         'T000008','T000009','T000010','T000011','T000012',
-                         'T000013','T000014','T000015','T000016','T000017'])
+  SELECT advisor_sid FROM cohort_adv
 ),
 counterparties AS (
   SELECT DISTINCT c.from_mem_sid AS advisor_sid

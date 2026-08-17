@@ -3,9 +3,14 @@
 -- Run manually against PostgreSQL db fpicdb, schema pcr (IAM token auth; on
 -- PAM/auth failure the token expired: aws sts get-caller-identity, refresh SSO,
 -- retry). ALWAYS run first:  SET statement_timeout = '600s';
+-- THEN run 00_session_setup.sql (temp tables die with the session — a token
+-- refresh is a reconnect, so re-run it after ANY reconnect).
 -- Save the result as CSV (header row, comma, UTF-8): data/real/_raw/raw_adv_flows.csv
--- Advisor flows: APRIL AND MAY ONLY (no June rows exist). other_attributes
--- JSONB flattened into the six named columns — 0 / empty where absent.
+-- Advisor flows: APRIL-JUNE (Round 2a — June flow rows now exist; the earlier
+-- April/May-only finding no longer holds). 19,443,868 daily rows aggregate to
+-- an expected 166,985 output rows — THE AGGREGATE IS WHAT EXTRACTS; the daily
+-- rows never cross the wire. other_attributes JSONB flattened into the six
+-- named columns — 0 / empty where absent.
 SELECT r.standard_id                             AS advisor_sid,
        to_char(f.bus_dt::date,'YYYYMM')          AS month_id,
        f.cwm_flow_comp_prod_cd                   AS flow_product_cd,
@@ -24,9 +29,6 @@ SELECT r.standard_id                             AS advisor_sid,
 FROM   pcr.fpic_daily_adv_flows_tb_pm f
 JOIN   pcr.fpic_prm_rr_tb r
        ON r.standard_id = f.rep_wrkr_sid OR r.prm_rr_no = f.pri_rep_cd
-WHERE  f.bus_dt::date >= DATE '2026-04-01' AND f.bus_dt::date < DATE '2026-06-01'
-  AND  r.standard_id IN ('T000001','T000002','T000003','T000005','T000004',
-                         'T000018','T000019','T000020','T000006','T000007',
-                         'T000008','T000009','T000010','T000011','T000012',
-                         'T000013','T000014','T000015','T000016','T000017')
+WHERE  f.bus_dt::date >= DATE '2026-04-01' AND f.bus_dt::date < DATE '2026-07-01'
+  AND  r.standard_id IN (SELECT advisor_sid FROM cohort_adv)
 GROUP  BY 1, 2, 3, 4, 5;

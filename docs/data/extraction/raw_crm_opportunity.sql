@@ -3,9 +3,13 @@
 -- Run manually against PostgreSQL db fpicdb, schema pcr (IAM token auth; on
 -- PAM/auth failure the token expired: aws sts get-caller-identity, refresh SSO,
 -- retry). ALWAYS run first:  SET statement_timeout = '600s';
+-- THEN run 00_session_setup.sql (temp tables die with the session — a token
+-- refresh is a reconnect, so re-run it after ANY reconnect).
 -- Save the result as CSV (header row, comma, UTF-8): data/real/_raw/raw_crm_opportunity.csv
--- Round F2: the CRM opportunity extract, COHORT-FILTERED (the firm-wide file
--- is 308,534 rows — far more than a 20-advisor demo needs). Table located via
+-- Round F2: the CRM opportunity extract, COHORT-FILTERED. At firm scale the
+-- delivered flat file (crm_opportunities.csv, 308,534 rows) usually replaces
+-- this SQL — build_real_data.py filters it to in-scope advisors/ECIs and
+-- reports the out-of-scope count. Table located via
 -- docs/data/extraction/discovery_crm_amount.sql STEP 0; replace <crm_table>
 -- with the schema-qualified name it returned.
 -- Invalid advisor references (e.g. 'I817209_CWM_INVALID') are INCLUDED on
@@ -28,17 +32,10 @@ SELECT o.id                                    AS opportunity_id,
        COALESCE(o.days_to_close,0)             AS days_to_close,
        COALESCE(o.additional_comments__c,'')   AS comments
 FROM   <crm_table> o
-WHERE  regexp_replace(COALESCE(o.ownersid__c,''), '_.*$', '') IN ('T000001','T000002','T000003','T000005','T000004',
-                         'T000018','T000019','T000020','T000006','T000007',
-                         'T000008','T000009','T000010','T000011','T000012',
-                         'T000013','T000014','T000015','T000016','T000017')
+WHERE  regexp_replace(COALESCE(o.ownersid__c,''), '_.*$', '')
+         IN (SELECT advisor_sid FROM cohort_adv)
    OR  o.eci__c IN (
          SELECT DISTINCT r.party_eci_id
          FROM   pcr.fpic_acct_eci_rel_tb_pm r
-         JOIN   pcr.fpic_revenue_transaction_tb_pm t
-                ON ltrim(trim(t.account_no),'0') = ltrim(trim(r.account_number),'0')
-         WHERE  t.advisor_sid IN ('T000001','T000002','T000003','T000005','T000004',
-                         'T000018','T000019','T000020','T000006','T000007',
-                         'T000008','T000009','T000010','T000011','T000012',
-                         'T000013','T000014','T000015','T000016','T000017')
+         JOIN   scoped_acct s ON s.k = ltrim(trim(r.account_number),'0')
        );

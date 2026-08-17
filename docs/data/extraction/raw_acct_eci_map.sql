@@ -3,27 +3,23 @@
 -- Run manually against PostgreSQL db fpicdb, schema pcr (IAM token auth; on
 -- PAM/auth failure the token expired: aws sts get-caller-identity, refresh SSO,
 -- retry). ALWAYS run first:  SET statement_timeout = '600s';
+-- THEN run 00_session_setup.sql (temp tables die with the session — a token
+-- refresh is a reconnect, so re-run it after ANY reconnect).
 -- Save the result as CSV (header row, comma, UTF-8): data/real/_raw/raw_acct_eci_map.csv
 -- Cross-system account <-> ECI map. DAILY SNAPSHOT: latest bus_dt per
 -- (wm_src_sys_cd, wm_acct_src_nb) only. Source column IS
 -- new_exst_adv_clnt_in_cyr — the graph column has no _cyr; build_real_data.py
--- does the rename. bus_dt is varchar; cast it.
-WITH cohort_accts AS (
-  SELECT DISTINCT ltrim(trim(d.account_no),'0') AS acct_key
-  FROM   pcr.fpic_daily_trade_details_tb_prod d
-  WHERE  d.trade_dt >= DATE '2026-04-01' AND d.trade_dt < DATE '2026-07-01'
-    AND  d.advisor_sid IN ('T000001','T000002','T000003','T000005','T000004',
-                         'T000018','T000019','T000020','T000006','T000007',
-                         'T000008','T000009','T000010','T000011','T000012',
-                         'T000013','T000014','T000015','T000016','T000017')
-),
-ranked AS (
+-- does the rename. bus_dt is varchar; cast it. Joins scoped_acct;
+-- /*BUCKET*/ is replaced by extract_chunked.py's bucket predicate — the
+-- window function then ranks only the bucket's keys, never all 12.6M rows.
+WITH ranked AS (
   SELECT m.bus_dt, m.wm_src_sys_cd, m.wm_acct_src_nb, m.eci_nb,
          m.new_exst_adv_clnt_in_cyr,
          row_number() OVER (PARTITION BY m.wm_src_sys_cd, m.wm_acct_src_nb
                             ORDER BY m.bus_dt::date DESC) AS rn
   FROM   pcr.fpic_acct_eci_map_tb m
-  WHERE  ltrim(trim(m.wm_acct_src_nb),'0') IN (SELECT acct_key FROM cohort_accts)
+  JOIN   scoped_acct s ON s.k = ltrim(trim(m.wm_acct_src_nb),'0')
+  WHERE  1=1 /*BUCKET*/
 )
 SELECT bus_dt, wm_src_sys_cd, wm_acct_src_nb, eci_nb, new_exst_adv_clnt_in_cyr
 FROM   ranked WHERE rn = 1;

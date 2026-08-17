@@ -3,6 +3,8 @@
 -- Run manually against PostgreSQL db fpicdb, schema pcr (IAM token auth; on
 -- PAM/auth failure the token expired: aws sts get-caller-identity, refresh SSO,
 -- retry). ALWAYS run first:  SET statement_timeout = '600s';
+-- THEN run 00_session_setup.sql (temp tables die with the session — a token
+-- refresh is a reconnect, so re-run it after ANY reconnect).
 -- Save the result as CSV (header row, comma, UTF-8): data/real/_raw/raw_month_meta.csv
 -- Month meta: trading_days = distinct trade dates. The table accrues DAILY
 -- (weekends have rows), so expect calendar-day counts 30 / 31 / 30 and
@@ -12,9 +14,6 @@ SELECT to_char(d.trade_dt,'YYYYMM')              AS month_id,
        to_char(max(d.trade_dt),'YYYY-MM-DD HH24:MI:SS')                      AS end_dt,
        count(DISTINCT d.trade_dt)                AS trading_days
 FROM   pcr.fpic_daily_trade_details_tb_prod d
+JOIN   cohort_adv ca ON ca.advisor_sid = d.advisor_sid
 WHERE  d.trade_dt >= DATE '2026-04-01' AND d.trade_dt < DATE '2026-07-01'
-  AND  d.advisor_sid IN ('T000001','T000002','T000003','T000005','T000004',
-                         'T000018','T000019','T000020','T000006','T000007',
-                         'T000008','T000009','T000010','T000011','T000012',
-                         'T000013','T000014','T000015','T000016','T000017')
 GROUP  BY 1 ORDER BY 1;

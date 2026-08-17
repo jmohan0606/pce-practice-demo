@@ -3,10 +3,13 @@
 -- Run manually against PostgreSQL db fpicdb, schema pcr (IAM token auth; on
 -- PAM/auth failure the token expired: aws sts get-caller-identity, refresh SSO,
 -- retry). ALWAYS run first:  SET statement_timeout = '600s';
+-- THEN run 00_session_setup.sql (temp tables die with the session — a token
+-- refresh is a reconnect, so re-run it after ANY reconnect).
 -- Save the result as CSV (header row, comma, UTF-8): data/real/_raw/raw_account.csv
 -- Accounts with in-scope cohort trades. Current snapshot — do NOT extract
 -- financial_advisor_cd (no date column; historical attribution mis-assigns).
--- No PII columns, ever.
+-- No PII columns, ever. Joins the session scoped_acct temp table (2.2);
+-- /*BUCKET*/ is replaced by extract_chunked.py's bucket predicate.
 SELECT DISTINCT
        a.account_number                           AS account_no,
        a.account_class_cd, a.account_class_nm, a.account_lob_cd,
@@ -16,12 +19,5 @@ SELECT DISTINCT
                         'YYYY-MM-DD HH24:MI:SS'),'') AS account_open_dt,
        COALESCE(a.party_primary_eci,'')           AS primary_eci_id
 FROM   pcr.fpic_acct_tb_pm a
-WHERE  ltrim(trim(a.account_number),'0') IN (
-         SELECT DISTINCT ltrim(trim(d.account_no),'0')
-         FROM   pcr.fpic_daily_trade_details_tb_prod d
-         WHERE  d.trade_dt >= DATE '2026-04-01' AND d.trade_dt < DATE '2026-07-01'
-           AND  d.advisor_sid IN ('T000001','T000002','T000003','T000005','T000004',
-                         'T000018','T000019','T000020','T000006','T000007',
-                         'T000008','T000009','T000010','T000011','T000012',
-                         'T000013','T000014','T000015','T000016','T000017')
-       );
+JOIN   scoped_acct s ON s.k = ltrim(trim(a.account_number),'0')
+WHERE  1=1 /*BUCKET*/;

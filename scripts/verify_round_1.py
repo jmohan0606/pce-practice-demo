@@ -280,12 +280,19 @@ def main() -> int:  # noqa: PLR0915 — one check per stanza, deliberately linea
         with contextlib.redirect_stdout(buf2):
             rc2 = extract_chunked.main(argv, connect=lambda: StubConn(None))
     cp = json.loads((out_dir / "extract_checkpoint.json").read_text())
+    # Round 2a re-pin: the plan for these args is now 27 chunks (7 singles +
+    # 2 monthly balances + 3 tables x 4 buckets + 6 txn), and every connection
+    # first runs 5 session-setup statements (cohort_adv + scoped_acct temp
+    # tables — re-created per session by design, spec 2.2). First run: 5 setup
+    # + 9 chunks complete, chunk 10 trips the stub's failure. Resume: 5 setup
+    # + exactly the 18 remaining chunks = 23 executes, 27/27 complete.
     check("R1-8b token expiry -> clean exit; rerun resumes, skips completed chunks",
-          rc1 == 3 and rc2 == 0 and StubCursor.executed == 3
-          and len(cp["completed"]) == 17
+          rc1 == 3 and rc2 == 0 and StubCursor.executed == 23
+          and len(cp["completed"]) == 27
           and "already complete" in buf2.getvalue(),
-          f"first rc={rc1} (14/17 checkpointed), resume rc={rc2} ran "
-          f"{StubCursor.executed} remaining queries, 17/17 complete")
+          f"first rc={rc1} (9/27 checkpointed), resume rc={rc2} ran "
+          f"{StubCursor.executed} executes (5 session setup + 18 remaining "
+          f"chunks), 27/27 complete")
 
     # R1-9 — check 8: validate_raw_extracts passes clean, catches corruption
     drop = Path(_TMP) / "rawdrop"

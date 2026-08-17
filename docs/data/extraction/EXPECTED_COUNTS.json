@@ -1,0 +1,40 @@
+{
+  "_comment": "Round 2a task 4 — the expected-count baseline, MEASURED in the client environment (docs/ROUND_2A_EXTRACTION_SPEC.md, April-June 2026, all 5,746 advisors). reconcile_load.py and extract_chunked.py --dry-run read this file; a rerun compares against known truth, not just internal consistency. null = not measured up front (recorded from the delivered files at validation time).",
+  "measured_at": "2026-08 client environment (ROUND_2A_EXTRACTION_SPEC.md measured-facts table)",
+  "months": ["202604", "202605", "202606"],
+  "raw": {
+    "raw_revenue_transaction": {
+      "rows": 12436738,
+      "per_month": {"202604": 4184088, "202605": 4236888, "202606": 4015762}
+    },
+    "raw_account": {"rows": 2689176},
+    "raw_acct_eci_rel": {"rows": 6971181},
+    "raw_acct_eci_map": {"rows": 2915901, "note": "after latest-bus_dt rank filter over 12.6M snapshot rows"},
+    "raw_monthly_balance": {
+      "rows": 8683364,
+      "per_month": {"202604": 2846629, "202605": 2898293, "202606": 2938442}
+    },
+    "raw_adv_flows": {
+      "rows": 166985,
+      "note": "aggregated output of 19,443,868 daily flow rows April-June — the aggregate is what crosses the wire, never the daily rows"
+    },
+    "raw_rr_changes": {"rows": 141054},
+    "raw_advisor": {"rows": 244881},
+    "raw_team_agreement": {"rows": 138},
+    "raw_product_hierarchy": {"rows": 38},
+    "raw_advisor_flags": {"rows": null, "note": "one row per advisor with in-scope trades (~5,746); not measured separately"},
+    "raw_month_meta": {"rows": 3},
+    "crm_opportunities": {
+      "rows": 308534,
+      "note": "firm-wide flat-file export; the build filters to in-scope advisors/ECIs and REPORTS the out-of-scope count — loaded count is expected below the raw count"
+    },
+    "nnm_files": {"rows": null, "note": "~50,000 across the four category files; exact counts recorded from the delivered files at validation time"}
+  },
+  "totals": {
+    "vertex_rows": 34249456,
+    "edge_rows_approx": 108800000,
+    "grand_total_rows": 143079269,
+    "scoped_accounts": 3002693,
+    "cohort_advisors": 5746
+  }
+}

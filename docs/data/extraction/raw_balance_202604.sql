@@ -5,11 +5,10 @@
 -- retry). ALWAYS run first:  SET statement_timeout = '600s';
 -- THEN run 00_session_setup.sql (temp tables die with the session — a token
 -- refresh is a reconnect, so re-run it after ANY reconnect).
--- Save the result as CSV (header row, comma, UTF-8): data/real/_raw/raw_rr_changes.csv
--- Account transfers touching a cohort advisor, in scope.
-SELECT c.occd_cd, c.account_no, c.transfer_ts, c.seq_no,
-       c.from_rr, c.from_mem_sid, c.to_rr, c.to_mem_sid
-FROM   pcr.fpic_rr_changes_from_nacs_logs c
-WHERE  c.transfer_ts >= DATE '2026-04-01' AND c.transfer_ts < DATE '2026-07-01'
-  AND  (c.from_mem_sid IN (SELECT advisor_sid FROM cohort_adv)
-   OR   c.to_mem_sid   IN (SELECT advisor_sid FROM cohort_adv));
+-- Save the result as CSV (header row, comma, UTF-8): data/real/_raw/raw_balance_202604.csv
+-- Month-end balances for 202604: columns confirmed acct_id / acct_bal.
+-- ONE month per query (never a UNION — 8.68M rows in one statement will not
+-- finish inside the 900s timeout). Requires 00_session_setup.sql this session.
+SELECT '202604' AS month_id, b.acct_id, b.acct_bal
+FROM   pcr.fpic_monthly_acct_balance_tb_april b
+JOIN   scoped_acct s ON s.k = ltrim(trim(b.acct_id),'0');

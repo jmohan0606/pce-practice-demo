@@ -3,6 +3,8 @@
 -- Run manually against PostgreSQL db fpicdb, schema pcr (IAM token auth; on
 -- PAM/auth failure the token expired: aws sts get-caller-identity, refresh SSO,
 -- retry). ALWAYS run first:  SET statement_timeout = '600s';
+-- THEN run 00_session_setup.sql (temp tables die with the session — a token
+-- refresh is a reconnect, so re-run it after ANY reconnect).
 -- Save the result as CSV (header row, comma, UTF-8): data/real/_raw/raw_product_hierarchy.csv
 -- Product taxonomy. grid_type pulled as a column; build filters PRODUCT_TYPE.
 -- Round 1b: the two pay-type columns are a parallel snake_case taxonomy,

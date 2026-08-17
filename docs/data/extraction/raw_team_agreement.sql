@@ -3,6 +3,8 @@
 -- Run manually against PostgreSQL db fpicdb, schema pcr (IAM token auth; on
 -- PAM/auth failure the token expired: aws sts get-caller-identity, refresh SSO,
 -- retry). ALWAYS run first:  SET statement_timeout = '600s';
+-- THEN run 00_session_setup.sql (temp tables die with the session — a token
+-- refresh is a reconnect, so re-run it after ANY reconnect).
 -- Save the result as CSV (header row, comma, UTF-8): data/real/_raw/raw_team_agreement.csv
 -- Team splits — REFERENCE DATA ONLY. Never joined to trades
 -- (post_split_credited_amt already carries the split; the join fans out one
@@ -12,13 +14,7 @@ SELECT t.agreement_id, t.team_rep_cd, t.team_agreement_typ,
        t.prm_standard_id, t.prm_share_pct, t.sec_standard_id, t.sec_share_pct,
        t.start_ts, t.end_ts
 FROM   pcr.fpic_team_agreement_tb t
-WHERE  (t.prm_standard_id IN ('T000001','T000002','T000003','T000005','T000004',
-                         'T000018','T000019','T000020','T000006','T000007',
-                         'T000008','T000009','T000010','T000011','T000012',
-                         'T000013','T000014','T000015','T000016','T000017')
-   OR   t.sec_standard_id IN ('T000001','T000002','T000003','T000005','T000004',
-                          'T000018','T000019','T000020','T000006','T000007',
-                          'T000008','T000009','T000010','T000011','T000012',
-                          'T000013','T000014','T000015','T000016','T000017'))
+WHERE  (t.prm_standard_id IN (SELECT advisor_sid FROM cohort_adv)
+   OR   t.sec_standard_id IN (SELECT advisor_sid FROM cohort_adv))
   AND  t.start_ts < DATE '2026-07-01'
   AND  (t.end_ts IS NULL OR t.end_ts >= DATE '2026-04-01');
