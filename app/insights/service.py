@@ -290,8 +290,16 @@ class JobManager:
         self.jobs: dict[str, dict] = {}
 
     def start(self, advisor: str, from_month: str, to_month: str,
-              version_id: str | None = None) -> dict:
-        advisors = (["all", *cohort_advisors()] if advisor == "all" else [advisor])
+              version_id: str | None = None,
+              practice_only: bool = False) -> dict:
+        """Round 4 task 7: practice_only=True with advisor="all" runs ONLY the
+        aggregate book run — the CLI practice script's unit is one run per
+        transition, not the cohort fan-out (which stays the default for the
+        UI's Generate button, Round C decision)."""
+        if advisor == "all":
+            advisors = ["all"] if practice_only else ["all", *cohort_advisors()]
+        else:
+            advisors = [advisor]
         job_id = uuid.uuid4().hex[:12]
         job = {
             "job_id": job_id, "status": "running", "completed": 0,
