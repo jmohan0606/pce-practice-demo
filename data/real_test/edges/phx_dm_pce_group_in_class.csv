@@ -23,4 +23,5 @@ defined_contribution_advisory,NON_RECURRING
 lending_sbl,NON_RECURRING
 lending_margin,NON_RECURRING
 referrals_everyday_401k,NON_RECURRING
+referrals_private_bank,NON_RECURRING
 unmapped,NON_RECURRING

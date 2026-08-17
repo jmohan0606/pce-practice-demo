@@ -7,6 +7,8 @@ STRT|,twhs_structured
 ELIS|EQ,twhs_equities
 ELIS|OP,twhs_options
 MUFD|,twhs_mutual_funds
+PCS|SP,referrals_sit_partnership
+PCS|PBR,referrals_private_bank
 FCXX|,twhs_fi_corporate
 FIX|,life_annuities
 ALTI|,alternative_investments

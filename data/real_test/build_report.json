@@ -1,0 +1,141 @@
+{
+  "raw_input_rows": {
+    "raw_advisor_flags.csv": 26,
+    "raw_month_meta.csv": 3,
+    "raw_product_hierarchy.csv": 16,
+    "raw_rr_changes.csv": 5,
+    "raw_team_agreement.csv": 3,
+    "raw_adv_flows.csv": 48,
+    "raw_advisor.csv": 22,
+    "raw_account.csv": 120,
+    "raw_revenue_transaction.csv": 1707,
+    "raw_acct_eci_rel.csv": 156,
+    "raw_acct_eci_map.csv": 121,
+    "raw_crm_opportunity.csv": 60,
+    "nnm_files": 480,
+    "raw_monthly_balance.csv": 360
+  },
+  "entities": {
+    "phx_dm_pce_month": 3,
+    "phx_dm_pce_revenue_class": 2,
+    "phx_dm_pce_product_group": 26,
+    "phx_dm_pce_product": 17,
+    "phx_dm_pce_advisor": 22,
+    "phx_dm_pce_account": 120,
+    "phx_dm_pce_household": 152,
+    "phx_dm_pce_account_eci_rel": 156,
+    "phx_dm_pce_account_eci_map": 120,
+    "phx_dm_pce_rpg": 9,
+    "phx_dm_pce_team_agreement": 3,
+    "phx_dm_pce_revenue_transaction": 1707,
+    "phx_dm_pce_monthly_revenue": 764,
+    "phx_dm_pce_account_month": 363,
+    "phx_dm_pce_account_transfer": 5,
+    "phx_dm_pce_advisor_flow_month": 48,
+    "phx_dm_pce_opportunity": 60,
+    "phx_dm_pce_advisor_nnm": 480,
+    "phx_dm_pce_product_in_group": 17,
+    "phx_dm_pce_group_in_class": 26,
+    "phx_dm_pce_txn_by_advisor": 1707,
+    "phx_dm_pce_txn_for_account": 1705,
+    "phx_dm_pce_txn_of_product": 1707,
+    "phx_dm_pce_txn_in_month": 1707,
+    "phx_dm_pce_mr_by_advisor": 764,
+    "phx_dm_pce_mr_in_month": 764,
+    "phx_dm_pce_mr_of_product": 764,
+    "phx_dm_pce_mr_in_group": 764,
+    "phx_dm_pce_am_for_account": 360,
+    "phx_dm_pce_am_by_advisor": 363,
+    "phx_dm_pce_am_in_month": 363,
+    "phx_dm_pce_account_in_household": 120,
+    "phx_dm_pce_rel_of_account": 156,
+    "phx_dm_pce_rel_to_household": 156,
+    "phx_dm_pce_map_of_account": 120,
+    "phx_dm_pce_map_to_household": 120,
+    "phx_dm_pce_account_in_rpg": 60,
+    "phx_dm_pce_txn_in_rpg": 853,
+    "phx_dm_pce_transfer_of_account": 5,
+    "phx_dm_pce_transfer_from": 5,
+    "phx_dm_pce_transfer_to": 5,
+    "phx_dm_pce_team_primary": 3,
+    "phx_dm_pce_team_secondary": 3,
+    "phx_dm_pce_flow_by_advisor": 48,
+    "phx_dm_pce_flow_in_month": 48,
+    "phx_dm_pce_opportunity_for_household": 60,
+    "phx_dm_pce_opportunity_by_advisor": 60,
+    "phx_dm_pce_nnm_by_advisor": 480,
+    "phx_dm_pce_nnm_in_month": 240
+  },
+  "transform_deltas": {
+    "account": {
+      "raw_rows": 120,
+      "deduplicated": 0,
+      "blank_key": 0,
+      "rows": 120
+    },
+    "revenue_transaction": {
+      "raw_rows": 1707,
+      "out_of_scope_or_undated": 0,
+      "rows": 1707
+    },
+    "advisor": {
+      "raw_rows": 22,
+      "rows": 22
+    },
+    "account_transfer": {
+      "raw_rows": 5,
+      "out_of_scope_or_deduplicated": 0,
+      "rows": 5
+    },
+    "advisor_flow_month": {
+      "raw_rows": 48,
+      "out_of_scope_or_deduplicated": 0,
+      "rows": 48
+    },
+    "product": {
+      "raw_rows": 16,
+      "rows": 17,
+      "note": "hierarchy filtered to PRODUCT_TYPE + txn-only products added"
+    },
+    "account_eci_rel": {
+      "raw_rows": 156,
+      "deduplicated": 0,
+      "blank_key": 0,
+      "rows": 156
+    },
+    "account_eci_map": {
+      "raw_rows": 121,
+      "superseded_snapshots": 1,
+      "rows": 120
+    },
+    "opportunity": {
+      "raw_rows": 60,
+      "out_of_scope_dropped": 0,
+      "invalid_advisor_kept": 4,
+      "rows": 60
+    },
+    "advisor_nnm": {
+      "raw_rows": 480,
+      "rows": 480
+    },
+    "account_month": {
+      "raw_balance_rows": 360,
+      "skipped_balance_rows_no_advisor": 0,
+      "pairs": 121,
+      "months": 3,
+      "rows": 363
+    }
+  },
+  "peak_rss_mb_per_entity": {
+    "account": 19,
+    "revenue_transaction": 24,
+    "monthly_revenue": 24,
+    "small_entities": 24,
+    "account_eci_rel": 24,
+    "account_eci_map": 24,
+    "household": 24,
+    "opportunity": 24,
+    "advisor_nnm": 25,
+    "account_month": 25
+  }
+}

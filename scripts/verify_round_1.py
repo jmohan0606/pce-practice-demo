@@ -310,7 +310,8 @@ def main() -> int:  # noqa: PLR0915 — one check per stanza, deliberately linea
           "naming file+column",
           r_clean.returncode == 0 and "0 failure(s)" in r_clean.stdout
           and r_bad.returncode == 1
-          and "raw_monthly_balance.csv: missing columns ['acct_bal']" in r_bad.stdout,
+          and "'raw_monthly_balance.csv' is missing contracted column(s) "
+              "['acct_bal']" in r_bad.stdout,
           "clean 0 failures; corruption FAILs V-3 naming raw_monthly_balance/acct_bal")
 
     # R1-10 — check 9: the matrix names every DDL vertex + all three kinds

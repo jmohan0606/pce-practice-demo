@@ -383,6 +383,17 @@ Decisions:
 - verify_round_1 R1-8b re-pinned for the 27-chunk plan + 5 session-setup executes (widening precedent).
 Reversible: yes
 
+## 2026-08-17 · Round 2a task 2 · build_real_data streams; stage-then-commit replaces validate-then-write
+Context: Every builder took list[dict] — ~25 GB for the 12.4M transactions alone; the client machine cannot hold that, and the old "NOTHING is written until every validation passes" was implemented by holding the whole dataset in memory.
+Decisions:
+- The four large entities STREAM (transactions row-by-row with monthly_revenue accumulating as rows pass; account/eci_rel/eci_map per bucket, with dedupe and latest-bus_dt state confined to one bucket — the hash buckets partition by account key, so cross-bucket state is provably unnecessary); account_month processes ONE MONTH AT A TIME from per-month aggregates spilled to temp files during the transaction pass, holding only the prior month's (pair)→(balance, credited, present) map.
+- The never-a-silent-partial-build guarantee is preserved by STAGING: everything streams into `<out>.building/`, validations run from accumulators at the end, and only a fully-validated set moves into --out (which is otherwise untouched; a failure removes the staging directory). Same guarantee, different mechanism — recorded because the old wording said "nothing is written".
+- `--max-memory-mb` (default 4096) checks peak RSS after every entity and fails with a named message instead of being OOM-killed; per-entity peaks land in build_report.json. PK-uniqueness for the streamed transaction file uses a 64-bit blake2 hash set (~4e-6 false-positive odds at 12.4M — a false duplicate would BLOCK a build, never pass a bad one).
+- PRE-EXISTING BUG FIXED: VERTEX_COLUMNS still carried the pre-F2 opportunity dummy shape (the 23 real CRM columns were silently dropped at write) and omitted phx_dm_pce_advisor_nnm entirely — the built manifest had 17 vertices while 31 edge files (nnm edges included) were written: dangling nnm edges at load, exactly the Task-3 failure mode. Proven by diff: old code vs new code on the same fixture drop differ ONLY in these two fixes; data/real_test outputs recommitted (they were additionally stale from the Round-1b reshuffle).
+- CRM (operator requirement, mid-round): the firm-wide flat file (308,534 rows) is FILTERED at build — kept iff the suffix-stripped owner sid is a known advisor OR the eci is a known in-scope household; out-of-scope rows drop WITH A REPORTED COUNT; *_CWM_INVALID references stay kept+reported. Account_month row order is now month-major (was pair-major) — content proven identical order-insensitively; nothing pins CSV order.
+- Validation 11's sanity flag now states the expected firm-scale figure (5,746 × ~$33k ≈ $190M/month) so the flag reads as calibration, not failure; it remains print-only, and validate_raw_extracts V-10 (per-advisor anchor) is the scale-independent gate.
+Reversible: yes
+
 ## 2026-08-14 · Round A2B · Per-subtask commits collapsed for parallel-dispatched work
 Context: The spec asks for commits after 6.2/6.4/6.7; Subagent C's work arrived complete from the parallel dispatch (Round E tasks 6+7 precedent).
 Decision: One verified commit per task (6 and 7). Batch insight generation (advisor="all", 21 runs, $1.52) was run by the main thread during the round so exceptions/insights/advisor views verify against real stored runs.
