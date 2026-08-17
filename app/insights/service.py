@@ -17,6 +17,7 @@ import uuid
 
 from app.agents.insights_miner import mine
 from app.agents.insights_reporter import report
+from app.insights.describe import describe_rule_finding
 from app.graph.queries.catalog import run_catalog_query
 from app.insights.store import get_insight_store
 from app.insights.tools import MinerTools
@@ -111,9 +112,11 @@ def evaluate_published_rules(advisor_sid: str, from_month: str, to_month: str,
         findings.append({
             "title": f"{rule.get('rule_name') or result.get('rule_code')} — "
                      f"{len(matched)} match(es) in {to_month}",
-            "summary": (f"Rule {result.get('rule_code')} fired for "
-                        f"{len(matched)} {rule.get('grain') or 'entity'}(s) in {to_month}. "
-                        f"{rule.get('statement') or ''}").strip(),
+            # Round 3 task 4.1 — the description speaks to the DATA (which
+            # accounts, how concentrated, at which advisors), never the rule
+            # definition plus a count. Built in code from the full match set.
+            "summary": describe_rule_finding(rule, matched, to_month,
+                                             advisor_sid, impact),
             "impact_amt": impact,
             # Round A1 task 1: driver_code is the stored identity; driver_tag
             # here is the creation-time label for the reporter's prompt — the
@@ -216,7 +219,11 @@ def run_insights_for_advisor(advisor_sid: str, from_month: str, to_month: str,
         from app.insights.reporter_sources import build_reporter_search
 
         reported = report(mined["findings"], transition, reporter,
-                          search_documents=build_reporter_search(run["run_id"]))
+                          search_documents=build_reporter_search(run["run_id"]),
+                          # Round 3 task 4 — the practice narrative is
+                          # cross-cutting; per-driver text lives in Revenue
+                          # Drivers.
+                          cross_cutting=advisor_sid == "all")
         jobs.update(job["job_id"], stage="persist")
         agent_findings = [f for f in mined["findings"] if f.get("origin") != "rule"]
         agent_impacts = sum(abs(f["impact_amt"]) for f in agent_findings

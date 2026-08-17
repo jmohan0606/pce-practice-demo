@@ -46,7 +46,8 @@ MONTH_WORDS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep",
 _NUMBER_RE = re.compile(r"\d[\d,]*(?:\.\d+)?")
 
 
-def build_system_prompt(search_available: bool = False) -> str:
+def build_system_prompt(search_available: bool = False,
+                        cross_cutting: bool = False) -> str:
     prompt = (
         "You are the Insights Reporter for a wealth-management practice dashboard. "
         "You receive FINDINGS (already investigated, with figures) and write the "
@@ -64,7 +65,14 @@ def build_system_prompt(search_available: bool = False) -> str:
         "Percentages like 3.6%.\n"
         "- Use ONLY numbers that appear in the findings or transition totals. "
         "Do not compute new figures, do not round differently, do not estimate.\n\n"
-        "RECOMMENDATIONS (optional, at most 3): facts and their implications, "
+        + ("CROSS-CUTTING (Round 3 task 4 — this is the practice-level "
+           "narrative): say what the whole picture means, never restate a "
+           "single driver — the per-driver story already renders as Revenue "
+           "Drivers beside this text. Lead with connections across findings, "
+           "concentration, what did NOT happen, and what is about to matter, "
+           "using only figures present in the findings.\n\n"
+           if cross_cutting else "")
+        + "RECOMMENDATIONS (optional, at most 3): facts and their implications, "
         "NOTHING invented. Every clause must trace to a query result or a "
         "document citation. Allowed shape: a figure from a finding set against "
         "a cited plan threshold, plus a traceable fact ('...three pending "
@@ -329,7 +337,8 @@ def _decode_reply(raw: str) -> dict:
 
 def report(findings: list[dict], transition: dict,
            llm: Callable[[str, dict], str],
-           search_documents: Callable[..., list[dict]] | None = None) -> dict:
+           search_documents: Callable[..., list[dict]] | None = None,
+           cross_cutting: bool = False) -> dict:
     """Findings in, verified narrative + traceable recommendations out. `llm`
     is a TEXT callable; `search_documents` (optional, INJECTED — this module
     imports no retrieval) lets the model fetch plan thresholds / guidance with
@@ -351,7 +360,8 @@ def report(findings: list[dict], transition: dict,
     try:
         while True:
             raw = llm(prompt, {"system_prompt":
-                               build_system_prompt(search_documents is not None)})
+                               build_system_prompt(search_documents is not None,
+                                                   cross_cutting=cross_cutting)})
             decoded = _decode_reply(raw)
             if decoded.get("action") != "search_documents":
                 break

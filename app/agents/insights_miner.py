@@ -165,6 +165,24 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
     # NOT explain. Round G diagnosis: the residual now LEADS the opening (the
     # rules are already-handled context), because stating it last produced
     # runs that chased the headline change the rules already explained.
+    # Round 3 task 4 — the aggregate-book run feeds AI INSIGHTS, which must be
+    # CROSS-CUTTING: things no single rule outcome could produce. The per-rule
+    # story already lives in Revenue Drivers (the rule findings below).
+    cross_cutting = ""
+    if advisor_sid == "all":
+        cross_cutting = (
+            "\nCROSS-CUTTING MANDATE (this is the aggregate book run): your "
+            "findings must say things NO SINGLE rule outcome could — "
+            "(1) CONNECTIONS across drivers ('the fee-discount exceptions and "
+            "the transferred-in accounts are the same two advisors'); "
+            "(2) CONCENTRATION ('68% of the increase is four advisors; the "
+            "other sixteen were flat'); (3) WHAT DID NOT HAPPEN ('no advisor "
+            "lost a top-10 account this month, unusual vs the prior two'); "
+            "(4) WHAT IS ABOUT TO MATTER ('nine advisors are within $1M of a "
+            "threshold'). If a narrative can be produced by reading one "
+            "rule's outcome, it belongs in Revenue Drivers, not here — do not "
+            "emit it. Shapes (group_by cuts, concentration, outliers) are "
+            "your raw material for exactly this.\n")
     task_head = "Explain this transition.\n\n"
     if rule_outcomes is not None:
         task_head = (
@@ -176,6 +194,7 @@ def build_opening_message(advisor_sid: str, from_month: str, to_month: str,
             f"surprises beyond the rule set are expected and desirable. If the "
             f"data cannot explain the residual, say so explicitly "
             f"(unanswerable) — silence is not an acceptable outcome.\n\n")
+    task_head += cross_cutting
     rule_block = ""
     if rule_outcomes is not None:
         outcome_lines = []
