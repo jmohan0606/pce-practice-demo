@@ -20,7 +20,10 @@ class SQLiteManager:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
     def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        # 30s busy timeout: Round 2a's --max-parallel loader has up to 3
+        # workers checkpointing into this one file; the default 5s can trip
+        # "database is locked" under a slow fsync.
+        conn = sqlite3.connect(self.db_path, timeout=30)
         conn.row_factory = sqlite3.Row
         return conn
 

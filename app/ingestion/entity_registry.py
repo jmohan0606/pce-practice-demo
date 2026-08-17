@@ -72,6 +72,9 @@ def _configs() -> dict[str, IngestionEntityConfig]:
             batch_size=default_batch,
             kind=kind,
             order=int(entry.get("order", 0)),
+            # phase from the manifest when present; derived from kind otherwise
+            # (older manifests) — vertices phase 1, edges phase 2
+            phase=int(entry.get("phase") or (1 if kind == "vertex" else 2)),
             expected_rows=entry.get("expected_rows"),
             columns=dict(entry.get("columns") or {}),
             from_type=entry.get("from_type"),

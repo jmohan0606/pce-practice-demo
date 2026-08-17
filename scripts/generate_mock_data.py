@@ -896,7 +896,7 @@ def rebuild_crm_nnm_csv() -> None:
         if entry is None:
             entry = {"file": rel, "kind": "vertex", "target": target,
                      "id_column": ID_COLUMNS[target], "columns": {},
-                     "expected_rows": 0, "order": next_order}
+                     "expected_rows": 0, "order": next_order, "phase": 1}
             next_order += 1
             manifest["files"].append(entry)
         entry["columns"] = {c: c for c in VERTEX_COLUMNS[target]}
@@ -911,7 +911,8 @@ def rebuild_crm_nnm_csv() -> None:
             entry = {"file": rel, "kind": "edge", "target": edge_name,
                      "from_type": ftype, "to_type": ttype,
                      "from_column": "from_id", "to_column": "to_id",
-                     "columns": {}, "expected_rows": 0, "order": next_order}
+                     "columns": {}, "expected_rows": 0, "order": next_order,
+                     "phase": 2}
             next_order += 1
             manifest["files"].append(entry)
         entry["expected_rows"] = new_counts[rel]
@@ -1129,6 +1130,7 @@ def main() -> None:
             "id_column": ID_COLUMNS[target],
             "columns": {c: c for c in columns},
             "expected_rows": n, "order": order,
+            "phase": 1,  # Round 2a task 3: vertices load first, in parallel
         })
         print(f"vertex {target}: {n} rows")
 
@@ -1164,6 +1166,7 @@ def main() -> None:
             "from_type": ftype, "to_type": ttype,
             "from_column": "from_id", "to_column": "to_id",
             "columns": {}, "expected_rows": n, "order": order,
+            "phase": 2,  # only after EVERY phase-1 vertex entity completes
         })
         print(f"edge {edge_name}: {n} rows")
 

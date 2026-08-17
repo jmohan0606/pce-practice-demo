@@ -394,6 +394,11 @@ Decisions:
 - Validation 11's sanity flag now states the expected firm-scale figure (5,746 × ~$33k ≈ $190M/month) so the flag reads as calibration, not failure; it remains print-only, and validate_raw_extracts V-10 (per-advisor anchor) is the scale-independent gate.
 Reversible: yes
 
+## 2026-08-17 · Round 2a task 3 · Two-phase parallel load: refusal at the checkpoint layer, stop-flag failure semantics
+Context: load_real_data/ingestion_service had zero concurrency (verified); --max-parallel is new code. Edges loaded before vertices dangle silently.
+Decisions: the manifest carries `phase` (1 = vertices, 2 = edges) in both generators AND the committed manifests (data/manifest.json post-pass; data/real_test rebuilt); entity_registry derives phase from kind for older manifests. load_real_data.py is now its own orchestrator (load_mock_data.py untouched for the mock path): per-phase ThreadPoolExecutor (--max-parallel default 3), each worker its OWN IngestionService (own SQLite handles; SQLiteManager gains a 30s busy timeout), a failing entity sets a stop flag that halts every sibling at its next batch boundary, and the whole phase fails — phase 2 never starts. `assert_phase_complete` refuses (raises, not warns) unless EVERY phase-1 entity has a COMPLETED checkpoint — checked from the checkpoint layer, so a hand-run edges-only load against a half-loaded vertex set refuses too. The data_load job row keeps one stage per entity (Round 1 pattern).
+Reversible: yes
+
 ## 2026-08-14 · Round A2B · Per-subtask commits collapsed for parallel-dispatched work
 Context: The spec asks for commits after 6.2/6.4/6.7; Subagent C's work arrived complete from the parallel dispatch (Round E tasks 6+7 precedent).
 Decision: One verified commit per task (6 and 7). Batch insight generation (advisor="all", 21 runs, $1.52) was run by the main thread during the round so exceptions/insights/advisor views verify against real stored runs.

@@ -33,6 +33,11 @@ class IngestionEntityConfig(BaseModel):
     # covering ALL vertex and edge types — not a hand-picked subset).
     kind: str = "vertex"  # "vertex" | "edge"
     order: int = 0
+    # Round 2a task 3: load phase. Phase 1 = vertices (parallel within the
+    # phase), phase 2 = edges — an edge loaded before its endpoint vertices
+    # exist produces DANGLING edges that silently vanish, so a phase-2 entity
+    # REFUSES to start while any phase-1 entity is incomplete.
+    phase: int = 1
     expected_rows: int | None = None
     # Manifest column mapping (source CSV column -> graph attribute) — drives the
     # Round 5 pre-flight header validation so a mismatched CSV fails before load.

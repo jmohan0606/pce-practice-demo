@@ -1512,6 +1512,7 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
             "id_column": ID_COLUMNS[target],
             "columns": {c: c for c in VERTEX_COLUMNS[target]},
             "expected_rows": agg["vertex_counts"][target], "order": order,
+            "phase": 1,  # Round 2a task 3: vertices load first, in parallel
         })
     for edge_name, (ftype, ttype, _s, _f, _t) in EDGES.items():
         order += 1
@@ -1521,6 +1522,7 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
             "from_column": "from_id", "to_column": "to_id",
             "columns": {}, "expected_rows": agg["edge_counts"][edge_name],
             "order": order,
+            "phase": 2,  # only after EVERY phase-1 vertex entity completes
         })
     manifest = {
         "graph": "phx_dm_pce_practice_demo",
