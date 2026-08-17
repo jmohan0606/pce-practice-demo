@@ -144,7 +144,7 @@ FLAGS: dict[str, dict] = {
     },
     "global.chat": {
         "name": "Chat",
-        "description": "Ask iPerform — conversational questions over the loaded "
+        "description": "Ask Connect Coach — conversational questions over the loaded "
                        "data with guardrails. OFF stops the chat endpoints, not "
                        "just the button.",
         "group": "global", "parent": None, "always_on": False, "dep": None,
