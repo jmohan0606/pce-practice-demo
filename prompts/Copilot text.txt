@@ -49,3 +49,6 @@ Good progress. Continue the transaction chunks to completion and report at 40, 6
 Once transactions are done, retry flows as-is for one month — the merge join may now complete within 900s, since the earlier failures were the nested loop rather than the volume. If April still times out, split flows by month and advisor batch (three batches of ~2,000 advisors per month, nine sub-chunks) and report.
 
 Do not retry flows while transactions are still running.
+Continue to completion. Report at 40, 60 and 87 chunks with completed count, elapsed time and any failure. Do not stop to ask between milestones. Refresh the token and rerun the same command whenever it expires.
+
+Once all 87 transaction chunks are done, retry flows as-is for one month — the merge join may now complete within 900s. Report the result either way.
