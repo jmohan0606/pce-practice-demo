@@ -70,11 +70,14 @@ before despite being on the confirmed list — verify it imports:
 
 ## Phase 1 — schema
 
-Choose exactly ONE of 1.1 / 1.2.
+Choose exactly ONE of 1.1 / 1.2a / 1.2b — the choice depends on what is
+already installed. All three paths MUST converge on the identical schema;
+1.4's parity check proves it afterwards regardless of the path taken.
 
 ### 1.1 Fresh install (no PCE schema present)
 
-In gsql, run these files in this order:
+In gsql, run these files in this order (they already include everything —
+run NO migration afterwards):
 
 ```
 docs/tigergraph/01_vertices.gsql
@@ -84,22 +87,39 @@ docs/tigergraph/03_create_graph.gsql
 
 **Correct result:** 31 vertex types, 44 edge types, graph
 `phx_dm_pce_practice_demo` created; `ls vertex` in gsql lists
-`phx_dm_pce_job` and `phx_dm_pce_rule` shows the eight exception fields.
+`phx_dm_pce_job`; `phx_dm_pce_rule` shows the eight exception fields;
+`phx_dm_pce_advisor` shows `job_code`; `phx_dm_pce_product` shows
+`l1_pay_type_cd` / `l2_pay_type_cd`.
 
-### 1.2 Already installed at the Round-F2 state (30V/42E)
+### 1.2a Already installed at the Round-F2 state (30V/42E)
 
-**Do NOT reinstall — that would drop loaded data.** Run only the migration:
+**Do NOT reinstall — that would drop loaded data.** Run BOTH migrations, in
+order:
 
 ```
 docs/tigergraph/migrations/001_exceptions_and_jobs.gsql
+docs/tigergraph/migrations/002_schema_additions.gsql
 ```
 
-It is additive-only (no DROP, no data-touching statement) and ends with a
-GLOBAL SCHEMA_CHANGE JOB that alters `phx_dm_pce_rule` and adds the job
-vertex + two edges to the existing graph.
+Both are additive-only (no DROP, no data-touching statement). 001 alters
+`phx_dm_pce_rule` and adds the job vertex + two edges; 002 alters
+`phx_dm_pce_advisor` (job_code) and `phx_dm_pce_product` (the two pay-type
+codes).
 
-**Correct result:** the schema-change job reports success; existing vertex
-counts are unchanged.
+**Correct result:** both schema-change jobs report success; existing vertex
+counts are unchanged; the four new attributes from 002 appear on
+`ls vertex phx_dm_pce_advisor` / `phx_dm_pce_product`.
+
+### 1.2b Already installed at the Round-1 state (31V/44E, 001 applied)
+
+**Do NOT reinstall and do NOT re-run 001.** Run only:
+
+```
+docs/tigergraph/migrations/002_schema_additions.gsql
+```
+
+**Correct result:** the schema-change job reports success; vertex/edge type
+counts stay 31/44 (002 adds attributes, not types); existing data untouched.
 
 ### 1.3 GSQL V1 constraints (for any hand-written query work later)
 
@@ -108,14 +128,14 @@ counts are unchanged.
 - Multi-hop patterns must be split into single-hop SELECTs.
 - Loading jobs: `HEADER="true"`, `SEPARATOR=","`, `QUOTE="double"`.
 
-### 1.4 Verify
+### 1.4 Verify — required after EVERY path above
 
 ```bash
 python3 scripts/verify_schema_parity.py
 ```
 
-**Correct result:** ends `all checks passed — migration == clean install
-(31 vertices / 44 edges)`. **If not:** the FAIL line names the exact
+**Correct result:** ends `all checks passed — migrations (001, 002) ==
+clean install (31 vertices / 44 edges)`. **If not:** the FAIL line names the exact
 vertex/attribute/edge that differs between the migrated and clean paths —
 fix the named file, rerun. Never proceed with a parity failure: it means two
 environments would silently differ.
@@ -303,6 +323,34 @@ EOF
 stop and diagnose before anyone reads a dashboard number — a mismatch means
 the build dropped or double-counted rows and NOTHING downstream can be
 trusted.
+
+### 5.4 If a load went wrong — recovery paths
+
+**Partial load, resumable (the normal case):** rerun
+`python3 scripts/load_real_data.py --data-dir data/real`. The ingestion
+checkpoints skip completed entities and re-verify already-loaded batches as
+SKIP. This needs nothing else — an interruption is not a bad load.
+
+**Bad data loaded, needs clearing (last resort):** if wrong data reached the
+graph — a bad extract that passed review, a build against the wrong drop —
+clear and reinstall:
+
+```
+docs/tigergraph/90_drop_all.gsql      -- drops edges then vertices, exact
+                                      -- reverse create order
+```
+
+then reinstall the schema (Phase 1.1) and reload (5.1–5.3).
+**THIS DESTROYS ALL LOADED DATA in the PCE graph.** It is a last resort,
+only sensible after the Phase 4 gate has already been passed once and the
+data on disk (`data/real/`) is known good or rebuildable; the hours lost are
+the reload window, not the extract.
+
+**Never hand-edit CSVs or hand-delete vertices to "fix" a load.** The
+manifest verification (5.3) exists to make partial state visible; manual
+edits make the manifest counts lie and defeat the only independent check
+that the graph matches the built dataset. Fix the extract or the build
+input, rebuild, and go through 5.1–5.3 again.
 
 ---
 
