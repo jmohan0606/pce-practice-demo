@@ -90,7 +90,7 @@ RAW_CONTRACT: dict[str, list[str]] = {
     "raw_advisor_flags.csv": ["advisor_sid", "rep_code", "advisor_name",
                               "total_credited_amt", *FLAG_COLUMNS],
     "raw_advisor.csv": ["advisor_sid", "rep_code", "advisor_name", "branch_cd",
-                        "employee_id", "in_cohort"],
+                        "employee_id", "in_cohort", "job_code"],
     "raw_account.csv": ["account_no", "account_class_cd", "account_class_nm",
                         "account_lob_cd", "account_purpose_cd", "managed_platform_cd",
                         "service_channel_cd", "account_open_dt", "primary_eci_id"],
@@ -645,7 +645,7 @@ VERTEX_COLUMNS = {
     "phx_dm_pce_revenue_class": ["class_id", "class_name"],
     "phx_dm_pce_product_group": ["group_id", "group_name", "display_prefix", "class_id", "sort_order", "is_aggregated"],
     "phx_dm_pce_product": ["product_id", "product_cd", "product_sub_cd", "product_name", "sor", "file_key", "group_id", "grid_type"],
-    "phx_dm_pce_advisor": ["advisor_sid", "rep_code", "advisor_name", "branch_cd", "employee_id", "in_cohort"],
+    "phx_dm_pce_advisor": ["advisor_sid", "rep_code", "advisor_name", "branch_cd", "employee_id", "in_cohort", "job_code"],
     "phx_dm_pce_account": ["acct_key", "account_no_raw", "account_class_cd", "account_class_nm", "account_lob_cd",
                            "account_purpose_cd", "managed_platform_cd", "service_channel_cd", "account_open_dt",
                            "is_managed", "opened_in_scope", "primary_eci_id"],
@@ -964,6 +964,7 @@ def build(raw_dir: Path, out_dir: Path, seed: int = 42) -> dict:
         "advisor_name": r["advisor_name"],  # blank stays blank — never invented
         "branch_cd": r["branch_cd"], "employee_id": r["employee_id"],
         "in_cohort": bl(as_bool(r["in_cohort"])),
+        "job_code": r["job_code"],  # blank stays blank — never invented
     } for r in raw["raw_advisor.csv"]]
 
     vertex_rows: dict[str, list[dict]] = {

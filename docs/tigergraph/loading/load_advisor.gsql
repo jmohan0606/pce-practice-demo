@@ -1,7 +1,7 @@
 // Loading job for phx_dm_pce_advisor
 // CSV contract: header row required, columns in DDL order (primary id first):
-//   advisor_sid,rep_code,advisor_name,branch_cd,employee_id,in_cohort
+//   advisor_sid,rep_code,advisor_name,branch_cd,employee_id,in_cohort,job_code
 CREATE LOADING JOB load_phx_dm_pce_advisor FOR GRAPH phx_dm_pce_practice_demo {
   DEFINE FILENAME f;
-  LOAD f TO VERTEX phx_dm_pce_advisor VALUES($"advisor_sid", $"rep_code", $"advisor_name", $"branch_cd", $"employee_id", $"in_cohort") USING HEADER="true", SEPARATOR=",", QUOTE="double";
+  LOAD f TO VERTEX phx_dm_pce_advisor VALUES($"advisor_sid", $"rep_code", $"advisor_name", $"branch_cd", $"employee_id", $"in_cohort", $"job_code") USING HEADER="true", SEPARATOR=",", QUOTE="double";
 }

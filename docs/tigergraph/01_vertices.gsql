@@ -28,7 +28,8 @@ CREATE VERTEX phx_dm_pce_product (PRIMARY_ID product_id STRING, product_cd STRIN
 
 // V5
 CREATE VERTEX phx_dm_pce_advisor (PRIMARY_ID advisor_sid STRING, rep_code STRING,
-  advisor_name STRING, branch_cd STRING, employee_id STRING, in_cohort BOOL)
+  advisor_name STRING, branch_cd STRING, employee_id STRING, in_cohort BOOL,
+  job_code STRING)
 WITH primary_id_as_attribute="true";
 
 // V6

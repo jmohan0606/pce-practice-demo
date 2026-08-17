@@ -77,7 +77,8 @@
         "advisor_name": "advisor_name",
         "branch_cd": "branch_cd",
         "employee_id": "employee_id",
-        "in_cohort": "in_cohort"
+        "in_cohort": "in_cohort",
+        "job_code": "job_code"
       },
       "expected_rows": 22,
       "order": 5

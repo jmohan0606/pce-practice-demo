@@ -147,20 +147,26 @@ def main() -> int:
     counterparties = ["X800001", "X800002"]
 
     # ---- raw_advisor.csv (cohort + transfer counterparties) ----
+    # Round 1b: job_code from fpic_employee_tb.job_cd — Select codes (SAG p.9)
+    # mixed with a non-Select code; one blank (blank stays blank). No RNG.
+    job_codes = ["HK0176", "HK0186", "HK0187", "HK0188", "HK0300"]
     advisors = []
     for sid in cohort:
         f = flag_by_sid[sid]
+        n = int(sid[1:])
         advisors.append({
             "advisor_sid": sid, "rep_code": f["rep_code"],
             "advisor_name": f["advisor_name"],
-            "branch_cd": f"BR{100 + int(sid[1:]) % 4}",
-            "employee_id": f"E{40000 + int(sid[1:])}", "in_cohort": "true",
+            "branch_cd": f"BR{100 + n % 4}",
+            "employee_id": f"E{40000 + n}", "in_cohort": "true",
+            "job_code": "" if n == 8 else job_codes[n % len(job_codes)],
         })
     for j, sid in enumerate(counterparties, start=1):
         advisors.append({
             "advisor_sid": sid, "rep_code": f"R{690000 + j}",
             "advisor_name": f"Outside Advisor {j}", "branch_cd": "BR900",
             "employee_id": f"E{90000 + j}", "in_cohort": "false",
+            "job_code": "",
         })
     write(out, "raw_advisor.csv", advisors)
 

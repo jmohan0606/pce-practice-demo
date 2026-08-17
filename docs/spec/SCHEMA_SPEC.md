@@ -98,11 +98,17 @@ and map to group `unmapped`.
 ### V5 · `phx_dm_pce_advisor`
 ```sql
 CREATE VERTEX phx_dm_pce_advisor (PRIMARY_ID advisor_sid STRING, rep_code STRING,
-  advisor_name STRING, branch_cd STRING, employee_id STRING, in_cohort BOOL)
+  advisor_name STRING, branch_cd STRING, employee_id STRING, in_cohort BOOL,
+  job_code STRING)
 WITH primary_id_as_attribute="true";
 ```
 Source `pcr.fpic_prm_rr_tb` (`standard_id`, `prm_rr_no`, `cwm_branch_cd`) joined to
-`pcr.fpic_employee_tb` (`em_standard_id` → `em_name_txt`). Blank name → leave blank, never invent.
+`pcr.fpic_employee_tb` (`em_standard_id` → `em_name_txt`, `job_cd` → `job_code`).
+Blank name → leave blank, never invent. `job_code` (Round 1b, confirmed
+`fpic_employee_tb.job_cd varchar(30) not null`) is CARRIED, not used: plan
+applicability by job code (SAG p.9 — HK0176/HK0186/HK0187/HK0188 → CWM Select
+Advisor) waits for the client to confirm the job-code→plan mapping. A blank
+job_code stays blank.
 Load cohort advisors **plus** any advisor appearing as a transfer counterparty, with
 `in_cohort=false` for the latter.
 

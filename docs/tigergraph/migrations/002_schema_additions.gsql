@@ -1,0 +1,36 @@
+// Round 1b — migration 002: final schema additions.
+//
+// FOR AN ENVIRONMENT WHERE 001 IS ALREADY INSTALLED (the Round-1 state,
+// 31 vertices / 44 edges) and may already hold loaded data. Additive only —
+// no vertex changes shape, nothing is removed, no existing attribute changes
+// meaning, and NOTHING here touches data: no DROP, no DELETE, no UPDATE, no
+// loading statement of any kind.
+//
+// A fresh environment skips this file and installs 01_vertices.gsql →
+// 02_edges.gsql → 03_create_graph.gsql instead; an environment at the
+// Round-F2 state runs 001 then this file. All paths MUST converge on the
+// identical schema — scripts/verify_schema_parity.py asserts it
+// (baseline_f2/ + 001 + 002 == clean install).
+USE GLOBAL
+
+// ---------------------------------------------------------------------------
+// One global schema-change job carries both alterations:
+//   - job_code on the advisor vertex — confirmed source column
+//     pcr.fpic_employee_tb.job_cd varchar(30) not null, joined on
+//     em_standard_id = standard_id (as the advisor name already is). Plan
+//     eligibility depends on it (SAG p.9: HK0176/HK0186/HK0187/HK0188 → CWM
+//     Select Advisor); the field is CARRIED this round, applicability logic
+//     is later work. A blank stays blank — never invented.
+//   - the two pay-type codes on the product vertex — confirmed export columns
+//     level_one_pay_type_product_cd / level_two_pay_type_product_cd, a
+//     parallel snake_case taxonomy carried ALONGSIDE the existing grouping
+//     (the 25 display groups, revenue classes and sub-code splits are
+//     unchanged by this migration).
+// Existing rows keep working — new attributes default empty.
+// ---------------------------------------------------------------------------
+CREATE GLOBAL SCHEMA_CHANGE JOB migration_002_schema_additions {
+  ALTER VERTEX phx_dm_pce_advisor ADD ATTRIBUTE (
+    job_code STRING
+  );
+}
+RUN GLOBAL SCHEMA_CHANGE JOB migration_002_schema_additions

@@ -130,6 +130,16 @@ def build_products() -> list[dict]:
 
 
 # --------------------------------------------------------------------------- advisors
+# Round 1b: job_code from fpic_employee_tb.job_cd. The four HK Select codes
+# (SAG p.9) mixed with a non-Select code; deterministic by index, no RNG.
+# One advisor (i=8) has a blank job_code — a blank stays blank, never invented.
+JOB_CODES = ["HK0176", "HK0186", "HK0187", "HK0188", "HK0300"]
+
+
+def mock_job_code(i: int) -> str:
+    return "" if i == 8 else JOB_CODES[i % len(JOB_CODES)]
+
+
 def build_advisors() -> tuple[list[dict], list[str]]:
     rows = []
     cohort = []
@@ -140,11 +150,13 @@ def build_advisors() -> tuple[list[dict], list[str]]:
         rows.append({
             "advisor_sid": sid, "rep_code": f"R{700000 + i * 7}", "advisor_name": name,
             "branch_cd": f"BR{100 + (i % 5)}", "employee_id": f"E{50000 + i}", "in_cohort": bl(True),
+            "job_code": mock_job_code(i),
         })
     for j, sid in enumerate(("X900001", "X900002"), start=1):
         rows.append({
             "advisor_sid": sid, "rep_code": f"R{880000 + j}", "advisor_name": f"T. {SURNAMES[19 + j]}",
             "branch_cd": "BR900", "employee_id": f"E{90000 + j}", "in_cohort": bl(False),
+            "job_code": "",  # transfer counterparties: employee row not extracted — blank stays blank
         })
     return rows, cohort
 
@@ -869,7 +881,7 @@ VERTEX_COLUMNS = {
     "phx_dm_pce_revenue_class": ["class_id", "class_name"],
     "phx_dm_pce_product_group": ["group_id", "group_name", "display_prefix", "class_id", "sort_order", "is_aggregated"],
     "phx_dm_pce_product": ["product_id", "product_cd", "product_sub_cd", "product_name", "sor", "file_key", "group_id", "grid_type"],
-    "phx_dm_pce_advisor": ["advisor_sid", "rep_code", "advisor_name", "branch_cd", "employee_id", "in_cohort"],
+    "phx_dm_pce_advisor": ["advisor_sid", "rep_code", "advisor_name", "branch_cd", "employee_id", "in_cohort", "job_code"],
     "phx_dm_pce_account": ["acct_key", "account_no_raw", "account_class_cd", "account_class_nm", "account_lob_cd",
                             "account_purpose_cd", "managed_platform_cd", "service_channel_cd", "account_open_dt",
                             "is_managed", "opened_in_scope", "primary_eci_id"],

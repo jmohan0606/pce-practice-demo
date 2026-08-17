@@ -52,7 +52,8 @@
         "advisor_name": "STRING",
         "branch_cd": "STRING",
         "employee_id": "STRING",
-        "in_cohort": "BOOL"
+        "in_cohort": "BOOL",
+        "job_code": "STRING"
       }
     },
     "phx_dm_pce_account": {

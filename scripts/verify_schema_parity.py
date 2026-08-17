@@ -4,14 +4,14 @@
 Two install paths exist for the client environment:
 
   clean install:  01_vertices.gsql → 02_edges.gsql → 03_create_graph.gsql
-  migrated:       Round-F2 schema (migrations/baseline_f2/) then
-                  migrations/001_exceptions_and_jobs.gsql
+  migrated:       Round-F2 schema (migrations/baseline_f2/) then EVERY
+                  migrations/0NN_*.gsql in numeric order (001, 002, …)
 
 If those two ever diverge, one environment silently differs from another —
 this script asserts they cannot. It parses the GSQL (vertices with their
-attribute name/type lists, edges with from/to/reverse), applies the migration
+attribute name/type lists, edges with from/to/reverse), applies the migrations
 to the committed F2 baseline snapshot IN MEMORY, and requires the result to
-EQUAL the clean-install schema exactly. It also asserts the migration is
+EQUAL the clean-install schema exactly. It also asserts every migration is
 data-safe (no DROP / DELETE / UPDATE / CLEAR / loading statement) and that
 schema_catalog.json agrees with the DDL — the app resolves fields there, so a
 catalog/DDL mismatch is the same silent-divergence failure.
@@ -91,34 +91,38 @@ def main() -> int:
     clean_e = parse_edges((TG / "02_edges.gsql").read_text())
     base_v = parse_vertices((TG / "migrations" / "baseline_f2" / "01_vertices.gsql").read_text())
     base_e = parse_edges((TG / "migrations" / "baseline_f2" / "02_edges.gsql").read_text())
-    mig_text = (TG / "migrations" / "001_exceptions_and_jobs.gsql").read_text()
+    mig_files = sorted((TG / "migrations").glob("0[0-9][0-9]_*.gsql"))
 
-    # 1 — the migration contains no data-touching statement
-    stripped = _strip_comments(mig_text).upper()
-    dangerous = [kw for kw in ("DROP ", "DELETE ", "UPDATE ", "CLEAR GRAPH",
-                               "LOAD ", "LOADING JOB", "TRUNCATE")
-                 if kw in stripped]
-    check("SP-1 migration is data-safe (no DROP/DELETE/UPDATE/CLEAR/LOAD)",
-          not dangerous, f"forbidden statements found: {dangerous}" if dangerous else "")
+    # 1 — no migration contains a data-touching statement
+    for mf in mig_files:
+        stripped = _strip_comments(mf.read_text()).upper()
+        dangerous = [kw for kw in ("DROP ", "DELETE ", "UPDATE ", "CLEAR GRAPH",
+                                   "LOAD ", "LOADING JOB", "TRUNCATE")
+                     if kw in stripped]
+        check(f"SP-1 {mf.name} is data-safe (no DROP/DELETE/UPDATE/CLEAR/LOAD)",
+              not dangerous,
+              f"forbidden statements found: {dangerous}" if dangerous else "")
 
-    # 2 — apply the migration to the F2 baseline in memory
+    # 2 — apply every migration, in order, to the F2 baseline in memory
     migrated_v = {name: dict(attrs) for name, attrs in base_v.items()}
     migrated_e = dict(base_e)
-    for name, attrs in parse_vertices(mig_text).items():
-        check(f"SP-2 migration creates {name} as a NEW vertex",
-              name not in migrated_v)
-        migrated_v[name] = attrs
-    for name, spec in parse_edges(mig_text).items():
-        check(f"SP-2 migration creates {name} as a NEW edge",
-              name not in migrated_e)
-        migrated_e[name] = spec
-    for name, attrs in parse_alters(mig_text).items():
-        check(f"SP-2 migration alters an EXISTING vertex {name}",
-              name in migrated_v)
-        overlap = sorted(set(attrs) & set(migrated_v.get(name, {})))
-        check(f"SP-2 {name} ALTER adds only new attributes",
-              not overlap, f"already present: {overlap}" if overlap else "")
-        migrated_v.setdefault(name, {}).update(attrs)
+    for mf in mig_files:
+        mig_text = mf.read_text()
+        for name, attrs in parse_vertices(mig_text).items():
+            check(f"SP-2 {mf.name} creates {name} as a NEW vertex",
+                  name not in migrated_v)
+            migrated_v[name] = attrs
+        for name, spec in parse_edges(mig_text).items():
+            check(f"SP-2 {mf.name} creates {name} as a NEW edge",
+                  name not in migrated_e)
+            migrated_e[name] = spec
+        for name, attrs in parse_alters(mig_text).items():
+            check(f"SP-2 {mf.name} alters an EXISTING vertex {name}",
+                  name in migrated_v)
+            overlap = sorted(set(attrs) & set(migrated_v.get(name, {})))
+            check(f"SP-2 {mf.name} {name} ALTER adds only new attributes",
+                  not overlap, f"already present: {overlap}" if overlap else "")
+            migrated_v.setdefault(name, {}).update(attrs)
 
     # 3 — migrated baseline == clean install, exactly
     only_clean = sorted(set(clean_v) - set(migrated_v))
@@ -184,8 +188,9 @@ def main() -> int:
           and drop_vertices == create_vertex_order[::-1])
 
     print(f"\n{len(FAILURES)} failure(s)" if FAILURES
-          else f"\nall checks passed — migration == clean install "
-               f"({len(clean_v)} vertices / {len(clean_e)} edges)")
+          else f"\nall checks passed — migrations "
+               f"({', '.join(mf.name.split('_')[0] for mf in mig_files)}) "
+               f"== clean install ({len(clean_v)} vertices / {len(clean_e)} edges)")
     return 1 if FAILURES else 0
 
 

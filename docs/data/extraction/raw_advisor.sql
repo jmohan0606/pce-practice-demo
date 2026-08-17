@@ -7,6 +7,8 @@
 -- Cohort advisors (in_cohort=true) PLUS every transfer counterparty
 -- (in_cohort=false) — miss them and every transfer edge pointing at them
 -- drops silently at load. Blank names stay blank; never invent one.
+-- job_code (Round 1b): fpic_employee_tb.job_cd, carried for plan
+-- eligibility (SAG p.9). No employee row -> blank; a blank stays blank.
 WITH cohort(advisor_sid) AS (
   SELECT unnest(ARRAY['T000001','T000002','T000003','T000005','T000004',
                          'T000018','T000019','T000020','T000006','T000007',
@@ -29,7 +31,8 @@ SELECT r.standard_id                              AS advisor_sid,
        COALESCE(e.em_name_txt,'')                 AS advisor_name,
        r.cwm_branch_cd                            AS branch_cd,
        COALESCE(e.em_standard_id,'')              AS employee_id,
-       (r.standard_id IN (SELECT advisor_sid FROM cohort)) AS in_cohort
+       (r.standard_id IN (SELECT advisor_sid FROM cohort)) AS in_cohort,
+       COALESCE(e.job_cd,'')                      AS job_code
 FROM   pcr.fpic_prm_rr_tb r
 LEFT   JOIN pcr.fpic_employee_tb e ON e.em_standard_id = r.standard_id
 WHERE  r.standard_id IN (SELECT advisor_sid FROM cohort)
