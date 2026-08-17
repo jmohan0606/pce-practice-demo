@@ -4,10 +4,14 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import TransitionChart from "@/components/chart/TransitionChart";
 import Chip from "@/components/Chip";
+import ColHead from "@/components/advisor/ColHead";
+import SeverityChip from "@/components/advisor/SeverityChip";
 import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
 import { FindingRow, LimitNotice } from "@/components/InsightPanel";
+import { CompareValue } from "@/components/CompareValue";
 import { Delta, Money } from "@/components/Num";
+import { Pager, usePager } from "@/components/Pager";
 import { Gated } from "@/lib/flags";
 import { publishChatContext } from "@/lib/chatContext";
 import { arrow, money, percent } from "@/lib/format";
@@ -25,7 +29,6 @@ import {
   type AdvisorPeerRanking,
   type AdvisorSummary,
   type CoachingResult,
-  type NnmCategory,
   type NnmResponse,
   type OpportunitiesResponse,
   type OpportunityDetailRow,
@@ -139,6 +142,7 @@ function AdvisorBody({ sid, advisor }: { sid: string; advisor: AdvisorListRow | 
   const [transitions, setTransitions] = useState<Transition[]>([]);
   const [selected, setSelected] = useState(0);
   const [summary, setSummary] = useState<AdvisorSummary | null>(null);
+  const [priorSummary, setPriorSummary] = useState<AdvisorSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -152,6 +156,15 @@ function AdvisorBody({ sid, advisor }: { sid: string; advisor: AdvisorListRow | 
   }, [sid]);
 
   const transition = transitions[selected] ?? null;
+  // The transition ending where the selected one begins — the prior period
+  // every count on the metrics strip compares against (review A2).
+  const priorTransition = useMemo(
+    () =>
+      transition
+        ? (transitions.find((t) => t.to_month_id === transition.from_month_id) ?? null)
+        : null,
+    [transitions, transition],
+  );
 
   useEffect(() => {
     if (!transition) return;
@@ -160,6 +173,14 @@ function AdvisorBody({ sid, advisor }: { sid: string; advisor: AdvisorListRow | 
       .then(setSummary)
       .catch(() => setSummary(null));
   }, [sid, transition]);
+
+  useEffect(() => {
+    setPriorSummary(null);
+    if (!priorTransition) return;
+    getAdvisorSummary(sid, priorTransition.from_month_id, priorTransition.to_month_id)
+      .then(setPriorSummary)
+      .catch(() => setPriorSummary(null));
+  }, [sid, priorTransition]);
 
   const monthName = useCallback(
     (id: string) => months.find((m) => m.month_id === id)?.month_name ?? id,
@@ -183,7 +204,10 @@ function AdvisorBody({ sid, advisor }: { sid: string; advisor: AdvisorListRow | 
   }, [sid, advisor, transition, monthName]);
 
   // chart props per the shared TransitionChart contract — advisor-scoped
-  // months/transitions; AUM from the advisor summary, null when absent
+  // months/transitions. Review B1: AUM is REMOVED from the bar chart — the
+  // aum prop is null for every month and the shared component's per-month
+  // AUM label is hidden by the scoped style below (the chart component is
+  // shared and not owned by this page).
   const chartMonths = useMemo(
     () =>
       months.map((m) => ({
@@ -191,9 +215,9 @@ function AdvisorBody({ sid, advisor }: { sid: string; advisor: AdvisorListRow | 
         credited_amt: m.credited_amt,
         recurring_amt: m.recurring_amt,
         non_recurring_amt: m.non_recurring_amt,
-        aum: summary?.aum_by_month?.[m.month_id] ?? null,
+        aum: null,
       })),
-    [months, summary],
+    [months],
   );
   const chartTransitions = useMemo(
     () =>
@@ -241,19 +265,29 @@ function AdvisorBody({ sid, advisor }: { sid: string; advisor: AdvisorListRow | 
             </div>
           </div>
           <div className="card-b">
+            {/* B1 — no per-month AUM series/labels on the advisor bar chart */}
+            <style>{`.advchart .baum{display:none}`}</style>
             {months.length ? (
-              <TransitionChart
-                months={chartMonths}
-                transitions={chartTransitions}
-                view="all"
-                selected={selected}
-                onSelect={setSelected}
-                monthName={monthName}
-              />
+              <div className="advchart">
+                <TransitionChart
+                  months={chartMonths}
+                  transitions={chartTransitions}
+                  view="all"
+                  selected={selected}
+                  onSelect={setSelected}
+                  monthName={monthName}
+                />
+              </div>
             ) : (
               <EmptyState title="No months loaded for this advisor" />
             )}
-            <MetricsStrip summary={summary} transition={transition} monthName={monthName} />
+            <MetricsStrip
+              summary={summary}
+              priorSummary={priorSummary}
+              transition={transition}
+              priorTransition={priorTransition}
+              monthName={monthName}
+            />
             <NnmStrip sid={sid} />
           </div>
         </div>
@@ -283,48 +317,93 @@ function AdvisorBody({ sid, advisor }: { sid: string; advisor: AdvisorListRow | 
 
 function MetricsStrip({
   summary,
+  priorSummary,
   transition,
+  priorTransition,
   monthName,
 }: {
   summary: AdvisorSummary | null;
+  priorSummary: AdvisorSummary | null;
   transition: Transition | null;
+  priorTransition: Transition | null;
   monthName: (id: string) => string;
 }) {
   if (!summary || !transition) {
     return <div style={{ color: "var(--slate)", fontSize: "12.5px" }}>Loading metrics…</div>;
   }
   const m = summary.metrics;
+  const p = priorSummary?.metrics ?? null;
+  // Prior-period label for the lifecycle counts: the prior transition's
+  // to-month (each count is measured at its transition's to-month).
+  const priorLabel = priorTransition ? monthName(priorTransition.to_month_id) : undefined;
+  const managed = m.aum_managed ?? null;
   return (
     <>
       <div className="mstrip" style={{ marginTop: 14 }}>
         <div>
           <div className="k">New Accounts</div>
-          <div className="v">{m.lifecycle.new_count}</div>
-        </div>
-        <div>
-          <div className="k">Lost Accounts</div>
-          <div className="v">{m.lifecycle.lost_count}</div>
-        </div>
-        <div>
-          <div className="k">Retained Accounts</div>
-          <div className="v">{m.lifecycle.retained_count}</div>
-        </div>
-        <div>
-          <div className="k">AUM</div>
-          <div className="v">{m.aum ? money(m.aum.total_balance) : "—"}</div>
-          <div className="d">
-            {m.aum && m.aum.change_amt !== null ? (
-              <>
-                <Delta value={m.aum.change_amt} /> vs prior month
-              </>
-            ) : (
-              <span className="mut">no prior month</span>
-            )}
+          <div className="v">
+            <CompareValue
+              current={m.lifecycle.new_count}
+              prior={p?.lifecycle.new_count ?? null}
+              kind="count"
+              priorLabel={priorLabel}
+            />
           </div>
         </div>
         <div>
-          <div className="k">NCF (net credited flows)</div>
-          <div className="v">{m.ncf ? money(m.ncf.net_flows) : "—"}</div>
+          <div className="k">Lost Accounts</div>
+          <div className="v">
+            <CompareValue
+              current={m.lifecycle.lost_count}
+              prior={p?.lifecycle.lost_count ?? null}
+              kind="count"
+              priorLabel={priorLabel}
+            />
+          </div>
+        </div>
+        <div>
+          <div className="k">Retained Accounts</div>
+          <div className="v">
+            <CompareValue
+              current={m.lifecycle.retained_count}
+              prior={p?.lifecycle.retained_count ?? null}
+              kind="count"
+              priorLabel={priorLabel}
+            />
+          </div>
+        </div>
+        {/* Review B1/D2 — AUM is Managed Accounts only, labelled as such.
+            When the advisor has no managed account rows the tile is absent. */}
+        {managed ? (
+          <div>
+            <div className="k">AUM (Managed Accounts only)</div>
+            <div className="v">
+              <CompareValue
+                current={managed.total_balance}
+                prior={managed.prior_balance}
+                kind="money"
+                priorLabel={monthName(transition.from_month_id)}
+              />
+            </div>
+          </div>
+        ) : null}
+        <div>
+          <div className="k">
+            <ColHead
+              code="metric.ncf"
+              label="NCF (Net Cash Flows)"
+              fallback="Net Cash Flows — inflows minus outflows from the advisor flows table (the source's total net financial flows, real cash movement, not credited revenue)."
+            />
+          </div>
+          <div className="v">
+            <CompareValue
+              current={m.ncf?.net_flows ?? null}
+              prior={p?.ncf?.net_flows ?? null}
+              kind="money"
+              priorLabel={priorLabel}
+            />
+          </div>
           {m.ncf ? (
             <div className="d mut">
               {money(m.ncf.inflows)} in · {money(m.ncf.outflows)} out
@@ -333,9 +412,13 @@ function MetricsStrip({
         </div>
         <div>
           <div className="k">Total Trades ({monthName(transition.to_month_id)})</div>
-          <div className="v">{m.trades.to_count.toLocaleString("en-US")}</div>
-          <div className="d">
-            <Delta value={m.trades.delta} kind="count" /> vs {monthName(transition.from_month_id)}
+          <div className="v">
+            <CompareValue
+              current={m.trades.to_count}
+              prior={m.trades.from_count}
+              kind="count"
+              priorLabel={monthName(transition.from_month_id)}
+            />
           </div>
         </div>
       </div>
@@ -348,58 +431,44 @@ function MetricsStrip({
 }
 
 // ------------------------------------------------------- NNM strip (Round F2)
-// The four real categories from the NNM files (Managed/Brokerage split
-// REMOVED — it was an A2B placeholder). EC is prominent against the threshold
-// the API resolves from the EXTRACTED plan rule; nothing is hardcoded here.
-
-function categoryTooltip(c: NnmCategory): string {
-  return c.confirmed
-    ? `${c.label} — confirmed by the plan document (source file ${c.category_source}_*)`
-    : `${c.label} — category inferred from the source filename ${c.category_source}_*`;
-}
+// Review D5 — the section carries a clear title and a subtitle naming what it
+// shows. Review A2/A4 — no ASSUMED tag, no category-availability commentary:
+// categories present in the feed render; absent ones are simply not there.
 
 function NnmStrip({ sid }: { sid: string }) {
   const [nnm, setNnm] = useState<NnmResponse | null>(null);
-  const [error, setError] = useState<{ status: number; message: string } | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     setNnm(null);
-    setError(null);
+    setFailed(false);
     getAdvisorNnm(sid)
       .then(setNnm)
-      .catch((e) => setError({ status: (e as { status?: number })?.status ?? 0, message: String((e as Error)?.message || e) }));
+      .catch(() => setFailed(true)); // flag off or unavailable — section absent
   }, [sid]);
 
-  if (error) {
-    // 409 = feature flag off — absent, like every other gated section
-    if (error.status === 409) return null;
-    return (
-      <div className="note" style={{ marginTop: 10 }}>
-        NNM unavailable: {error.message}
-      </div>
-    );
-  }
+  if (failed) return null;
   if (!nnm) {
     return <div style={{ color: "var(--slate)", fontSize: "12.5px", marginTop: 10 }}>Loading NNM…</div>;
   }
+  // No NNM rows for this advisor — the section is simply not there (A4).
+  if (!nnm.categories.length) return null;
 
   const ec = nnm.categories.find((c) => c.category === "EC") ?? null;
   const rest = nnm.categories.filter((c) => c.category !== "EC");
   const t = nnm.threshold;
 
-  if (!nnm.categories.length) {
-    return (
-      <div className="note" style={{ marginTop: 10 }}>
-        {nnm.note || `No NNM rows in the feed for this advisor (as of ${nnm.as_of_label}).`}
-      </div>
-    );
-  }
-
   return (
     <>
-      <div className="mstrip" style={{ marginTop: 10 }}>
+      <div style={{ marginTop: 16 }}>
+        <div className="sec-h">Net New Money (NNM)</div>
+        <div style={{ fontSize: "12.5px", color: "var(--slate)", marginTop: 2 }}>
+          Year-to-date by category, as of {nnm.as_of_label}
+        </div>
+      </div>
+      <div className="mstrip" style={{ marginTop: 8 }}>
         {ec ? (
-          <div title={categoryTooltip(ec)} style={{ borderLeft: "3px solid var(--navy)", paddingLeft: 9 }}>
-            <div className="k">Existing Client (EC) NNM YTD — as of {nnm.as_of_label}</div>
+          <div style={{ borderLeft: "3px solid var(--navy)", paddingLeft: 9 }}>
+            <div className="k">Existing Client (EC) NNM YTD</div>
             <div className="v">
               <Money value={ec.ytd_nnm} />
             </div>
@@ -409,7 +478,7 @@ function NnmStrip({ sid }: { sid: string }) {
           </div>
         ) : null}
         {rest.map((c) => (
-          <div key={c.category} title={categoryTooltip(c)}>
+          <div key={c.category}>
             <div className="k">
               {c.label} ({c.category}) YTD
             </div>
@@ -422,7 +491,7 @@ function NnmStrip({ sid }: { sid: string }) {
           </div>
         ))}
         <div>
-          <div className="k">Total NNM (all four categories) YTD</div>
+          <div className="k">Total NNM YTD</div>
           <div className="v" style={{ fontSize: 15 }}>
             <Money value={nnm.total.ytd_nnm} />
           </div>
@@ -431,29 +500,24 @@ function NnmStrip({ sid }: { sid: string }) {
           </div>
         </div>
       </div>
-      <div className="note" style={{ marginTop: 8 }}>
-        {t.available && t.threshold_amt !== null ? (
-          <>
-            EC YTD <Money value={t.ytd_nnm ?? 0} /> vs the <Money value={t.threshold_amt} /> threshold
-            {" — "}
-            {t.qualifies ? (
-              <>at or above the threshold</>
-            ) : (
-              <>
-                gap <Money value={t.gap ?? 0} /> below the threshold
-              </>
-            )}
-            {t.as_of_month ? ` (as of ${nnm.as_of_label})` : ""}.{" "}
-            <Chip variant="derived" title={t.assumed_note}>
-              ASSUMED
-            </Chip>{" "}
-            The threshold figure comes from the extracted plan rule{t.rule_key ? ` (${t.rule_key})` : ""},
-            measured on {t.measured_category} flows.
-          </>
-        ) : (
-          <>{t.note || "No published plan rule states the NNM threshold yet — nothing is assumed in its place."}</>
-        )}
-      </div>
+      {/* The threshold line stays (without the ASSUMED tag and its wording);
+          with no threshold available, nothing renders in its place. */}
+      {t.available && t.threshold_amt !== null ? (
+        <div className="note" style={{ marginTop: 8 }}>
+          EC YTD <Money value={t.ytd_nnm ?? 0} /> vs the <Money value={t.threshold_amt} /> threshold
+          {" — "}
+          {t.qualifies ? (
+            <>at or above the threshold</>
+          ) : (
+            <>
+              gap <Money value={t.gap ?? 0} /> below the threshold
+            </>
+          )}
+          {t.as_of_month ? ` (as of ${nnm.as_of_label})` : ""}. The threshold figure comes from the
+          extracted plan rule{t.rule_key ? ` (${t.rule_key})` : ""}, measured on {t.measured_category}{" "}
+          flows.
+        </div>
+      ) : null}
     </>
   );
 }
@@ -461,14 +525,30 @@ function NnmStrip({ sid }: { sid: string }) {
 // ------------------------------------------------------------------ drivers
 
 type Pivot = "driver" | "product";
+type FindingWithGroup = Finding & { group_name?: string | null };
 
-function groupFindings(findings: Finding[], pivot: Pivot): Map<string, Finding[]> {
-  const map = new Map<string, Finding[]>();
+/** Review B4 (batch 1 F2) — By Product groups by the finding's group_id and
+ * labels with group_name from the API; unattributed findings sit under
+ * "No product attribution", never a raw id. */
+function groupFindings(
+  findings: Finding[],
+  pivot: Pivot,
+): { label: string; findings: Finding[] }[] {
+  const map = new Map<string, { label: string; findings: Finding[] }>();
   for (const f of findings) {
-    const key = pivot === "product" ? f.group_id || "No product" : f.driver_tag || "Other";
-    map.set(key, [...(map.get(key) ?? []), f]);
+    const fg = f as FindingWithGroup;
+    const key = pivot === "product" ? fg.group_id || "__none__" : f.driver_tag || "Other";
+    const label =
+      pivot === "product"
+        ? fg.group_id
+          ? fg.group_name || fg.group_id
+          : "No product attribution"
+        : f.driver_tag || "Other";
+    const entry = map.get(key) ?? { label, findings: [] };
+    entry.findings.push(f);
+    map.set(key, entry);
   }
-  return map;
+  return Array.from(map.values());
 }
 
 function DriverList({ run, pivot }: { run: InsightRun | null; pivot: Pivot }) {
@@ -486,7 +566,7 @@ function DriverList({ run, pivot }: { run: InsightRun | null; pivot: Pivot }) {
   return (
     <>
       <LimitNotice limits={run.limits_hit} />
-      {Array.from(groups.entries()).map(([label, fs]) => (
+      {groups.map(({ label, findings }) => (
         <div key={label}>
           <div
             style={{
@@ -500,7 +580,7 @@ function DriverList({ run, pivot }: { run: InsightRun | null; pivot: Pivot }) {
           >
             {label}
           </div>
-          {fs.map((f, i) => (
+          {findings.map((f, i) => (
             <FindingRow key={f.finding_id ?? i} finding={f} />
           ))}
         </div>
@@ -557,7 +637,7 @@ function DriversSection({
     <div className="card">
       <div className="card-h">
         <div>
-          <h2>Drivers</h2>
+          <h2>Revenue Drivers</h2>
           <p>
             The advisor&apos;s stored findings — {label(transition)}. Every finding keeps its rule and
             document citation.
@@ -625,31 +705,64 @@ function DriversSection({
 
 // ------------------------------------------------------------- peer ranking
 
+/** Review B6 — highlighting reflects the VALUE, one consistent rule for ALL
+ * ranking entries: the advisor's rank splits the ranked cohort into thirds.
+ * Favourable third = green, middle = amber, unfavourable = red. Orientation
+ * per metric: for revenue and growth a HIGH rank (nearer #1) is favourable;
+ * for discount rate a LOW rank is favourable (rank #1 = highest mean fee
+ * reduction). Unranked entries stay neutral. */
+const TIER_RULE =
+  "Highlight rule: the advisor's rank splits the ranked cohort into thirds — " +
+  "green = favourable third, amber = middle third, red = unfavourable third. " +
+  "For revenue and growth, higher is better; for discount rate, lower is better. " +
+  "Unranked entries are not highlighted.";
+
+type Tier = "green" | "amber" | "red" | null;
+
+function rankTier(rank: number | null, size: number, higherIsBetter: boolean): Tier {
+  if (rank === null || size <= 0) return null;
+  const third = size / 3;
+  const fromBest = higherIsBetter ? rank : size - rank + 1;
+  if (fromBest <= Math.ceil(third)) return "green";
+  if (fromBest <= Math.ceil(2 * third)) return "amber";
+  return "red";
+}
+
+const TIER_STYLE: Record<Exclude<Tier, null>, { border: string; bg: string }> = {
+  // no shared tokens exist for tiered rank cards — inline colours, noted
+  green: { border: "#157F4C", bg: "#EAF4EE" },
+  amber: { border: "#9A5B13", bg: "#FAF3E7" },
+  red: { border: "#B3261E", bg: "#FBEDEB" },
+};
+
 function RankCard({
   title,
   block,
-  prominent,
   valueKind,
+  higherIsBetter,
 }: {
   title: string;
   block: { rank: number | null; cohort_size: number; value: number | null; cohort_median: number | null; note?: string };
-  prominent?: boolean;
   valueKind: "money" | "pct";
+  higherIsBetter: boolean;
 }) {
   const fmt = (v: number | null) => (v === null ? "—" : valueKind === "money" ? money(v) : percent(v));
+  const tier = rankTier(block.rank, block.cohort_size, higherIsBetter);
+  const style = tier ? TIER_STYLE[tier] : null;
   return (
     <div
+      title={TIER_RULE}
       style={{
-        border: prominent ? "2px solid var(--navy)" : "1px solid var(--rule)",
+        border: style ? `2px solid ${style.border}` : "1px solid var(--rule)",
         borderRadius: 6,
         padding: "12px 14px",
-        background: prominent ? "var(--panel)" : "#fff",
+        background: style ? style.bg : "#fff",
       }}
     >
       <div className="k" style={{ fontSize: 11, letterSpacing: ".03em", color: "var(--slate)", textTransform: "uppercase" }}>
         {title}
       </div>
-      <div style={{ fontSize: prominent ? 24 : 20, fontWeight: 600, marginTop: 4 }}>
+      <div style={{ fontSize: 20, fontWeight: 600, marginTop: 4, color: style?.border }}>
         {block.rank !== null ? `#${block.rank}` : "—"}
         <span style={{ fontSize: 13, fontWeight: 400, color: "var(--slate)" }}> of {block.cohort_size}</span>
       </div>
@@ -694,8 +807,8 @@ function PeerRankingSection({
           <h2>Peer Ranking</h2>
           <p>
             Where this advisor sits in the cohort
-            {transition ? ` — ${monthName(transition.to_month_id)}` : ""}. Discount rate is the metric
-            nobody volunteers about themselves.
+            {transition ? ` — ${monthName(transition.to_month_id)}` : ""}. Green / amber / red shows
+            which third of the cohort the advisor sits in for each metric.
           </p>
         </div>
       </div>
@@ -703,9 +816,14 @@ function PeerRankingSection({
         {error ? <EmptyState title="Peer ranking unavailable" message={error} /> : null}
         {ranking ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.3fr", gap: 14 }}>
-            <RankCard title="By Revenue" block={ranking.revenue} valueKind="money" />
-            <RankCard title="By Growth" block={ranking.growth} valueKind="money" />
-            <RankCard title="By Discount Rate" block={ranking.discount_rate} valueKind="pct" prominent />
+            <RankCard title="By Revenue" block={ranking.revenue} valueKind="money" higherIsBetter />
+            <RankCard title="By Growth" block={ranking.growth} valueKind="money" higherIsBetter />
+            <RankCard
+              title="By Discount Rate"
+              block={ranking.discount_rate}
+              valueKind="pct"
+              higherIsBetter={false}
+            />
           </div>
         ) : !error ? (
           <div style={{ color: "var(--slate)", fontSize: "12.5px" }}>Loading ranking…</div>
@@ -756,6 +874,9 @@ function CoachingSection({
     load();
   }, [load]);
 
+  // Review B7 — points arrive sorted Critical → Info; the order is KEPT.
+  const pointsPager = usePager(result?.points ?? []);
+
   const generate = async () => {
     if (!transition) return;
     setBusy(true);
@@ -795,29 +916,42 @@ function CoachingSection({
       <div className="card-b">
         {error ? <EmptyState title="Coaching unavailable" message={error} /> : null}
         {result && result.points.length ? (
-          result.points.map((p, i) => (
-            <div key={i} style={{ borderBottom: "1px solid var(--rule-2)", padding: "10px 2px" }}>
-              <blockquote
-                style={{
-                  margin: 0,
-                  padding: "8px 12px",
-                  borderLeft: "3px solid var(--ai, #4C4EA3)",
-                  background: "var(--panel)",
-                  fontSize: "12.5px",
-                  color: "var(--slate)",
-                }}
-              >
-                “{p.citation.excerpt}”
-                <div style={{ marginTop: 5 }}>
-                  <CitationLine c={p.citation} />
+          <>
+            {pointsPager.rows.map((p, i) => (
+              <div key={i} style={{ borderBottom: "1px solid var(--rule-2)", padding: "10px 2px" }}>
+                {/* B7 order: 1) Coaching first, 2) Implication, 3) passage collapsed */}
+                <div style={{ fontSize: "13px" }}>
+                  <SeverityChip severity={p.severity} basis={p.severity_basis} />{" "}
+                  <b>Coaching:</b> {p.text}
                 </div>
-              </blockquote>
-              <div style={{ marginTop: 7, fontSize: "13px" }}>{p.fact}</div>
-              <div style={{ marginTop: 4, fontSize: "12.5px", color: "var(--slate)" }}>
-                <b style={{ color: "var(--ink)" }}>Implication:</b> {p.implication}
+                {p.fact ? (
+                  <div style={{ marginTop: 4, fontSize: "12.5px", color: "var(--slate)" }}>{p.fact}</div>
+                ) : null}
+                <div style={{ marginTop: 4, fontSize: "12.5px", color: "var(--slate)" }}>
+                  <b style={{ color: "var(--ink)" }}>Implication:</b> {p.implication}
+                </div>
+                <details className="tech" style={{ marginTop: 6 }}>
+                  <summary>Supporting document passage (opens on click)</summary>
+                  <blockquote
+                    style={{
+                      margin: "6px 0 0",
+                      padding: "8px 12px",
+                      borderLeft: "3px solid var(--ai, #4C4EA3)",
+                      background: "var(--panel)",
+                      fontSize: "12.5px",
+                      color: "var(--slate)",
+                    }}
+                  >
+                    “{p.citation.excerpt}”
+                    <div style={{ marginTop: 5 }}>
+                      <CitationLine c={p.citation} />
+                    </div>
+                  </blockquote>
+                </details>
               </div>
-            </div>
-          ))
+            ))}
+            <Pager {...pointsPager} noun="coaching points" />
+          </>
         ) : result ? (
           <EmptyState
             title={result.generated === false ? "No coaching generated yet" : "No coaching points"}
@@ -888,12 +1022,17 @@ function OpportunitiesSection({ sid, transition }: { sid: string; transition: Tr
       .catch((e) => setError(String(e?.message || e)));
   }, [sid, transition]);
 
-  const groups = opps
-    ? [...opps.by_stage_group].sort(
-        (a, b) => STAGE_GROUP_ORDER.indexOf(a.stage_group) - STAGE_GROUP_ORDER.indexOf(b.stage_group),
-      )
-    : [];
-  const stalledTotal = groups.reduce((n, g) => n + (g.stalled_count || 0), 0);
+  const groups = useMemo(
+    () =>
+      opps
+        ? [...opps.by_stage_group].sort(
+            (a, b) => STAGE_GROUP_ORDER.indexOf(a.stage_group) - STAGE_GROUP_ORDER.indexOf(b.stage_group),
+          )
+        : [],
+    [opps],
+  );
+  const groupPager = usePager(groups);
+  const rowPager = usePager(opps?.opportunities ?? []);
   const guidance = opps?.opportunities_guidance ?? opps?.guidance ?? null;
 
   return (
@@ -915,15 +1054,41 @@ function OpportunitiesSection({ sid, transition }: { sid: string; transition: Tr
               <table className="exc">
                 <thead>
                   <tr>
-                    <th>Stage Group</th>
-                    <th className="num">Opportunities</th>
-                    <th className="num">Forecast Amount</th>
-                    <th className="num">Actual Assets</th>
-                    <th className="num">Stalled</th>
+                    {/* B8 — Stalled column REMOVED (days-to-close colour-coding
+                        carries the meaning); Forecast Amount renamed Amount;
+                        every header carries a glossary info tooltip */}
+                    <th>
+                      <ColHead
+                        code="crm.stage_group"
+                        label="Stage Group"
+                        fallback="CRM pipeline stage grouped as Early / Mid / Late / Closing."
+                      />
+                    </th>
+                    <th className="num">
+                      <ColHead
+                        code="crm.opportunity_count"
+                        label="Opportunities"
+                        fallback="Count of open CRM opportunities in the stage group."
+                      />
+                    </th>
+                    <th className="num">
+                      <ColHead
+                        code="crm.amount"
+                        label="Amount"
+                        fallback="The CRM opportunity amount — the forecast pipeline value."
+                      />
+                    </th>
+                    <th className="num">
+                      <ColHead
+                        code="crm.actual_assets"
+                        label="Actual Assets"
+                        fallback="Assets that actually landed for the opportunity — never summed with Amount."
+                      />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {groups.map((g) => (
+                  {groupPager.rows.map((g) => (
                     <tr key={g.stage_group}>
                       <td>{STAGE_GROUP_LABELS[g.stage_group] ?? g.stage_group}</td>
                       <td className="num">{g.opportunity_count}</td>
@@ -933,90 +1098,129 @@ function OpportunitiesSection({ sid, transition }: { sid: string; transition: Tr
                       <td className="num">
                         <Money value={g.actual_assets} />
                       </td>
-                      <td className="num">
-                        {g.stalled_count > 0 ? <b style={{ color: "var(--neg, #B3261E)" }}>{g.stalled_count}</b> : 0}
-                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="note">{opps.won_lost_note}</div>
-            <div className="note">{opps.assumption_note}</div>
+            <Pager {...groupPager} noun="stage groups" />
             {opps.data_quality?.invalid_advisor_rows > 0 ? (
               <div className="note" style={{ color: "var(--sev-high-tx, #9A5B13)" }}>
-                {opps.data_quality.note ||
-                  `${opps.data_quality.invalid_advisor_rows} opportunity row(s) carry an invalid advisor reference in the source — shown, not hidden.`}
-              </div>
-            ) : null}
-            {stalledTotal > 0 ? (
-              <div className="note">
-                <b>{stalledTotal} stalled opportunit{stalledTotal === 1 ? "y" : "ies"}</b> — the anticipated
-                close date has passed (days to close is negative in the source).
+                {`${opps.data_quality.invalid_advisor_rows} opportunity row(s) carry an invalid advisor reference in the source — shown, not hidden.`}
               </div>
             ) : null}
             {opps.opportunities.length ? (
-              <div style={{ overflowX: "auto" }}>
-                <table className="exc">
-                  <thead>
-                    <tr>
-                      <th>Household</th>
-                      <th>Stage</th>
-                      <th className="num">Days to Close</th>
-                      <th className="num">Forecast</th>
-                      <th className="num">Actual Assets</th>
-                      <th>Notes</th>
-                      {/* AI Read: descriptive only — deliberately not sortable or filterable */}
-                      <th>AI Read</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {opps.opportunities.map((r) => (
-                      <tr key={r.opportunity_id}>
-                        <td>
-                          <span style={{ fontFamily: "var(--mono, ui-monospace, monospace)", fontSize: 12 }} title={`Household ECI ${r.eci_id}`}>
-                            {r.eci_id || "—"}
-                          </span>
-                          {!r.advisor_valid ? (
-                            <>
-                              {" "}
-                              <Chip variant="neg" title="ownersid__c carried an invalid advisor reference in the source extract">
-                                invalid advisor ref
-                              </Chip>
-                            </>
-                          ) : null}
-                        </td>
-                        <td>{r.stage_name || "—"}</td>
-                        <td className="num">
-                          {r.days_to_close == null ? (
-                            "—"
-                          ) : r.is_stalled ? (
-                            <Chip variant="neg" title="Anticipated close date passed — days_to_close is negative in the source">
-                              Stalled · {-r.days_to_close}d past due
-                            </Chip>
-                          ) : (
-                            r.days_to_close
-                          )}
-                        </td>
-                        <td className="num">
-                          <Money value={r.amount} />
-                        </td>
-                        <td className="num">
-                          <Money value={r.actual_assets} />
-                        </td>
-                        <td style={{ maxWidth: 220 }}>
-                          <span title={r.comments || undefined} style={{ fontSize: 12 }}>
-                            {r.comments ? (r.comments.length > 60 ? `${r.comments.slice(0, 60)}…` : r.comments) : "—"}
-                          </span>
-                        </td>
-                        <td>
-                          <AiReadCell row={r} />
-                        </td>
+              <>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="exc">
+                    <thead>
+                      <tr>
+                        <th>
+                          <ColHead
+                            code="crm.household"
+                            label="Household"
+                            fallback="The household (ECI) the opportunity belongs to — the join between CRM and the book."
+                          />
+                        </th>
+                        <th>
+                          <ColHead
+                            code="crm.stage"
+                            label="Stage"
+                            fallback="The opportunity's CRM stage name, verbatim from the source."
+                          />
+                        </th>
+                        <th className="num">
+                          <ColHead
+                            code="crm.days_to_close"
+                            label="Days to Close"
+                            fallback="Days until the anticipated close date. A red negative value means the anticipated close date has already passed."
+                          />
+                        </th>
+                        <th className="num">
+                          <ColHead
+                            code="crm.amount"
+                            label="Amount"
+                            fallback="The CRM opportunity amount — the forecast pipeline value."
+                          />
+                        </th>
+                        <th className="num">
+                          <ColHead
+                            code="crm.actual_assets"
+                            label="Actual Assets"
+                            fallback="Assets that actually landed for the opportunity — never summed with Amount."
+                          />
+                        </th>
+                        <th>
+                          <ColHead
+                            code="crm.notes"
+                            label="Notes"
+                            fallback="The CRM comment on the opportunity, verbatim from the source."
+                          />
+                        </th>
+                        {/* AI Read: descriptive only — deliberately not sortable or filterable */}
+                        <th>
+                          <ColHead
+                            code="crm.ai_read"
+                            label="AI Read"
+                            fallback="An AI reading of the CRM comment — descriptive only; it never drives a figure, sort, or filter."
+                          />
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {rowPager.rows.map((r) => (
+                        <tr key={r.opportunity_id}>
+                          <td>
+                            <span style={{ fontFamily: "var(--mono, ui-monospace, monospace)", fontSize: 12 }} title={`Household ECI ${r.eci_id}`}>
+                              {r.eci_id || "—"}
+                            </span>
+                            {!r.advisor_valid ? (
+                              <>
+                                {" "}
+                                <Chip variant="neg" title="The source extract carries an invalid advisor reference for this row">
+                                  invalid advisor ref
+                                </Chip>
+                              </>
+                            ) : null}
+                          </td>
+                          <td>{r.stage_name || "—"}</td>
+                          <td className="num">
+                            {r.days_to_close == null ? (
+                              "—"
+                            ) : r.days_to_close < 0 ? (
+                              // B8 — negative days-to-close is colour-coded red:
+                              // the anticipated close date has passed
+                              <b
+                                style={{ color: "var(--neg, #B3261E)" }}
+                                title={`Anticipated close date passed ${-r.days_to_close} day(s) ago`}
+                              >
+                                {r.days_to_close}
+                              </b>
+                            ) : (
+                              r.days_to_close
+                            )}
+                          </td>
+                          <td className="num">
+                            <Money value={r.amount} />
+                          </td>
+                          <td className="num">
+                            <Money value={r.actual_assets} />
+                          </td>
+                          <td style={{ maxWidth: 220 }}>
+                            <span title={r.comments || undefined} style={{ fontSize: 12 }}>
+                              {r.comments ? (r.comments.length > 60 ? `${r.comments.slice(0, 60)}…` : r.comments) : "—"}
+                            </span>
+                          </td>
+                          <td>
+                            <AiReadCell row={r} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <Pager {...rowPager} noun="opportunities" />
+              </>
             ) : null}
             {guidance?.document_name ? (
               <div className="note">
