@@ -96,7 +96,7 @@ class MinerTools:
                                        "rows": result.get("source_rows",
                                                           result["rows"])}
         return {"rows": result["rows"], "row_count": result["row_count"],
-                "seq_no": seq_no}
+                "seq_no": seq_no, "mode": result.get("mode")}
 
     def get_schema(self) -> dict:
         start = time.perf_counter()

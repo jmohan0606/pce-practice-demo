@@ -378,7 +378,10 @@ def run_chat_turn(*, user_text: str, history: list[dict], tools: ChatTools,
             try:
                 result = tools.run_catalog_query(qname, action.get("params") or {})
                 shown = result["rows"][:limits.chat_rows_shown]
-                clipped = result["row_count"] > len(shown)
+                # Round 3 task 1: a shape result is complete — one shape
+                # object over the full row count; never a sample.
+                clipped = (result["row_count"] > len(shown)
+                           and result.get("mode") != "shape")
                 head = (f"seq {result['seq_no']} — {qname} showing "
                         f"{len(shown)} of {result['row_count']} rows"
                         + (" (a SAMPLE — query more narrowly for the full set)"

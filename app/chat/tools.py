@@ -126,7 +126,7 @@ class ChatTools:
                                        "rows": result["rows"]}
         self.all_payloads.append(result["rows"])
         return {"rows": result["rows"], "row_count": result["row_count"],
-                "seq_no": seq_no}
+                "seq_no": seq_no, "mode": result.get("mode")}
 
     # ------------------------------------------------------------ tool 2: search
 

@@ -593,15 +593,32 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
             try:
                 result = tools.run_graph_query(query_name, action.get("params") or {})
                 shown = result["rows"][:rows_shown_cap]
-                clipped = result["row_count"] > len(shown)
-                # Round H 2.3: a truncated result set must tell the model it is
-                # a SAMPLE — "showing N of M" — so it queries more narrowly
-                # instead of reasoning from a partial set as if complete.
-                head = (f"seq {result['seq_no']} — {query_name} showing "
-                        f"{len(shown)} of {result['row_count']} rows"
-                        + (" (a SAMPLE — the result is larger than the display "
-                           "cap; query more narrowly for the full set)"
-                           if clipped else "") + ":\n")
+                # Round 3 task 1: a SHAPE result is COMPLETE — aggregates
+                # computed over every row. row_count is the full underlying
+                # count while rows is the one shape object; that is never a
+                # clip and never a limit. A rows-mode drill is likewise the
+                # agent's own explicit cap, not a bind.
+                if result.get("mode") == "shape":
+                    clipped = False
+                    head = (f"seq {result['seq_no']} — {query_name} SHAPE "
+                            f"computed over all {result['row_count']} rows "
+                            f"(complete, not sampled):\n")
+                elif result.get("mode") == "rows":
+                    clipped = False
+                    head = (f"seq {result['seq_no']} — {query_name} drill: "
+                            f"{len(shown)} of {result['row_count']} rows (your "
+                            f"requested cap; the full set backs any finding "
+                            f"citing this seq):\n")
+                else:
+                    clipped = result["row_count"] > len(shown)
+                    # Round H 2.3: a truncated result set must tell the model
+                    # it is a SAMPLE — "showing N of M" — so it queries more
+                    # narrowly instead of reasoning from a partial set.
+                    head = (f"seq {result['seq_no']} — {query_name} showing "
+                            f"{len(shown)} of {result['row_count']} rows"
+                            + (" (a SAMPLE — the result is larger than the "
+                               "display cap; query more narrowly for the full "
+                               "set)" if clipped else "") + ":\n")
                 if clipped:
                     limits_hit.append({
                         "limit_name": "ROWS_SHOWN_TO_MODEL",
