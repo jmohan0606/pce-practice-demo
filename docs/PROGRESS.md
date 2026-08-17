@@ -1,11 +1,11 @@
 # Build Progress
 
 ## Round 4 (docs/spec/ROUND_4_SPEC.md) — CLI generation scripts + Round 3 on-screen fixes
-- [x] Task 1 (e1aac70): AI Insights renders the NARRATIVE ONLY — the
+- [x] Task 1 (b866761): AI Insights renders the NARRATIVE ONLY — the
       duplication was InsightsSection mapping findings into bullets; finding
       cards now render once, in Revenue Drivers (observed: 0 vs 8 .finding
       elements).
-- [x] Task 2 (c12267c): practice narratives regenerated for BOTH transitions
+- [x] Task 2 (a0f52d5): practice narratives regenerated for BOTH transitions
       and pasted verbatim from the API (cross-cutting, limits none). Three
       material fixes found by running: the numeric gate now accepts
       whole-dollar roundings and REPRODUCIBLE two-figure combinations of
@@ -14,7 +14,7 @@
       the repair round stopped contradicting the contract; NON_CHANGE_DRIVERS
       (RETAINED_ACCOUNT, a stock) leave the residual — a served narrative had
       carried a confidently-wrong "-$911K residual".
-- [x] Task 3 (e4d713e): "New To Product: false" ON SCREEN was real — the
+- [x] Task 3 (7f8e698): "New To Product: false" ON SCREEN was real — the
       level-2 drill-down METRIC STRIP tile (metricValue passed booleans
       through raw), not the table cell the code reading exonerated. Fixed;
       observed Yes/No at all levels after a clean rebuild.
@@ -24,7 +24,7 @@
       colours parenthetical positives red (pre-existing heuristic, listed).
 - [x] Task 5: .gitattributes (LF, binaries) + one renormalisation commit of
       the 112 CRLF-committed files; data suites green after; git status clean.
-- [x] Tasks 6–10 (f132aa8): the four scripts + shared
+- [x] Tasks 6–10 (81be6f8): the four scripts + shared
       _generate_insights_common (checkpointed resume, trace-sourced cost
       projection, skip-existing/--regenerate, --parallel default 1,
       per-target trace-sourced report lines, failure isolation, honest exit
