@@ -44,9 +44,15 @@
       build_report.json records every explained delta; unexplained difference
       = hard failure naming entity + both numbers (40k-drop probe proven);
       committed EXPECTED_COUNTS.json baseline compared by default.
-- [ ] Task 5 (Copilot guide) DELIBERATELY DEFERRED by operator instruction —
-      written separately after reviewing the changed scripts so it describes
-      what exists. Runbook Phases 2/3/5 surgically updated to stay truthful.
+- [x] Task 5 (operator-authored, 8a1a688): docs/COPILOT_EXTRACTION_GUIDE.md
+      delivered as planned — written separately AFTER the round's scripts
+      landed so it describes what exists (extract → validate → build → review
+      gate → two-phase load → reconcile, token-expiry resume, measured
+      143M-row/2.9h figures). docs/CONNECTION_DETAILS.md deliberately NOT
+      committed (credentials per its own header; gitignored). verify check 11
+      still prints SKIP by design — the deferral was the pinned behaviour.
+      Runbook Phases 2/3/5 surgically updated to stay truthful (task 6
+      commit).
 - [x] Task 6 (main thread): scripts/verify_round_2a.py 16/16 (check 11 =
       the deferred guide, marked SKIP); 12.4M-row streaming proof via
       scripts/make_scale_proof.py at the client-measured cardinalities;
