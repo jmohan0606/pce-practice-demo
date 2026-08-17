@@ -367,6 +367,11 @@ Context: Adding the two PCS rows to make_test_raw_extracts.HIERARCHY changed eve
 Decision: Accepted — the fixtures are regenerable fabrications with no byte-level pins (all checks recompute from the drop: V-1..V-10 pass, sanity anchor $33,130/advisor/month, verify_round_1 12/12). The reshuffle is a feature: the fixture path now exercises PCS/SP and PCS/PBR end-to-end through build_real_data.
 Reversible: yes
 
+## 2026-08-17 · Round 2a task 1 · Ingestion batch size 5000 — a MEASURED default, not a guess
+Context: The client environment measured ingestion throughput at batch 500 / 1000 / 5000: **3,169 → 5,375 → 7,706 rows/sec** (vertices, p95; edges 25,250 rows/s at 5000), with a 54 ms RESTPP round trip — a 500-row batch spends nearly half its wall time on the network. The old default of 500 would more than double the ~2.9-hour projected load window for no benefit.
+Decision: `batch_size: 5000` in both manifest generators AND the committed `data/manifest.json` (scalar post-pass edit, no CSV touched); new `ingestion_batch_size` setting (alias `INGESTION_BATCH_SIZE`, default 5000) — an explicit env override beats the manifest, otherwise the manifest value rules. The spec's named settings key `ingestion_batch_size` did not exist (only an UNUSED `graph_load_batch_size` — left in place, still unused); it exists now and is the one the registry consults. Two consequences applied with it: (1) `_BATCH_OVERRIDES` (1000 for the three high-volume files) deleted — "larger than 500" overrides would now LOWER the batch on exactly the biggest files; (2) `INGESTION_MAX_BATCH_CALLS_PER_ENTITY` default 500 → 10,000 — the largest real entity is 12,436,738 rows = 2,488 legitimate batch calls at 5000; Round H deliberately kept 500 "until the scale run measures it", and this round's measured volumes are that measurement.
+Reversible: yes (env-only for the batch size)
+
 ## 2026-08-14 · Round A2B · Per-subtask commits collapsed for parallel-dispatched work
 Context: The spec asks for commits after 6.2/6.4/6.7; Subagent C's work arrived complete from the parallel dispatch (Round E tasks 6+7 precedent).
 Decision: One verified commit per task (6 and 7). Batch insight generation (advisor="all", 21 runs, $1.52) was run by the main thread during the round so exceptions/insights/advisor views verify against real stored runs.

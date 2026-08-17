@@ -1052,7 +1052,9 @@ def build(raw_dir: Path, out_dir: Path, seed: int = 42) -> dict:
     manifest = {
         "graph": "phx_dm_pce_practice_demo",
         "generated_by": f"scripts/build_real_data.py (raw={raw_dir}, seed {seed})",
-        "batch_size": 500,
+        # Round 2a task 1: measured default (see app/config/settings.py
+        # ingestion_batch_size — 7,706 rows/s p95 at 5000 vs 3,169 at 500).
+        "batch_size": 5000,
         "files": manifest_files,
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")

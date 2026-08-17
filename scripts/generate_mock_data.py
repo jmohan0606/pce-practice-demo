@@ -1171,7 +1171,9 @@ def main() -> None:
         "graph": "phx_dm_pce_practice_demo",
         "generated_by": "scripts/generate_mock_data.py (seed 42)" if SCALE == 1
                         else f"scripts/generate_mock_data.py (seed 42, scale {SCALE:g})",
-        "batch_size": 500,
+        # Round 2a task 1: measured default (3,169/5,375/7,706 rows/s at
+        # 500/1000/5000 against the client graph; 54 ms round trip).
+        "batch_size": 5000,
         "files": manifest_files,
     }
     (DATA / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")

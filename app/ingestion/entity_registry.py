@@ -13,12 +13,9 @@ from app.ingestion.models import IngestionEntityConfig
 
 _PREFIX = "phx_dm_pce_"
 
-# Larger write batches for the high-volume series files.
-_BATCH_OVERRIDES: dict[str, int] = {
-    "revenue_transaction": 1000,
-    "monthly_revenue": 1000,
-    "account_month": 1000,
-}
+# Round 2a task 1: the old per-entity _BATCH_OVERRIDES (1000 for the three
+# high-volume files) are gone — they were "larger than 500"; with the measured
+# default now 5000 they would LOWER the batch on exactly the biggest files.
 
 # Vertex columns that hold an account key and must pass through the ONE shared
 # normalize_account_key on ingest. acct_src_raw is deliberately absent — the raw
@@ -44,9 +41,17 @@ def _entity_name(target: str) -> str:
 
 @lru_cache(maxsize=1)
 def _configs() -> dict[str, IngestionEntityConfig]:
-    manifest_path = get_settings().resolved_manifest_path
+    import os
+
+    settings = get_settings()
+    manifest_path = settings.resolved_manifest_path
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    default_batch = int(manifest.get("batch_size", 500))
+    # Round 2a task 1: an explicit INGESTION_BATCH_SIZE env override beats the
+    # manifest; otherwise the manifest value; otherwise the measured 5000.
+    if "INGESTION_BATCH_SIZE" in os.environ:
+        default_batch = settings.ingestion_batch_size
+    else:
+        default_batch = int(manifest.get("batch_size") or settings.ingestion_batch_size)
 
     configs: dict[str, IngestionEntityConfig] = {}
     for entry in manifest["files"]:
@@ -64,7 +69,7 @@ def _configs() -> dict[str, IngestionEntityConfig]:
             primary_key=primary_key,
             tigergraph_vertex=entry["target"],
             required_columns=list(required),
-            batch_size=_BATCH_OVERRIDES.get(name, default_batch),
+            batch_size=default_batch,
             kind=kind,
             order=int(entry.get("order", 0)),
             expected_rows=entry.get("expected_rows"),

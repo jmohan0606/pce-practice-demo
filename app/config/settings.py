@@ -222,10 +222,18 @@ class Settings(BaseSettings):
     coach_max_searches: int = Field(default=4, alias="COACH_MAX_SEARCHES")
     rule_compiler_max_searches: int = Field(default=2, alias="RULE_COMPILER_MAX_SEARCHES")
     rule_compiler_max_repairs: int = Field(default=2, alias="RULE_COMPILER_MAX_REPAIRS")
-    # Runaway-loop backstop on ingestion batch calls per entity. Not resized in
-    # 2.2 — the Task 5 scale run measures whether it binds; raise deliberately
-    # with that measurement, never silently.
-    ingestion_max_batch_calls: int = Field(default=500, alias="INGESTION_MAX_BATCH_CALLS_PER_ENTITY")
+    # Runaway-loop backstop on ingestion batch calls per entity. Round 2a: the
+    # measured client volumes size it — the largest single entity is 12,436,738
+    # rows (revenue_transaction and its per-txn edges), which at batch 5000 is
+    # 2,488 legitimate batch calls; 500 would abort the real load. 10,000 keeps
+    # ~4x headroom while still catching a genuinely stuck resume loop.
+    ingestion_max_batch_calls: int = Field(default=10_000, alias="INGESTION_MAX_BATCH_CALLS_PER_ENTITY")
+    # Round 2a task 1: MEASURED default write-batch size. Client-environment
+    # measurement at batch 500/1000/5000: 3,169 / 5,375 / 7,706 rows/s (54 ms
+    # RESTPP round trip — a 500-row batch spends nearly half its wall time on
+    # the network). The manifest carries the same value; INGESTION_BATCH_SIZE
+    # set in the env overrides the manifest (entity_registry resolves it).
+    ingestion_batch_size: int = Field(default=5000, alias="INGESTION_BATCH_SIZE")
 
     # --- Round E chat (ROUND_E_CHAT_SPEC). The chat agent runs on Opus — the
     # one place a subtle reasoning failure is expensive and hard to spot; the
