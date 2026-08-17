@@ -1,5 +1,42 @@
 # Build Progress
 
+## Round 3 (docs/spec/ROUND_3_SPEC.md) — aggregate querying, exceptions model, full UI review
+- [x] Task 1 (main thread, 9de468e): queries return SHAPES, not rows — 14
+      large-result catalog queries reduce in code over EVERY row (totals,
+      named counts, per-column stats, top-10 concentration, >3σ outliers,
+      optional group_by cut) via app/graph/queries/shapes.py;
+      mode/group_by/limit envelope on run_catalog_query (rows default keeps
+      API/services untouched); MinerTools + ChatTools default shape; agent
+      rows-drill capped at 20; full rows always retained for evidence.
+- [x] Task 2 (main thread, 1d7525d): EVIDENCE_STORED_CAP + EVIDENCE_DISPLAY_CAP
+      REMOVED — every row behind a finding stored, sorted by contribution
+      desc, per-column footer totals (evidence_totals) reconcile to the
+      headline; API serves the full set; verify_round_h H-4 re-pinned.
+- [x] Task 3 (main thread, 0e9838f): exceptions model — rates not counts
+      (app/insights/exceptions.py): affected/denominator vs the cohort
+      distribution; denominator resolves by its own language (revenue →
+      dollar-weighted prior-month credited; managed → managed accounts;
+      else accounts-in-month, labelled); product_scope narrows denominator
+      AND cohort; floor (accounts|dollars) suppresses with the reason named;
+      sensitivity flags rate > median + s×stdev (null→1.0 stated). Three
+      altitudes: /api/exceptions/firm (one row per RULE) /rule/{key} (ranked
+      by rate) /advisor/{sid}. PATCH /api/rules/{key}/exception-config
+      (plan-preserving) applied plan-derived config → RSV_v9-11.
+      driver_enabled/exception_enabled independent (driver-disabled rules
+      still evaluate, produce no driver finding). Worklist ?advisor= filter
+      + /api/insights/exceptions/advisors (H4).
+- [x] Task 4 (main thread, 071cdf1): AI Insights cross-cutting — the
+      aggregate run's opening carries the CROSS-CUTTING MANDATE (connections
+      / concentration / what-did-not-happen / what-is-about-to-matter);
+      reporter cross_cutting flag on practice runs. Driver descriptions
+      (4.1) built in CODE from the full match set (app/insights/describe.py):
+      accounts named, top-3 share, advisor attribution, tail contribution —
+      never the rule definition plus a count.
+- [x] Task 5 (main thread, no change needed): jobs API verified live —
+      GET /api/jobs (+kind/scope_key filters), GET /api/jobs/{id},
+      POST /api/jobs/{id}/resume (INTERRUPTED-only, explicit, never
+      automatic) all delivered in Round 1 task 2; smoke-tested this round.
+
 ## Round 2a (docs/ROUND_2A_EXTRACTION_SPEC.md) — extraction ready for the real load
 - [x] Task 1 (main thread, f6a1b42): ingestion batch size 5000 — the MEASURED
       default (3,169/5,375/7,706 rows/s at 500/1000/5000, 54ms round trip).
