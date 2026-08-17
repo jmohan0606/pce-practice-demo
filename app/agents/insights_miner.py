@@ -504,8 +504,13 @@ def mine(*, advisor_sid: str, from_month: str, to_month: str, rules: list[dict],
                 on_turn(turns, max_turns)
             except Exception:  # noqa: BLE001
                 _log.exception("on_turn progress hook failed — ignored")
+        # Round 3 task 1.2: the ceiling is COST-WEIGHTED (cache reads 0.1x,
+        # writes 1.25x — app/llm/usage.py) so it binds on spend, not on the
+        # cheap re-read of the cached opening every turn. Wrappers without the
+        # weighted counter fall back to the raw total (never unmetered).
         if wrapup_left is None \
-                and getattr(llm, "prompt_tokens_total", 0) >= max_prompt_tokens:
+                and getattr(llm, "budget_tokens_total",
+                            getattr(llm, "prompt_tokens_total", 0)) >= max_prompt_tokens:
             budget_hit_tokens = True
             limits_hit.append({
                 "limit_name": "MAX_RUN_INPUT_TOKENS",
