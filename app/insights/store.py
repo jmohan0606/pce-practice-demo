@@ -132,6 +132,19 @@ def _normalize_finding_driver(finding: dict) -> dict:
     return finding
 
 
+def _version_sort_key(version_id: str) -> tuple:
+    """Round 3 FOUND+FIXED: 'latest run' compared version ids as STRINGS, so
+    RSV_v8 outranked RSV_v12 and no run generated after v9 was ever served.
+    Numeric-aware: RSV_v<n> sorts by n; anything else falls back to the string
+    (sorting below any numbered version only when both forms exist)."""
+    import re
+
+    match = re.fullmatch(r"RSV_v(\d+)", str(version_id or ""))
+    if match:
+        return (1, int(match.group(1)), "")
+    return (0, 0, str(version_id or ""))
+
+
 def make_run_id(advisor_sid: str, from_month: str, to_month: str, version_id: str) -> str:
     return f"{advisor_sid}|{from_month}|{to_month}|{version_id}"
 
@@ -481,7 +494,7 @@ class InsightStore:
                           and (version_id is None or r["version_id"] == version_id)]
             if not candidates:
                 return None
-            return dict(max(candidates, key=lambda r: r["version_id"]))
+            return dict(max(candidates, key=lambda r: _version_sort_key(r["version_id"])))
 
     def runs_for_transition(self, from_month: str, to_month: str) -> list[dict]:
         with self._lock:
