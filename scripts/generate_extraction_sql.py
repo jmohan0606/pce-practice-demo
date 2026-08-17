@@ -159,13 +159,17 @@ WHERE  ltrim(trim(a.account_number),'0') IN (
 """,
         "raw_product_hierarchy.sql": """
 -- Product taxonomy. grid_type pulled as a column; build filters PRODUCT_TYPE.
+-- Round 1b: the two pay-type columns are a parallel snake_case taxonomy,
+-- carried on the product vertex alongside the display grouping.
 SELECT DISTINCT
        h.product_code                             AS product_cd,
        COALESCE(h.sub_product_code,'')            AS product_sub_cd,
        h.level_two_product                        AS product_name,
        h.level_one_product                        AS sor,
        ''                                         AS file_key,
-       h.grid_type
+       h.grid_type,
+       COALESCE(h.level_one_pay_type_product_cd,'') AS l1_pay_type_cd,
+       COALESCE(h.level_two_pay_type_product_cd,'') AS l2_pay_type_cd
 FROM   pcr.product_hierarchy h;
 """,
         "raw_revenue_transaction.sql": f"""

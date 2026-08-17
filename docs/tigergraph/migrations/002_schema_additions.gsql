@@ -32,5 +32,9 @@ CREATE GLOBAL SCHEMA_CHANGE JOB migration_002_schema_additions {
   ALTER VERTEX phx_dm_pce_advisor ADD ATTRIBUTE (
     job_code STRING
   );
+  ALTER VERTEX phx_dm_pce_product ADD ATTRIBUTE (
+    l1_pay_type_cd STRING,
+    l2_pay_type_cd STRING
+  );
 }
 RUN GLOBAL SCHEMA_CHANGE JOB migration_002_schema_additions

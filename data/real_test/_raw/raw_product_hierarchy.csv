@@ -1,15 +1,15 @@
-product_cd,product_sub_cd,product_name,sor,file_key,grid_type
-OISC,,Managed Accounts Fee,PCR,,PRODUCT_TYPE
-UMA,,Unified Managed Accounts,PCR,,PRODUCT_TYPE
-ATMF,,Trails Mutual Funds,PCR,,PRODUCT_TYPE
-MMKT,,Money Market Funds,PCR,,PRODUCT_TYPE
-STRT,,Structured Products,PCR,,PRODUCT_TYPE
-ELIS,EQ,Equities,PCR,,PRODUCT_TYPE
-ELIS,OP,Options,PCR,,PRODUCT_TYPE
-MUFD,,Mutual Funds,PCR,,PRODUCT_TYPE
-FCXX,,Corporate Bonds,PCR,,PRODUCT_TYPE
-FIX,,Fixed Annuities,PCR,,PRODUCT_TYPE
-ALTI,,Alternative Investments,PCR,,PRODUCT_TYPE
-LEND,SBL,Security Based Lending,PCR,,PRODUCT_TYPE
-EDK,,Everyday 401K,PCR,,PRODUCT_TYPE
-MISC,,Miscellaneous Level Two,PCR,,PRODUCT_TYPE
+product_cd,product_sub_cd,product_name,sor,file_key,grid_type,l1_pay_type_cd,l2_pay_type_cd
+OISC,,Managed Accounts Fee,PCR,,PRODUCT_TYPE,managed,advisory
+UMA,,Unified Managed Accounts,PCR,,PRODUCT_TYPE,managed,unified_managed_accounts
+ATMF,,Trails Mutual Funds,PCR,,PRODUCT_TYPE,trails,mutual_funds_12B1
+MMKT,,Money Market Funds,PCR,,PRODUCT_TYPE,cash_management,money_market_funds
+STRT,,Structured Products,PCR,,PRODUCT_TYPE,structured_products,structured_products
+ELIS,EQ,Equities,PCR,,PRODUCT_TYPE,equities_and_options,equities
+ELIS,OP,Options,PCR,,PRODUCT_TYPE,equities_and_options,options
+MUFD,,Mutual Funds,PCR,,PRODUCT_TYPE,mutual_funds,mutual_funds
+FCXX,,Corporate Bonds,PCR,,PRODUCT_TYPE,fixed_income,corporate_bonds
+FIX,,Fixed Annuities,PCR,,PRODUCT_TYPE,annuities,fixed
+ALTI,,Alternative Investments,PCR,,PRODUCT_TYPE,alternative_investments,alternative_investments
+LEND,SBL,Security Based Lending,PCR,,PRODUCT_TYPE,lending,securities_based_lending
+EDK,,Everyday 401K,PCR,,PRODUCT_TYPE,referrals_and_revenue_share,everyday_401k
+MISC,,Miscellaneous Level Two,PCR,,PRODUCT_TYPE,,

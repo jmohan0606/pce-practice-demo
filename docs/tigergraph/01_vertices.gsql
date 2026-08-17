@@ -24,7 +24,8 @@ WITH primary_id_as_attribute="true";
 // V4
 CREATE VERTEX phx_dm_pce_product (PRIMARY_ID product_id STRING, product_cd STRING,
   product_sub_cd STRING, product_name STRING, sor STRING, file_key STRING,
-  group_id STRING, grid_type STRING) WITH primary_id_as_attribute="true";
+  group_id STRING, grid_type STRING, l1_pay_type_cd STRING,
+  l2_pay_type_cd STRING) WITH primary_id_as_attribute="true";
 
 // V5
 CREATE VERTEX phx_dm_pce_advisor (PRIMARY_ID advisor_sid STRING, rep_code STRING,

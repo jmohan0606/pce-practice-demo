@@ -199,9 +199,14 @@ def main() -> int:
     eci_by_acct = {a["account_no"]: a["primary_eci_id"] for a in accounts}
 
     # ---- product hierarchy (incl. MISC -> unmapped) ----
+    # Round 1b: pay-type codes from the export's parallel taxonomy (MISC,
+    # being off-export, gets blanks — never guessed)
+    from scripts.generate_mock_data import pay_type_codes
     write(out, "raw_product_hierarchy.csv", [{
         "product_cd": cd, "product_sub_cd": sub, "product_name": name,
         "sor": "PCR", "file_key": "", "grid_type": "PRODUCT_TYPE",
+        "l1_pay_type_cd": pay_type_codes(cd, sub)[0],
+        "l2_pay_type_cd": pay_type_codes(cd, sub)[1],
     } for cd, sub, name in HIERARCHY])
 
     # ---- transactions ----

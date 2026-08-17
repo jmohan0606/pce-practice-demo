@@ -95,7 +95,8 @@ RAW_CONTRACT: dict[str, list[str]] = {
                         "account_lob_cd", "account_purpose_cd", "managed_platform_cd",
                         "service_channel_cd", "account_open_dt", "primary_eci_id"],
     "raw_product_hierarchy.csv": ["product_cd", "product_sub_cd", "product_name",
-                                  "sor", "file_key", "grid_type"],
+                                  "sor", "file_key", "grid_type",
+                                  "l1_pay_type_cd", "l2_pay_type_cd"],
     "raw_revenue_transaction.csv": ["trade_ref_no", "split_seq_no", "advisor_sid",
                                     "account_no", "product_cd", "product_sub_cd",
                                     "trade_dt", "proc_dt", "post_split_credited_amt",
@@ -313,6 +314,9 @@ def build_products(hier_rows: list[dict], txns_products: set[str]) -> list[dict]
             "file_key": r["file_key"] or "product_hierarchy",
             "group_id": resolve_product(r["product_cd"], r["product_sub_cd"]),
             "grid_type": r.get("grid_type") or "PRODUCT_TYPE",
+            # Round 1b: the export's parallel pay-type taxonomy, carried as-is
+            "l1_pay_type_cd": r["l1_pay_type_cd"],
+            "l2_pay_type_cd": r["l2_pay_type_cd"],
         })
     # products traded but absent from the hierarchy: kept VISIBLE as unmapped
     # vertices (never dropped — a missing product row silently drops every
@@ -324,6 +328,8 @@ def build_products(hier_rows: list[dict], txns_products: set[str]) -> list[dict]
             "product_name": f"Unmapped product {pid}", "sor": "",
             "file_key": "txn_only", "group_id": resolve_product(cd, sub),
             "grid_type": "PRODUCT_TYPE",
+            # not in the hierarchy export -> no pay-type codes, never guessed
+            "l1_pay_type_cd": "", "l2_pay_type_cd": "",
         })
     return rows
 
@@ -644,7 +650,7 @@ VERTEX_COLUMNS = {
     "phx_dm_pce_month": ["month_id", "month_name", "start_dt", "end_dt", "trading_days", "is_baseline", "is_partial"],
     "phx_dm_pce_revenue_class": ["class_id", "class_name"],
     "phx_dm_pce_product_group": ["group_id", "group_name", "display_prefix", "class_id", "sort_order", "is_aggregated"],
-    "phx_dm_pce_product": ["product_id", "product_cd", "product_sub_cd", "product_name", "sor", "file_key", "group_id", "grid_type"],
+    "phx_dm_pce_product": ["product_id", "product_cd", "product_sub_cd", "product_name", "sor", "file_key", "group_id", "grid_type", "l1_pay_type_cd", "l2_pay_type_cd"],
     "phx_dm_pce_advisor": ["advisor_sid", "rep_code", "advisor_name", "branch_cd", "employee_id", "in_cohort", "job_code"],
     "phx_dm_pce_account": ["acct_key", "account_no_raw", "account_class_cd", "account_class_nm", "account_lob_cd",
                            "account_purpose_cd", "managed_platform_cd", "service_channel_cd", "account_open_dt",

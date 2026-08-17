@@ -41,7 +41,9 @@
         "sor": "STRING",
         "file_key": "STRING",
         "group_id": "STRING",
-        "grid_type": "STRING"
+        "grid_type": "STRING",
+        "l1_pay_type_cd": "STRING",
+        "l2_pay_type_cd": "STRING"
       }
     },
     "phx_dm_pce_advisor": {

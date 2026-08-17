@@ -61,7 +61,9 @@
         "sor": "sor",
         "file_key": "file_key",
         "group_id": "group_id",
-        "grid_type": "grid_type"
+        "grid_type": "grid_type",
+        "l1_pay_type_cd": "l1_pay_type_cd",
+        "l2_pay_type_cd": "l2_pay_type_cd"
       },
       "expected_rows": 31,
       "order": 4

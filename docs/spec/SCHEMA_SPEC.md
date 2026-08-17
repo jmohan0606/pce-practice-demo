@@ -89,11 +89,15 @@ Seeded from §4 (24 rows). `display_prefix` is `TWHS` where applicable, else emp
 ```sql
 CREATE VERTEX phx_dm_pce_product (PRIMARY_ID product_id STRING, product_cd STRING,
   product_sub_cd STRING, product_name STRING, sor STRING, file_key STRING,
-  group_id STRING, grid_type STRING) WITH primary_id_as_attribute="true";
+  group_id STRING, grid_type STRING, l1_pay_type_cd STRING,
+  l2_pay_type_cd STRING) WITH primary_id_as_attribute="true";
 ```
 `product_id = product_cd || '|' || product_sub_cd`. Source `pcr.product_hierarchy` filtered to
 `grid_type = 'PRODUCT_TYPE'`. Products not in the §4 mapping keep their `level_two_product` name
-and map to group `unmapped`.
+and map to group `unmapped`. `l1_pay_type_cd` / `l2_pay_type_cd` (Round 1b) carry the export's
+`level_one_pay_type_product_cd` / `level_two_pay_type_product_cd` — a parallel snake_case
+taxonomy (e.g. `managed` / `unified_managed_accounts`), CARRIED alongside the §4 grouping and
+never a substitute for it; products absent from the hierarchy get empty strings.
 
 ### V5 · `phx_dm_pce_advisor`
 ```sql

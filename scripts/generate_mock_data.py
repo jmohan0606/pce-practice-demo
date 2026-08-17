@@ -103,6 +103,57 @@ def bl(b: bool) -> str:
 
 
 # --------------------------------------------------------------------------- products
+# Round 1b — the two pay-type columns from the client's product_hierarchy
+# export (docs/spec/PRODUCT_HIERARCHY_FULL.md, transcribed 2026-08-16): a
+# parallel snake_case taxonomy carried on the product vertex ALONGSIDE the
+# display grouping, never a substitute for it. Keyed (product_cd, product_sub_cd)
+# for the sub-code-split codes, product_cd alone otherwise. Real builds read
+# the export's own columns; this table is for MOCK/TEST data only.
+PAY_TYPE_CODES: dict[tuple[str, str] | str, tuple[str, str]] = {
+    "ITMF": ("trails", "trails_annuities"),
+    "ADVA": ("trails", "mac"),
+    "529T": ("trails", "529"),
+    "ATMF": ("trails", "mutual_funds_12B1"),
+    "MMKT": ("cash_management", "money_market_funds"),
+    "PRDP": ("cash_management", "premium_deposits"),
+    "FCCD": ("cash_management", "brokered_cds"),
+    "FIX": ("annuities", "fixed"),
+    "VARI": ("annuities", "variable"),
+    ("ELIS", "EQ"): ("equities_and_options", "equities"),
+    ("ELIS", "OP"): ("equities_and_options", "options"),
+    "FCXX": ("fixed_income", "corporate_bonds"),
+    "FMXX": ("fixed_income", "municipal_bonds"),
+    "FGXX": ("fixed_income", "government_bonds"),
+    "FCOT": ("fixed_income", "other_bonds"),
+    "MUFD": ("mutual_funds", "mutual_funds"),
+    "ALTI": ("alternative_investments", "alternative_investments"),
+    "STRT": ("structured_products", "structured_products"),
+    "LIFE": ("insurance", "insurance"),
+    ("LEND", "SBL"): ("lending", "securities_based_lending"),
+    ("LEND", "MGN"): ("lending", "margin"),
+    ("PCS", "SP"): ("referrals_and_revenue_share", "situational_partnership"),
+    ("PCS", "PBR"): ("referrals_and_revenue_share", "private_bank_referral"),
+    # the committed mock data's sub-less PCS rows mean Situational Partnership
+    ("PCS", ""): ("referrals_and_revenue_share", "situational_partnership"),
+    "EDK": ("referrals_and_revenue_share", "everyday_401k"),
+    "OTH": ("referrals_and_revenue_share", "other_referrals_and_revenue_share"),
+    "DAF": ("donor_advised_funds", "donor_advised_funds"),
+    "DCCR": ("defined_contribution_advisory", "defined_contribution_advisory"),
+    "OIS1": ("managed", "mutual_fund_advisory_portfolio"),
+    "OISC": ("managed", "advisory"),
+    "MAP": ("managed", "jpmcap"),
+    "JPMC": ("managed", "customized_bond_portfolio"),
+    "UMA": ("managed", "unified_managed_accounts"),
+}
+
+
+def pay_type_codes(product_cd: str, product_sub_cd: str = "") -> tuple[str, str]:
+    """(l1_pay_type_cd, l2_pay_type_cd) for a mock product; absent -> ('','')
+    — a code the export does not carry gets empty strings, never a guess."""
+    return PAY_TYPE_CODES.get((product_cd, product_sub_cd),
+                              PAY_TYPE_CODES.get(product_cd, ("", "")))
+
+
 def build_products() -> list[dict]:
     rows = []
     for g in PRODUCT_GROUPS:
@@ -114,17 +165,20 @@ def build_products() -> list[dict]:
             else:
                 base, sub = cd, ""
             pid = f"{base}|{sub}"
+            l1, l2 = pay_type_codes(base, sub)
             rows.append({
                 "product_id": pid, "product_cd": base, "product_sub_cd": sub,
                 "product_name": g.group_name if len(g.product_cds) == 1 else f"{g.group_name} — {base}{('/' + sub) if sub else ''}",
                 "sor": "PCR", "file_key": "product_hierarchy", "group_id": g.group_id,
                 "grid_type": "PRODUCT_TYPE",
+                "l1_pay_type_cd": l1, "l2_pay_type_cd": l2,
             })
     # one deliberately unmapped product — visible, never dropped
     rows.append({
         "product_id": "MISC|", "product_cd": "MISC", "product_sub_cd": "",
         "product_name": "Miscellaneous Level Two", "sor": "PCR", "file_key": "product_hierarchy",
         "group_id": "unmapped", "grid_type": "PRODUCT_TYPE",
+        "l1_pay_type_cd": "", "l2_pay_type_cd": "",
     })
     return rows
 
@@ -880,7 +934,7 @@ VERTEX_COLUMNS = {
     "phx_dm_pce_month": ["month_id", "month_name", "start_dt", "end_dt", "trading_days", "is_baseline", "is_partial"],
     "phx_dm_pce_revenue_class": ["class_id", "class_name"],
     "phx_dm_pce_product_group": ["group_id", "group_name", "display_prefix", "class_id", "sort_order", "is_aggregated"],
-    "phx_dm_pce_product": ["product_id", "product_cd", "product_sub_cd", "product_name", "sor", "file_key", "group_id", "grid_type"],
+    "phx_dm_pce_product": ["product_id", "product_cd", "product_sub_cd", "product_name", "sor", "file_key", "group_id", "grid_type", "l1_pay_type_cd", "l2_pay_type_cd"],
     "phx_dm_pce_advisor": ["advisor_sid", "rep_code", "advisor_name", "branch_cd", "employee_id", "in_cohort", "job_code"],
     "phx_dm_pce_account": ["acct_key", "account_no_raw", "account_class_cd", "account_class_nm", "account_lob_cd",
                             "account_purpose_cd", "managed_platform_cd", "service_channel_cd", "account_open_dt",
