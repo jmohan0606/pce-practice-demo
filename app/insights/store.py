@@ -494,7 +494,12 @@ class InsightStore:
                           and (version_id is None or r["version_id"] == version_id)]
             if not candidates:
                 return None
-            return dict(max(candidates, key=lambda r: _version_sort_key(r["version_id"])))
+            # Round 3: a FAILED regeneration never displaces served content —
+            # the latest COMPLETE run wins; only when no COMPLETE run exists
+            # is the newest (failed/running) run returned so its state shows.
+            complete = [r for r in candidates if r["status"] == "COMPLETE"]
+            pool = complete or candidates
+            return dict(max(pool, key=lambda r: _version_sort_key(r["version_id"])))
 
     def runs_for_transition(self, from_month: str, to_month: str) -> list[dict]:
         with self._lock:

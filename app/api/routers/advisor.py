@@ -302,6 +302,20 @@ def coaching_get(sid: str, from_month: str = Query(..., alias="from"),
         return {"generated": False, "advisor_sid": sid,
                 "from_month": from_month, "to_month": to_month,
                 "points": [], "note": "no coaching generated yet"}
+    # Round 3 review B7 — severity resolves AT READ TIME against the served
+    # rule set (driver-label precedent): stored points always rank by the
+    # CURRENT severity model, and pre-B7 stored results gain severity without
+    # a regeneration (no LLM call).
+    from app.agents.coach import _point_severity
+    from app.rules.store import SEVERITIES
+
+    stored = dict(stored)
+    points = [dict(p) for p in stored.get("points") or []]
+    for p in points:
+        p["severity"], p["severity_basis"] = _point_severity(p.get("text") or "")
+    rank = {level: i for i, level in enumerate(SEVERITIES)}
+    points.sort(key=lambda p: rank.get(p.get("severity") or "INFO", len(rank)))
+    stored["points"] = points
     return {"generated": True, **stored}
 
 
