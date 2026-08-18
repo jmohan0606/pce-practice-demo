@@ -29,3 +29,29 @@ Verify the backend took it:
 
 cmd
 curl -s http://localhost:8003/api/health
+
+Deleting documents
+-----------------
+cmd
+curl -s http://localhost:8003/api/documents
+
+That lists them with their IDs, and you can delete directly:
+
+cmd
+curl -X DELETE http://localhost:8003/api/documents/<document_id>
+
+Check and delete chromadb
+-----------------------------------
+Check first, one command after deleting a document:
+
+cmd
+.venv\Scripts\python.exe -c "import chromadb,os; c=chromadb.PersistentClient(path=os.getenv('CHROMA_PATH','./chroma')); [print(x.name, x.count()) for x in c.list_collections()]"
+
+Run it before and after a delete. If the count drops, cleanup works and you needn't touch Chroma.
+
+If it doesn't drop, deleting the whole store is the blunt fix:
+
+cmd
+rmdir /s /q chroma
+
+
