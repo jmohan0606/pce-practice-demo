@@ -47,5 +47,19 @@ Do not start the full load until A3 and A4 pass: the client class must be the Ti
 Also fix the blank advisor_sid on row 1 of phx_dm_pce_advisor.csv (Part C) — it should be the literal __UNATTRIBUTED__. Fix the value; never delete the row.
 
 Run the load from a standalone PowerShell window, not the IntelliJ terminal — the IDE hung on this output volume once already.
+---------------------------------------------------------------------------------------
+Read docs/COPILOT_DIAGNOSE_LOAD_SPEED.md in full and work through all six sections.
+
+This is analysis only. Do not change any code. Do not stop or restart the load — it can keep running while you investigate.
+
+The problem: measure_ingest_rate.py measured 7,706 rows/sec, but the real load is running at roughly 133 rows/sec — 58× slower. At that rate 144M rows would take 300 hours instead of 3.
+
+Three things are already ruled out and must not be re-checked: batch_size is 5000 in the manifest, _flush_writes() makes one bulk adapter call per flush rather than one per row, and connectivity is genuinely real (tier 2 pytigergraph, no fallback).
+
+Section 5 is the most important — determine exactly how measure_ingest_rate.py differed from the real load path, especially whether it bypassed IngestionService and its per-row hash checkpointing. If it did, the measurement was honest but unrepresentative.
+
+Report using the exact template at the end of the document, and finish with one sentence naming the bottleneck.
+
+Never estimate a number — every figure comes from a command that ran. If a file or symbol is not where expected, report it rather than searching elsewhere.
 
 Two identical failures = stop and report. Never a third attempt. Never estimate a number.
