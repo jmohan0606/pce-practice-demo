@@ -120,3 +120,14 @@ print(f'April firm:    \${f:,.2f}')
 print(f'April advisor: \${a:,.2f}')
 "
 -----------------------------------
+uv run python -c "
+import csv, glob
+csv.field_size_limit(10**9)
+tot=0.0; n=0
+for f in glob.glob('data/real/_raw/raw_txn_202604_b*.csv'):
+    for r in csv.DictReader(open(f,newline='',encoding='utf-8-sig')):
+        rc=(r.get('reason_cd') or '').strip()
+        if rc not in ('9X','XX'):
+            tot+=float(r.get('post_split_credited_amt') or 0); n+=1
+print(f'raw April firm-filter: \${tot:,.2f} over {n:,} rows')
+"
