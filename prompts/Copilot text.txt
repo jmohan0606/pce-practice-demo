@@ -76,7 +76,16 @@ print([l.strip() for l in s.splitlines() if 'rpg' in l][:3])
 The rpg line must show ::text. Do not run a chunk until that output confirms it.
 
 While you are there, check every other COALESCE(col,'') in the transaction template against the column's actual type in information_schema.columns, and report any others that are non-text. A second type error would cost another failed chunk.
----------------------------
-Good rates. Continue to completion and report at 28, 56 and 84 chunks — completed count, elapsed time for that block, and any failure. Refresh the token and rerun the identical command whenever it expires; expect two or three refreshes. Do not stop to ask between milestones.
-
 Then run the extraction and report the first 5 chunks with wall time and row counts.
+
+----------------------------------
+Go-ahead given. Proceed from step 9 of the runbook — build, load, reconcile, smoke test.
+
+The V-2 flows failure is resolved and not a data problem: the two per-month flow files exist and were accepted; only the bookkeeping key was stale.
+
+Two things to report as you go:
+
+Step 9 — the dropped-edge counts. Small drops are expected; large ones on account_in_household or txn_for_account mean the reused account extracts are stale, in which case stop and report. A substantial nnm_in_month drop is expected and correct.
+Step 11 — the full reconciliation output.
+
+Load takes about 3 hours. Never --fresh; rerun the identical command if interrupted. Report at the end of each step, not in between.
