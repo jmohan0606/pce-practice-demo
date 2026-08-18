@@ -20,18 +20,22 @@
  * tab produces a horizontal scrollbar.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   type DocumentInfo,
+  type RuleDetail,
   getDocuments,
+  getRulesDetailed,
   uploadDocuments,
 } from "@/lib/api";
 import {
+  type BatchApproveResult,
   DOCUMENT_CATEGORIES,
   type DocumentCategory,
   EXTRACTING_CATEGORIES,
   RulesApiError,
+  batchApproveDocument,
   setDocumentCategory,
 } from "@/lib/rulesApi";
 import Chip, { type ChipVariant } from "@/components/Chip";
@@ -39,8 +43,9 @@ import EmptyState from "@/components/EmptyState";
 import PageHeader from "@/components/PageHeader";
 import { Pager, usePager } from "@/components/Pager";
 import ExceptionsTab from "@/components/rules/ExceptionsTab";
+import ExtractionProgress from "@/components/rules/ExtractionProgress";
 import ManualRuleForm from "@/components/rules/ManualRuleForm";
-import RuleListManager from "@/components/rules/RuleListManager";
+import RuleListManager, { type RulesPreset } from "@/components/rules/RuleListManager";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8002";
@@ -91,9 +96,43 @@ export default function DocumentsPage() {
   const [docType, setDocType] = useState<DocumentCategory>("PLAN");
   const [categoryBusy, setCategoryBusy] = useState<string | null>(null);
   const [extractionOffer, setExtractionOffer] = useState<string | null>(null);
-  const [extractBusy, setExtractBusy] = useState(false);
+  const [extractingDoc, setExtractingDoc] = useState<string | null>(null);
   const [docActionError, setDocActionError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  // Round 5 task 13 — the journey across the tabs
+  const [drafts, setDrafts] = useState<RuleDetail[]>([]);
+  const [rulesPreset, setRulesPreset] = useState<RulesPreset | null>(null);
+  const [batchFor, setBatchFor] = useState<DocRow | null>(null);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchResult, setBatchResult] = useState<BatchApproveResult | null>(null);
+
+  const refreshDrafts = useCallback(() => {
+    getRulesDetailed("drafts")
+      .then((res) => setDrafts(res.rules ?? []))
+      .catch(() => setDrafts([]));
+  }, []);
+
+  useEffect(() => {
+    refreshDrafts();
+  }, [refreshDrafts]);
+
+  // 13.2 — per-document draft-pool counts (the handoff into the Rules tab)
+  const draftsByDoc = useMemo(() => {
+    const grouped: Record<string, RuleDetail[]> = {};
+    for (const r of drafts) {
+      if (!r.document_id) continue;
+      (grouped[r.document_id] ??= []).push(r);
+    }
+    return grouped;
+  }, [drafts]);
+
+  // switch to the Rules tab with preset filters (13.2 → 13.3); the token
+  // makes the same link clickable twice
+  const openRules = useCallback((preset: Omit<RulesPreset, "token">) => {
+    setRulesPreset({ ...preset, token: Date.now() });
+    setTab("rules");
+  }, []);
 
   const refreshDocuments = useCallback(() => {
     getDocuments()
@@ -164,7 +203,7 @@ export default function DocumentsPage() {
 
   const runExtraction = useCallback(
     async (documentId: string) => {
-      setExtractBusy(true);
+      setExtractingDoc(documentId);
       setDocActionError(null);
       try {
         const response = await fetch(
@@ -183,14 +222,35 @@ export default function DocumentsPage() {
         }
         setExtractionOffer(null);
         refreshDocuments();
+        refreshDrafts();
       } catch (e) {
         setDocActionError(String((e as Error)?.message || e));
       } finally {
-        setExtractBusy(false);
+        setExtractingDoc(null);
       }
     },
-    [refreshDocuments],
+    [refreshDocuments, refreshDrafts],
   );
+
+  // 13.4 — batch approval: list first, approve on confirm, one version minted
+  const runBatchApprove = useCallback(async () => {
+    if (!batchFor) return;
+    setBatchBusy(true);
+    setBatchError(null);
+    try {
+      const result = await batchApproveDocument(batchFor.document_id);
+      setBatchResult(result);
+      setBatchFor(null);
+      refreshDrafts();
+      refreshDocuments();
+    } catch (e) {
+      setBatchError(
+        e instanceof RulesApiError ? e.message : String((e as Error)?.message || e),
+      );
+    } finally {
+      setBatchBusy(false);
+    }
+  }, [batchFor, refreshDrafts, refreshDocuments]);
 
   const documentsTab = (
     <div className="card">
@@ -222,12 +282,66 @@ export default function DocumentsPage() {
         {docActionError ? (
           <div style={{ color: "var(--neg, #B3261E)", fontSize: 12.5, margin: "8px 0" }}>{docActionError}</div>
         ) : null}
+        {/* 13.5 — close the loop: what changed and where it went */}
+        {batchResult ? (
+          <div className="note" style={{ border: "1px solid var(--rule)", borderRadius: 5, margin: "8px 0" }}>
+            <b>
+              Published rule set v{batchResult.version?.version_no ?? "?"} —{" "}
+              {batchResult.approved_count} rule{batchResult.approved_count === 1 ? "" : "s"} from{" "}
+              {batchResult.document_name || batchResult.document_id}.
+            </b>{" "}
+            <a href="/rules">View in Rule Versions</a>
+            {" · "}
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = "/";
+              }}
+              style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "var(--brand, #0B5FFF)", textDecoration: "underline", cursor: "pointer" }}
+              title="Opens the Dashboard's AI Insights section — generation only runs when you press Generate there; it is never triggered automatically"
+            >
+              Regenerate insights (on the Dashboard)
+            </button>
+            {batchResult.failures.length ? (
+              <div style={{ marginTop: 6, fontSize: 12.5 }}>
+                <b>Not approved:</b>
+                {batchResult.failures.map((f) => (
+                  <div key={f.rule_key} className="eg">
+                    <b>{f.rule_code || f.rule_key}</b> — {f.reason}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {documents && documents.length ? (
           <>
             <ul className="doclist">
               {docPager.rows.map((doc) => {
                 const chip = statusChip(doc.status);
                 const category = (doc.document_category || doc.document_type || "PLAN") as DocumentCategory;
+                const docDrafts = draftsByDoc[doc.document_id] ?? [];
+                const compiledCount = docDrafts.filter((r) => r.status === "COMPILED").length;
+                const needsInputCount = docDrafts.filter((r) => r.status === "NEEDS_INPUT").length;
+                const needsDataCount = docDrafts.filter((r) => r.status === "NEEDS_DATA").length;
+                const countLink = (label: string, status: string | undefined) => (
+                  <button
+                    type="button"
+                    onClick={() => openRules({ documentId: doc.document_id, status })}
+                    title="Open the Rules tab filtered to this document and status"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      font: "inherit",
+                      color: "var(--brand, #0B5FFF)",
+                      textDecoration: "underline",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
                 return (
                   <li key={doc.document_id}>
                     <div style={{ minWidth: 0 }}>
@@ -242,21 +356,59 @@ export default function DocumentsPage() {
                           .filter(Boolean)
                           .join(" · ")}
                       </div>
+                      {/* 13.2 — extraction counts are the handoff: each count
+                          links into the Rules tab pre-filtered to this
+                          document AND that status */}
+                      {docDrafts.length ? (
+                        <div style={{ marginTop: 4, fontSize: 12.5, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          {countLink(`${docDrafts.length} extracted`, undefined)}
+                          <span>·</span>
+                          {countLink(`${compiledCount} compiled`, "COMPILED")}
+                          <span>·</span>
+                          {countLink(`${needsInputCount} need a value`, "NEEDS_INPUT")}
+                          <span>·</span>
+                          {countLink(`${needsDataCount} need data we don’t have`, "NEEDS_DATA")}
+                          {compiledCount > 0 ? (
+                            <button
+                              className="btn"
+                              style={{ padding: "2px 8px", marginLeft: 6 }}
+                              disabled={batchBusy}
+                              onClick={() => {
+                                setBatchError(null);
+                                setBatchResult(null);
+                                setBatchFor(doc);
+                              }}
+                            >
+                              Approve all compiled from this document ({compiledCount})
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {/* 13.1 — live stage progress from the job record; an
+                          INTERRUPTED job offers an explicit Resume */}
+                      <ExtractionProgress
+                        documentId={doc.document_id}
+                        extracting={extractingDoc === doc.document_id}
+                        onFinished={() => {
+                          refreshDocuments();
+                          refreshDrafts();
+                        }}
+                      />
                       {extractionOffer === doc.document_id ? (
                         <div style={{ marginTop: 6, fontSize: 12.5 }}>
                           This category feeds the Rule Extractor — run extraction now?{" "}
                           <button
                             className="btn primary"
                             style={{ padding: "3px 9px" }}
-                            disabled={extractBusy}
+                            disabled={extractingDoc !== null}
                             onClick={() => runExtraction(doc.document_id)}
                           >
-                            {extractBusy ? "Extracting…" : "Run extraction"}
+                            {extractingDoc === doc.document_id ? "Extracting…" : "Run extraction"}
                           </button>{" "}
                           <button
                             className="btn"
                             style={{ padding: "3px 9px" }}
-                            disabled={extractBusy}
+                            disabled={extractingDoc !== null}
                             onClick={() => setExtractionOffer(null)}
                           >
                             Not now
@@ -322,6 +474,53 @@ export default function DocumentsPage() {
 
       {tab === "documents" ? documentsTab : null}
 
+      {/* 13.4 — batch approval confirm: LISTS every rule it is about to
+          approve, never a blind bulk action. Only COMPILED rules are listed
+          (NEEDS_INPUT / NEEDS_DATA are ineligible; the API refuses them too). */}
+      <div className={`scrim${batchFor ? " on" : ""}`} onClick={() => (batchBusy ? null : setBatchFor(null))}></div>
+      <div
+        className={`modal narrow${batchFor ? " on" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Approve all compiled rules from this document"
+      >
+        <div className="m-head">
+          Approve {batchFor ? (draftsByDoc[batchFor.document_id] ?? []).filter((r) => r.status === "COMPILED").length : 0}{" "}
+          Compiled Rule
+          {batchFor && (draftsByDoc[batchFor.document_id] ?? []).filter((r) => r.status === "COMPILED").length === 1 ? "" : "s"}
+          ?
+        </div>
+        <div className="m-body">
+          <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--slate)" }}>
+            These compiled rules from <b>{batchFor?.document_name}</b> will be approved and
+            published together as ONE new rule-set version. Rules still needing a value or data
+            are not included — they cannot run.
+          </p>
+          {batchFor
+            ? (draftsByDoc[batchFor.document_id] ?? [])
+                .filter((r) => r.status === "COMPILED")
+                .map((r) => (
+                  <div key={r.rule_key || r.rule_code} className="eg" style={{ marginBottom: 6 }}>
+                    <b>{r.rule_code}</b> — {r.rule_name || "unnamed"}
+                  </div>
+                ))
+            : null}
+          {batchError ? (
+            <div className="note" style={{ border: "1px solid var(--neg-br)", borderRadius: 5, marginTop: 8 }}>
+              {batchError}
+            </div>
+          ) : null}
+        </div>
+        <div className="m-foot">
+          <button className="btn" disabled={batchBusy} onClick={() => setBatchFor(null)}>
+            Cancel
+          </button>
+          <button className="btn primary" disabled={batchBusy} onClick={runBatchApprove}>
+            {batchBusy ? "Approving…" : "Approve and publish"}
+          </button>
+        </div>
+      </div>
+
       {tab === "rules" ? (
         <div className="card">
           <div className="card-h">
@@ -335,7 +534,7 @@ export default function DocumentsPage() {
             </div>
           </div>
           <div className="card-b">
-            <RuleListManager />
+            <RuleListManager preset={rulesPreset} />
           </div>
         </div>
       ) : null}

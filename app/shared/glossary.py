@@ -64,6 +64,29 @@ PROVENANCE_DEFINITIONS: dict[str, str] = {
 }
 
 
+# Round 5 task 12 — plain-English rule-status meanings shown on the Rules
+# tab's section headers (and any tooltip that names a status). Seven statuses
+# from app.rules.store.RULE_STATUSES plus INACTIVE, which is a FLAG not a
+# status: a rule can be Published AND Inactive, and it renders under Inactive
+# so what is actually running is unambiguous. Served as rule_status.<KEY>.
+RULE_STATUS_DEFINITIONS: dict[str, str] = {
+    "DRAFT": "Extracted or written, not yet reviewed. Does not affect insights",
+    "COMPILED": "Has a working query and is ready for approval. Does not "
+                "affect insights until published",
+    "PUBLISHED": "Approved and in use — these are the rules that produce "
+                 "findings and exceptions",
+    "NEEDS_INPUT": "The document references a value it never states. Supply "
+                   "the value to publish it",
+    "NEEDS_DATA": "Correct, but the graph has no field to evaluate it "
+                  "against. This list is the client conversation",
+    "SUPERSEDED": "Replaced by a newer version. Kept so past insights remain "
+                  "traceable, never deleted",
+    "REJECTED": "Reviewed and declined. Kept for the record",
+    "INACTIVE": "Published but switched off — excluded from new insight runs, "
+                "existing insights unaffected",
+}
+
+
 def build_glossary() -> dict:
     """Every term the UI needs to explain, keyed by stable term code. Driver
     definitions are resolved live from the rule store so a rename or a newly
@@ -83,6 +106,10 @@ def build_glossary() -> dict:
     for level, definition in SEVERITY_DEFINITIONS.items():
         terms[f"severity.{level}"] = {"term": level.title(), "kind": "severity",
                                       "definition": definition}
+    for status, definition in RULE_STATUS_DEFINITIONS.items():
+        terms[f"rule_status.{status}"] = {
+            "term": status.replace("_", " ").title(), "kind": "rule_status",
+            "definition": definition}
     for chip, definition in PROVENANCE_DEFINITIONS.items():
         terms[f"provenance.{chip}"] = {"term": chip, "kind": "provenance",
                                        "definition": definition}

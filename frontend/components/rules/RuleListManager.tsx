@@ -17,12 +17,13 @@
  * have") with each bucket expandable to its per-rule reasons.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ApiError,
   type ExtractionSummary,
   type RuleDetail,
   type RuleVersion,
+  getDocuments,
   getExtractionSummary,
   getRulesDetailed,
 } from "@/lib/api";
@@ -34,6 +35,7 @@ import {
   setRuleActive,
 } from "@/lib/rulesApi";
 import { Pager, usePager } from "@/components/Pager";
+import { useGlossary } from "@/components/Term";
 import AppliesToChip from "@/components/rules/AppliesToChip";
 import AttemptCompare from "@/components/rules/AttemptCompare";
 import PlanView from "@/components/rules/PlanView";
@@ -42,16 +44,51 @@ import ReasonModal from "@/components/rules/ReasonModal";
 import SeverityChip from "@/components/rules/SeverityChip";
 import StatusChip from "@/components/rules/StatusChip";
 
-/** Draft-pool status groups, in review order. Approved (version-bound) rules
- * form their own group below. */
-const DRAFT_GROUPS: { status: string; label: string }[] = [
-  { status: "COMPILED", label: "Compiled — Awaiting Approval" },
-  { status: "DRAFT", label: "Draft — Not Yet Compiled" },
-  { status: "NEEDS_INPUT", label: "Need a Value" },
-  { status: "NEEDS_DATA", label: "Need Data We Don't Have" },
-];
+/** Round 5 task 12 — the collapsible status sections, in review order.
+ * INACTIVE is a FLAG not a status: any rule with active=false lands in the
+ * Inactive section (never under Published), so what is actually running is
+ * unambiguous. Labels and one-line meanings come from the glossary
+ * (rule_status.<KEY>) — never hardcoded here. */
+const SECTION_ORDER = [
+  "DRAFT",
+  "NEEDS_INPUT",
+  "NEEDS_DATA",
+  "COMPILED",
+  "PUBLISHED",
+  "INACTIVE",
+  "SUPERSEDED",
+  "REJECTED",
+] as const;
+type SectionId = (typeof SECTION_ORDER)[number];
+
+/** The page opens on the work: what needs attention expands, what is already
+ * working (or historical) collapses. Empty sections are hidden entirely. */
+const DEFAULT_EXPANDED: ReadonlySet<SectionId> = new Set([
+  "DRAFT",
+  "NEEDS_INPUT",
+  "NEEDS_DATA",
+  "COMPILED",
+]);
+
+/** Sections whose rules are draft-pool (selectable for delete). */
+const SELECTABLE_SECTIONS: ReadonlySet<SectionId> = new Set([
+  "DRAFT",
+  "NEEDS_INPUT",
+  "NEEDS_DATA",
+  "COMPILED",
+  "REJECTED",
+]);
 
 const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MODERATE", "LOW", "INFO"];
+
+/** Round 5 task 13.2/13.3 — preset filters handed over from a document row's
+ * count links. `token` forces re-application when the same link is clicked
+ * twice. */
+export interface RulesPreset {
+  documentId?: string;
+  status?: string;
+  token?: number;
+}
 
 function keyOf(rule: RuleDetail): string {
   return rule.rule_key || rule.rule_code;
@@ -82,6 +119,7 @@ function isApproved(rule: RuleDetail): boolean {
 interface Pools {
   drafts: RuleDetail[];
   published: RuleDetail[];
+  archived: RuleDetail[];
   version: RuleVersion | null;
 }
 
@@ -90,7 +128,98 @@ function errText(e: unknown): string {
   return String((e as Error)?.message || e);
 }
 
-export default function RuleListManager() {
+/** One collapsible status section: header with count + plain-English meaning,
+ * pagination WITHIN the section, per-section select-all on draft-pool rules.
+ * Top-level component so its pager state survives parent re-renders. */
+function StatusSection({
+  label,
+  meaning,
+  rules,
+  expanded,
+  onToggle,
+  renderRow,
+  selectable,
+  selected,
+  onToggleAll,
+}: {
+  label: string;
+  meaning: string | null;
+  rules: RuleDetail[];
+  expanded: boolean;
+  onToggle: () => void;
+  renderRow: (rule: RuleDetail, selectable: boolean) => ReactNode;
+  selectable: boolean;
+  selected: Set<string>;
+  onToggleAll: (rules: RuleDetail[], on: boolean) => void;
+}) {
+  const pager = usePager(rules);
+  if (!rules.length) return null; // empty sections are hidden entirely
+  const allSelected = rules.every((r) => selected.has(r.rule_key || r.rule_code));
+  return (
+    <div style={{ marginBottom: 10, border: "1px solid var(--rule)", borderRadius: 6 }}>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        style={{
+          display: "flex",
+          gap: 10,
+          alignItems: "baseline",
+          flexWrap: "wrap",
+          padding: "8px 10px",
+          cursor: "pointer",
+        }}
+      >
+        <b style={{ fontSize: 13, whiteSpace: "nowrap" }}>
+          <span aria-hidden="true" style={{ display: "inline-block", width: 14 }}>
+            {expanded ? "▾" : "▸"}
+          </span>
+          {label} ({rules.length})
+        </b>
+        {meaning ? (
+          <span style={{ fontSize: 12, color: "var(--slate)", minWidth: 0 }}>{meaning}</span>
+        ) : null}
+      </div>
+      {expanded ? (
+        <div style={{ padding: "0 10px 8px" }}>
+          {selectable && rules.length > 1 ? (
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                padding: "4px 0 8px",
+                borderBottom: "1px solid var(--rule)",
+                marginBottom: 8,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(e) => onToggleAll(rules, e.target.checked)}
+                aria-label={`Select every ${label} rule matching the current filters`}
+              />
+              <span style={{ fontSize: 12, color: "var(--slate)" }}>
+                Select all {rules.length} (every match, not just this page)
+              </span>
+            </div>
+          ) : null}
+          {pager.rows.map((r) => renderRow(r, selectable))}
+          <Pager {...pager} noun="rules" />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export default function RuleListManager({ preset }: { preset?: RulesPreset | null }) {
   const [pools, setPools] = useState<Pools | null>(null);
   const [summary, setSummary] = useState<ExtractionSummary | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -104,16 +233,30 @@ export default function RuleListManager() {
   const [retryNote, setRetryNote] = useState("");
   const [retryBusy, setRetryBusy] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
-  // filters — "" means All
+  // filters — "" means All. fStatus COLLAPSES the other sections rather than
+  // hiding rows (task 12); the other filters narrow rows within sections.
   const [fStatus, setFStatus] = useState("");
   const [fProvenance, setFProvenance] = useState("");
   const [fScope, setFScope] = useState("");
   const [fSeverity, setFSeverity] = useState("");
+  const [fDocument, setFDocument] = useState("");
+  // per-section expand/collapse overrides on top of the defaults
+  const [sectionOverrides, setSectionOverrides] = useState<Partial<Record<SectionId, boolean>>>({});
+  // document_id -> display name (13.3: options derive from the data)
+  const [docNames, setDocNames] = useState<Record<string, string>>({});
+  const glossary = useGlossary();
 
   const refresh = useCallback(() => {
     getExtractionSummary()
       .then(setSummary)
       .catch(() => setSummary(null));
+    getDocuments()
+      .then((res) => {
+        const names: Record<string, string> = {};
+        for (const d of res.documents ?? []) names[d.document_id] = d.document_name;
+        setDocNames(names);
+      })
+      .catch(() => setDocNames({}));
     Promise.all([
       getRulesDetailed("drafts"),
       // no published version yet is a normal state, not an error
@@ -121,11 +264,14 @@ export default function RuleListManager() {
         if (e instanceof ApiError && e.status === 404) return { version: null, rules: [] };
         throw e;
       }),
+      // superseded/rejected history — absent endpoint is not a page-breaker
+      getRulesDetailed("archived").catch(() => ({ version: null, rules: [] })),
     ])
-      .then(([draftRes, latestRes]) => {
+      .then(([draftRes, latestRes, archivedRes]) => {
         setPools({
           drafts: draftRes.rules ?? [],
           published: (latestRes.rules ?? []).filter((r) => r.status !== "SUPERSEDED"),
+          archived: archivedRes.rules ?? [],
           version: latestRes.version ?? null,
         });
         setLoadError(null);
@@ -141,8 +287,18 @@ export default function RuleListManager() {
     refresh();
   }, [refresh]);
 
+  // 13.3 — a preset from a document row's count link applies on arrival (and
+  // re-applies when the same link is clicked again — the token changes).
+  useEffect(() => {
+    if (!preset) return;
+    setFDocument(preset.documentId ?? "");
+    setFStatus(preset.status ?? "");
+    setSectionOverrides({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset?.documentId, preset?.status, preset?.token]);
+
   const allRules = useMemo(
-    () => (pools ? [...pools.drafts, ...pools.published] : []),
+    () => (pools ? [...pools.drafts, ...pools.published, ...pools.archived] : []),
     [pools],
   );
 
@@ -165,45 +321,70 @@ export default function RuleListManager() {
     );
     return SEVERITY_ORDER.filter((s) => present.has(s));
   }, [allRules]);
-  const statusOptions = useMemo(
-    () => [...new Set(allRules.map((r) => r.status || "DRAFT"))].sort(),
-    [allRules],
-  );
+  // 13.3 — document filter options: every document_id present on a rule,
+  // resolved to the document's display name where the catalog knows it.
+  const documentOptions = useMemo(() => {
+    const ids = [...new Set(allRules.map((r) => r.document_id).filter(Boolean))] as string[];
+    return ids
+      .map((id) => [id, docNames[id] || id] as [string, string])
+      .sort((a, b) => a[1].localeCompare(b[1]));
+  }, [allRules, docNames]);
 
+  /** Which section a rule lives in. Inactive is a FLAG, not a status — a
+   * PUBLISHED rule with active=false appears under Inactive, never under
+   * Published, so what is actually running is unambiguous. (A superseded or
+   * draft-pool rule keeps its status section: it is not running for a
+   * different reason, and Inactive would mask that.) */
+  const sectionOf = (r: RuleDetail): SectionId => {
+    const s = (r.status || "DRAFT") as SectionId;
+    if (s === "PUBLISHED" && r.active === false) return "INACTIVE";
+    return (SECTION_ORDER as readonly string[]).includes(s) ? s : "DRAFT";
+  };
+
+  // Row-narrowing filters. Status is NOT here — selecting a status collapses
+  // the other sections rather than hiding their rules (task 12).
   const matchesFilters = useCallback(
     (r: RuleDetail) =>
-      (!fStatus || (r.status || "DRAFT") === fStatus) &&
       (!fProvenance || r.provenance === fProvenance) &&
       (!fScope || (r.applies_to || "ALL") === fScope) &&
-      (!fSeverity || (r.severity || "").toUpperCase() === fSeverity),
-    [fStatus, fProvenance, fScope, fSeverity],
+      (!fSeverity || (r.severity || "").toUpperCase() === fSeverity) &&
+      (!fDocument || r.document_id === fDocument),
+    [fProvenance, fScope, fSeverity, fDocument],
   );
 
-  const filteredDrafts = useMemo(
-    () => (pools?.drafts ?? []).filter(matchesFilters),
-    [pools, matchesFilters],
-  );
-  const filteredPublished = useMemo(
-    () => (pools?.published ?? []).filter(matchesFilters),
-    [pools, matchesFilters],
+  const sectionRules = useMemo(() => {
+    const grouped: Record<SectionId, RuleDetail[]> = {
+      DRAFT: [], NEEDS_INPUT: [], NEEDS_DATA: [], COMPILED: [],
+      PUBLISHED: [], INACTIVE: [], SUPERSEDED: [], REJECTED: [],
+    };
+    for (const r of allRules.filter(matchesFilters)) grouped[sectionOf(r)].push(r);
+    for (const key of SECTION_ORDER) {
+      grouped[key].sort((a, b) => a.rule_code.localeCompare(b.rule_code));
+    }
+    return grouped;
+  }, [allRules, matchesFilters]);
+
+  // status dropdown options = sections that exist in the (row-filtered) data,
+  // Inactive included as its own entry
+  const statusOptions = useMemo(
+    () => SECTION_ORDER.filter((s) => sectionRules[s].length > 0),
+    [sectionRules],
   );
 
-  // Task 12a — ONE flat, paginated list at page width: drafts in review order
-  // (compiled → draft → needs-input → needs-data), then the published version.
-  // Status is carried by each row's StatusChip.
-  const groupOrder = (r: RuleDetail) => {
-    const i = DRAFT_GROUPS.findIndex((g) => g.status === (r.status || "DRAFT"));
-    return i === -1 ? DRAFT_GROUPS.length : i;
+  /** Default expansion reflects what needs attention; a status filter
+   * collapses every other section; a header click overrides either. */
+  const isExpanded = (section: SectionId): boolean => {
+    const override = sectionOverrides[section];
+    if (override !== undefined) return override;
+    if (fStatus) return section === fStatus;
+    return DEFAULT_EXPANDED.has(section);
   };
-  const flatRules = useMemo(
-    () => [
-      ...[...filteredDrafts].sort((a, b) => groupOrder(a) - groupOrder(b) || a.rule_code.localeCompare(b.rule_code)),
-      ...[...filteredPublished].sort((a, b) => a.rule_code.localeCompare(b.rule_code)),
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filteredDrafts, filteredPublished],
-  );
-  const pager = usePager(flatRules);
+
+  const sectionLabel = (section: SectionId): string =>
+    glossary?.terms?.[`rule_status.${section}`]?.term ||
+    section.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const sectionMeaning = (section: SectionId): string | null =>
+    glossary?.terms?.[`rule_status.${section}`]?.definition || null;
 
   const selectedRules = useMemo(
     () => allRules.filter((r) => selected.has(keyOf(r))),
@@ -502,11 +683,32 @@ export default function RuleListManager() {
 
       {/* filters + actions */}
       <div className="ctl" style={{ marginBottom: 12 }}>
-        <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} aria-label="Filter by status">
+        <select
+          value={fStatus}
+          onChange={(e) => {
+            // task 12: isolating one status COLLAPSES the other sections
+            // rather than hiding them; clearing restores the defaults
+            setFStatus(e.target.value);
+            setSectionOverrides({});
+          }}
+          aria-label="Filter by status"
+        >
           <option value="">All Statuses</option>
           {statusOptions.map((s) => (
             <option key={s} value={s}>
-              {s.replace(/_/g, " ")}
+              {sectionLabel(s)}
+            </option>
+          ))}
+        </select>
+        <select
+          value={fDocument}
+          onChange={(e) => setFDocument(e.target.value)}
+          aria-label="Filter by document"
+        >
+          <option value="">All Documents</option>
+          {documentOptions.map(([id, name]) => (
+            <option key={id} value={id}>
+              {name}
             </option>
           ))}
         </select>
@@ -563,37 +765,32 @@ export default function RuleListManager() {
         </div>
       ) : null}
 
-      {/* Task 12a — ONE flat rules list at page width, paginated 5/10/20.
-          Status, provenance, scope and severity ride on each row's chips;
-          select-all covers every filtered rule, not just the page. */}
-      {flatRules.length ? (
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            padding: "6px 0",
-            borderBottom: "1px solid var(--rule)",
-            marginBottom: 8,
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={flatRules.every((r) => selected.has(keyOf(r)))}
-            onChange={(e) => toggleGroup(flatRules, e.target.checked)}
-            aria-label="Select every rule matching the current filters"
-          />
-          <b style={{ fontSize: 12.5 }}>
-            {pools.version?.version_no != null
-              ? `Draft pool + published v${pools.version.version_no}`
-              : "Draft pool"}
-          </b>
-          <span style={{ fontSize: 12, color: "var(--slate)" }}>{flatRules.length} rules</span>
+      {/* Round 5 task 12 — collapsible sections grouped by status, counts +
+          plain-English meanings (from the glossary) in the headers, pagination
+          WITHIN each section, empty sections hidden. */}
+      {pools.version?.version_no != null ? (
+        <div style={{ fontSize: 12, color: "var(--slate)", marginBottom: 8 }}>
+          Draft pool + published v{pools.version.version_no} — only Published rules affect insight
+          generation.
         </div>
       ) : null}
-      {pager.rows.map((r) => ruleRow(r, true))}
-      <Pager {...pager} noun="rules" />
-      {!filteredDrafts.length && !filteredPublished.length ? (
+      {SECTION_ORDER.map((section) => (
+        <StatusSection
+          key={section}
+          label={sectionLabel(section)}
+          meaning={sectionMeaning(section)}
+          rules={sectionRules[section]}
+          expanded={isExpanded(section)}
+          onToggle={() =>
+            setSectionOverrides((prev) => ({ ...prev, [section]: !isExpanded(section) }))
+          }
+          renderRow={ruleRow}
+          selectable={SELECTABLE_SECTIONS.has(section)}
+          selected={selected}
+          onToggleAll={toggleGroup}
+        />
+      ))}
+      {SECTION_ORDER.every((s) => sectionRules[s].length === 0) ? (
         <div className="note" style={{ border: "1px solid var(--rule)", borderRadius: 5 }}>
           No rules match the current filters.
         </div>

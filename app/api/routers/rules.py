@@ -124,6 +124,17 @@ def list_rules(version: str = "latest") -> dict:
     if version == "drafts":
         return {"version": None,
                 "rules": [_serialize(r) for r in store.drafts()]}
+    if version == "archived":
+        # Round 5 task 12 — the Rules tab's Superseded / Rejected sections.
+        # SUPERSEDED rows are absorbed drafts (published_as records where each
+        # went) plus any explicitly rejected rule; old versions' snapshots stay
+        # on the Rule Versions page, not here (they would duplicate every
+        # carried-forward rule once per version).
+        archived = [r for r in store.rules.values()
+                    if r.get("status") in ("SUPERSEDED", "REJECTED")
+                    and not r.get("version_id")]
+        archived.sort(key=lambda r: (r.get("rule_code") or "", r["rule_key"]))
+        return {"version": None, "rules": [_serialize(r) for r in archived]}
     resolved = store.version(version)
     if resolved is None:
         raise HTTPException(status_code=404, detail=f"unknown rule-set version {version!r}")
@@ -402,12 +413,17 @@ def compile_rule(rule_key: str) -> dict:
 
 
 @router.get("/extraction-summary")
-def extraction_summary() -> dict:
+def extraction_summary(document_id: str | None = None) -> dict:
     """Counts for the Documents & Rules screen (Round E 6.4): extracted /
-    compiled / need a value / need data we don't have, each with reasons."""
+    compiled / need a value / need data we don't have, each with reasons.
+    Round 5 task 13.2: ?document_id= narrows the summary to one document's
+    draft rules, so a document row's counts can link into the Rules tab."""
     store = get_rule_store()
     drafts = store.drafts()
+    if document_id:
+        drafts = [r for r in drafts if r.get("document_id") == document_id]
     return {
+        "document_id": document_id,
         "extracted": len(drafts),
         "compiled": sum(1 for r in drafts if r.get("status") == "COMPILED"),
         "draft": sum(1 for r in drafts if r.get("status") == "DRAFT"),
@@ -608,6 +624,75 @@ def set_driver_label(rule_key: str, body: DriverLabelRequest) -> dict:
     return {"driver_code": driver_code, "driver_label": body.driver_label,
             "note": "labels resolve at read time — historical findings now show "
                     "the new name; driver_code (identity) is unchanged"}
+
+
+class BatchApproveRequest(BaseModel):
+    """Round 5 task 13.4 — approve every COMPILED draft from one document,
+    then publish ONCE (one new rule-set version for the batch)."""
+    document_id: str
+    approved_by: str = "operator"
+
+
+@router.post("/batch-approve")
+def batch_approve(body: BatchApproveRequest) -> dict:
+    """Approve all COMPILED drafts carrying this document_id, then call
+    publish() ONCE — the store's publish already sweeps every approved draft
+    into a single new version, which is exactly the one-version-per-batch
+    semantics. Only COMPILED rules are eligible: NEEDS_INPUT / NEEDS_DATA /
+    DRAFT are incomplete by definition and are reported as skipped, never
+    approved (the store's approve() gate enforces the same refusal)."""
+    from app.api.routers.insights import _document_name
+
+    store = get_rule_store()
+    doc_drafts = [r for r in store.drafts()
+                  if r.get("document_id") == body.document_id]
+    if not doc_drafts:
+        raise HTTPException(
+            status_code=404,
+            detail=f"no draft-pool rules carry document_id {body.document_id!r}")
+    eligible = [r for r in doc_drafts if r.get("status") == "COMPILED"]
+    skipped = [{"rule_key": r["rule_key"], "rule_code": r.get("rule_code"),
+                "status": r.get("status"),
+                "reason": (r.get("missing") or r.get("unclear_notes")
+                           if r.get("status") == "NEEDS_INPUT"
+                           else r.get("needs_data_reason")
+                           if r.get("status") == "NEEDS_DATA"
+                           else r.get("compile_error")
+                           or "not compiled — run the Rule Compiler first")}
+               for r in doc_drafts if r.get("status") != "COMPILED"]
+    if not eligible:
+        raise HTTPException(
+            status_code=400,
+            detail=f"no COMPILED drafts from document {body.document_id!r} — "
+                   f"{len(skipped)} ineligible (NEEDS_INPUT / NEEDS_DATA / "
+                   f"DRAFT rules cannot be batch-approved; they are "
+                   f"incomplete by definition)")
+    approved: list[dict] = []
+    failures: list[dict] = []
+    for rule in eligible:
+        try:
+            store.approve(rule["rule_key"], approved_by=body.approved_by)
+            approved.append({"rule_key": rule["rule_key"],
+                            "rule_code": rule.get("rule_code"),
+                            "rule_name": rule.get("rule_name")})
+        except RuleStoreError as exc:
+            failures.append({"rule_key": rule["rule_key"],
+                             "rule_code": rule.get("rule_code"),
+                             "reason": str(exc)})
+    version = None
+    if approved:
+        doc_name = _document_name(body.document_id) or body.document_id
+        try:
+            version = store.publish(
+                approved_by=body.approved_by,
+                notes=f"batch approval: {len(approved)} compiled rule(s) "
+                      f"from {doc_name}")
+        except RuleStoreError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"document_id": body.document_id,
+            "document_name": _document_name(body.document_id),
+            "approved_count": len(approved), "approved": approved,
+            "failures": failures, "skipped": skipped, "version": version}
 
 
 class ApproveRequest(BaseModel):

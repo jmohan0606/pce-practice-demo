@@ -169,6 +169,69 @@ export function setExceptionConfig(
   return req("PATCH", `/api/rules/${encodeURIComponent(ruleKey)}/exception-config`, changes);
 }
 
+// ---------- Round 5 task 13.1 — extraction job progress ----------
+
+/** A phx_dm_pce_job row (Round 1). `stages` is the ordered stage list;
+ * `stage_index` is 1-based into it. */
+export interface IngestJob {
+  job_id: string;
+  kind: string;
+  scope_key?: string;
+  stages?: string[];
+  stage?: string;
+  stage_index?: number;
+  stage_total?: number;
+  items_done?: number;
+  items_total?: number;
+  /** RUNNING | INTERRUPTED | COMPLETE | FAILED */
+  status?: string;
+  error?: string;
+  started_at?: string;
+  updated_at?: string;
+}
+
+/** Latest document_ingest job for one document (jobs list is newest-first). */
+export async function getLatestIngestJob(documentId: string): Promise<IngestJob | null> {
+  const res = await req<{ total: number; jobs: IngestJob[] }>(
+    "GET",
+    `/api/jobs?kind=document_ingest&scope_key=${encodeURIComponent(documentId)}`,
+  );
+  return res.jobs?.[0] ?? null;
+}
+
+/** POST /api/jobs/{id}/resume — EXPLICIT resume of an INTERRUPTED extraction.
+ * Never called automatically on page load (auto-resume could double-spend). */
+export function resumeJob(
+  jobId: string,
+): Promise<{ document_id: string; job: IngestJob; resumed_rules: number }> {
+  return req("POST", `/api/jobs/${encodeURIComponent(jobId)}/resume`);
+}
+
+// ---------- Round 5 task 13.4 — batch approval ----------
+
+export interface BatchApproveResult {
+  document_id: string;
+  document_name?: string | null;
+  approved_count: number;
+  approved: { rule_key: string; rule_code?: string; rule_name?: string }[];
+  failures: { rule_key: string; rule_code?: string; reason: string }[];
+  skipped: { rule_key: string; rule_code?: string; status?: string; reason?: string | null }[];
+  version: RuleVersion | null;
+}
+
+/** POST /api/rules/batch-approve — approves every COMPILED draft from the
+ * document, then publishes ONCE (one new rule-set version for the batch).
+ * NEEDS_INPUT / NEEDS_DATA / DRAFT rules are refused server-side (skipped). */
+export function batchApproveDocument(
+  documentId: string,
+  approvedBy: string = "operator",
+): Promise<BatchApproveResult> {
+  return req("POST", "/api/rules/batch-approve", {
+    document_id: documentId,
+    approved_by: approvedBy,
+  });
+}
+
 // ---------- Task 3 — document category (backend: Subagent A) ----------
 
 export const DOCUMENT_CATEGORIES = [
