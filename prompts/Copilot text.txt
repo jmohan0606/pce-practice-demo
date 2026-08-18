@@ -131,3 +131,21 @@ for f in glob.glob('data/real/_raw/raw_txn_202604_b*.csv'):
             tot+=float(r.get('post_split_credited_amt') or 0); n+=1
 print(f'raw April firm-filter: \${tot:,.2f} over {n:,} rows')
 "
+--------------------------------------
+WITH cohort_adv AS (
+  SELECT DISTINCT r.standard_id AS advisor_sid
+  FROM   pcr.fpic_prm_rr_tb r
+  INNER JOIN pcr.fpic_employee_tb e ON r.standard_id = e.em_standard_id
+  WHERE  r.prm_ofc_no = '731'
+    AND  r.cwm_comply_posn_cd IN ('D','I','')
+    AND  r.dist_channel_typ NOT IN ('JPMPAP','JPMPAD','JPMIDTL','JPMIDFA','JPMPAPTL')
+    AND  e.job_cd IN ('HK0058','HK0059','HK0176','HK0183','HK0184','HK0185',
+                      'HK0186','HK0187','HK0188','HK0280','HK0286','HK0289')
+    AND  e.em_status_cd IN ('A','L','T')
+)
+SELECT sum(d.post_split_credited_amt) AS excluded_by_cohort
+FROM   pcr.fpic_daily_trade_details_tb_prod d
+WHERE  d.proc_dt >= DATE '2026-04-01' AND d.proc_dt < DATE '2026-05-01'
+  AND  (d.reason_cd IS NULL OR trim(d.reason_cd) NOT IN ('9X','XX'))
+  AND  d.advisor_sid IS NOT NULL
+  AND  d.advisor_sid NOT IN (SELECT advisor_sid FROM cohort_adv);
