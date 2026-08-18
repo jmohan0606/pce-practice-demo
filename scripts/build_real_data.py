@@ -107,21 +107,15 @@ class MemoryGuardError(Exception):
 
 
 # ---------------------------------------------------------------- RAW_CONTRACT
-# Round 2a task 2.8: raw_advisor_flags reduced to the four columns actually
-# consumed — the nine scenario flags were a cohort-SELECTION aid and the cohort
-# is now the firm. FLAG_COLUMNS is kept exported for scripts/select_cohort.py,
-# which only ever reads OLD-format files (retired for the firm-wide load).
-FLAG_COLUMNS = [
-    "has_fee_reduction_gt10", "has_recorded_grid_reduction", "has_transfer_in",
-    "has_transfer_out", "has_new_account", "has_zeroed_account",
-    "has_team_agreement", "has_flows", "has_non_credited",
-]
-
+# Round 5 task 1: raw_advisor_flags RETIRED (with scripts/select_cohort.py) —
+# the client defines the cohort now (scripts/build_cohort.py); nothing selects
+# anything and nothing consumed the file.
+# raw_advisor gains em_status_cd / em_work_st_cd / em_work_city_txt (client
+# requirements 17 Aug); counterparties have no employee row — blank stays blank.
 RAW_CONTRACT: dict[str, list[str]] = {
-    "raw_advisor_flags.csv": ["advisor_sid", "rep_code", "advisor_name",
-                              "total_credited_amt"],
     "raw_advisor.csv": ["advisor_sid", "rep_code", "advisor_name", "branch_cd",
-                        "employee_id", "in_cohort", "job_code"],
+                        "employee_id", "in_cohort", "job_code",
+                        "em_status_cd", "em_work_st_cd", "em_work_city_txt"],
     "raw_account.csv": ["account_no", "account_class_cd", "account_class_nm",
                         "account_lob_cd", "account_purpose_cd", "managed_platform_cd",
                         "service_channel_cd", "account_open_dt", "primary_eci_id"],
@@ -884,8 +878,7 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
         return vw[target]
 
     # ---- small raws, fully read (contract enforced) -------------------------
-    flags_rows = read_raw(raw_dir, "raw_advisor_flags.csv")  # contract input only
-    report["raw_input_rows"]["raw_advisor_flags.csv"] = len(flags_rows)
+    # Round 5 task 1: raw_advisor_flags no longer exists and is NOT required.
     meta_rows = sorted(read_raw(raw_dir, "raw_month_meta.csv"),
                        key=lambda r: r["month_id"])
     month_ids = [r["month_id"] for r in meta_rows]
@@ -903,13 +896,25 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
                        ("raw_advisor.csv", adv_raw)):
         report["raw_input_rows"][name] = len(rows)
 
-    advisors = [{
-        "advisor_sid": r["advisor_sid"], "rep_code": r["rep_code"],
-        "advisor_name": r["advisor_name"],  # blank stays blank — never invented
-        "branch_cd": r["branch_cd"], "employee_id": r["employee_id"],
-        "in_cohort": bl(as_bool(r["in_cohort"])),
-        "job_code": r["job_code"],  # blank stays blank — never invented
-    } for r in adv_raw]
+    # ONE row per advisor: fpic_prm_rr_tb carries one row per branch/location
+    # (client, 17 Aug), so a raw extract may repeat a SID — first row wins,
+    # duplicates counted and reported (never a silent PK failure at load).
+    advisors, _adv_seen, adv_dupes = [], set(), 0
+    for r in adv_raw:
+        if r["advisor_sid"] in _adv_seen:
+            adv_dupes += 1
+            continue
+        _adv_seen.add(r["advisor_sid"])
+        advisors.append({
+            "advisor_sid": r["advisor_sid"], "rep_code": r["rep_code"],
+            "advisor_name": r["advisor_name"],  # blank stays blank — never invented
+            "branch_cd": r["branch_cd"], "employee_id": r["employee_id"],
+            "in_cohort": bl(as_bool(r["in_cohort"])),
+            "job_code": r["job_code"],  # blank stays blank — never invented
+        })
+    if adv_dupes:
+        print(f"raw_advisor: {adv_dupes} duplicate SID row(s) collapsed "
+              f"(reference table carries one row per branch — first row kept)")
     advisor_set = {intern(a["advisor_sid"]) for a in advisors}
     cohort = {a["advisor_sid"] for a in advisors if a["in_cohort"] == "true"}
     transfers = build_transfers(rr_rows)
@@ -1187,7 +1192,8 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
     agg["month_rows"] = build_months(meta_rows)
     report["raw_input_rows"]["raw_month_meta.csv"] = len(meta_rows)
     report["transform_deltas"]["advisor"] = {
-        "raw_rows": len(adv_raw), "rows": len(advisors)}
+        "raw_rows": len(adv_raw), "deduplicated": len(adv_raw) - len(advisors),
+        "rows": len(advisors)}
     report["transform_deltas"]["account_transfer"] = {
         "raw_rows": len(rr_rows),
         "out_of_scope_or_deduplicated": len(rr_rows) - len(transfers),

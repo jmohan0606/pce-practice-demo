@@ -10,7 +10,10 @@
 -- (in_cohort=false) — miss them and every transfer edge pointing at them
 -- drops silently at load. Blank names stay blank; never invent one.
 -- job_code (Round 1b): fpic_employee_tb.job_cd, carried for plan
--- eligibility (SAG p.9). No employee row -> blank; a blank stays blank.
+-- eligibility. Round 5: em_status_cd / em_work_st_cd / em_work_city_txt
+-- added (client requirements 17 Aug). No employee row -> blank; a blank
+-- stays blank. DISTINCT ON collapses fpic_prm_rr_tb's one-row-per-branch
+-- fan-out to ONE row per advisor (the client's reference-table warning).
 WITH cohort(advisor_sid) AS (
   SELECT advisor_sid FROM cohort_adv
 ),
@@ -25,14 +28,19 @@ counterparties AS (
   WHERE  c.transfer_ts >= DATE '2026-04-01' AND c.transfer_ts < DATE '2026-07-01'
     AND  c.from_mem_sid IN (SELECT advisor_sid FROM cohort)
 )
-SELECT r.standard_id                              AS advisor_sid,
+SELECT DISTINCT ON (r.standard_id)
+       r.standard_id                              AS advisor_sid,
        r.prm_rr_no                                AS rep_code,
        COALESCE(e.em_name_txt,'')                 AS advisor_name,
        r.cwm_branch_cd                            AS branch_cd,
        COALESCE(e.em_standard_id,'')              AS employee_id,
        (r.standard_id IN (SELECT advisor_sid FROM cohort)) AS in_cohort,
-       COALESCE(e.job_cd,'')                      AS job_code
+       COALESCE(e.job_cd,'')                      AS job_code,
+       COALESCE(e.em_status_cd,'')                AS em_status_cd,
+       COALESCE(e.em_work_st_cd,'')               AS em_work_st_cd,
+       COALESCE(e.em_work_city_txt,'')            AS em_work_city_txt
 FROM   pcr.fpic_prm_rr_tb r
 LEFT   JOIN pcr.fpic_employee_tb e ON e.em_standard_id = r.standard_id
 WHERE  r.standard_id IN (SELECT advisor_sid FROM cohort)
-   OR  r.standard_id IN (SELECT advisor_sid FROM counterparties);
+   OR  r.standard_id IN (SELECT advisor_sid FROM counterparties)
+ORDER  BY r.standard_id;

@@ -14,6 +14,6 @@ SELECT to_char(d.trade_dt,'YYYYMM')              AS month_id,
        to_char(max(d.trade_dt),'YYYY-MM-DD HH24:MI:SS')                      AS end_dt,
        count(DISTINCT d.trade_dt)                AS trading_days
 FROM   pcr.fpic_daily_trade_details_tb_prod d
-JOIN   cohort_adv ca ON ca.advisor_sid = d.advisor_sid
 WHERE  d.trade_dt >= DATE '2026-04-01' AND d.trade_dt < DATE '2026-07-01'
+  AND  d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv)
 GROUP  BY 1 ORDER BY 1;

@@ -22,11 +22,19 @@ Run **`prompts/COPILOT_SIZING_AND_RATE.md` Part A** (pure SQL against
 PostgreSQL, no TigerGraph needed) and keep its output.
 
 **Why first:** the extraction chunk plan depends on whether the trade table
-holds 3M or 15M rows in scope, and query A3 produces `data/real/cohort.txt` —
-a required input to extraction. Guessing either wastes hours later.
+holds 3M or 15M rows in scope. Guessing wastes hours later.
 
-**Correct result:** A1 returns one row per in-scope month with counts; A3 is
-saved as `data/real/cohort.txt`, one advisor_sid per line, no header.
+**The cohort (Round 5):** `data/real/cohort.txt` — the required input to
+extraction — is produced by **`python3 scripts/build_cohort.py`**, which runs
+the CLIENT'S cohort definition verbatim (office 731, compliance codes, channel
+exclusions, the 12 job codes, status A/L/T). Expected: **5,455 distinct
+advisors**; a different count means a filter was transcribed wrongly — the
+script reports the number and stops. (The old sizing-prompt A3 query and
+`scripts/select_cohort.py` are retired: the client defines the cohort now.)
+
+**Correct result:** A1 returns one row per in-scope month with counts;
+`build_cohort.py` writes `data/real/cohort.txt`, one advisor_sid per line,
+no header, 5,455 lines.
 **If not:** auth errors mean the IAM token expired — `aws sts
 get-caller-identity`, refresh SSO, retry. A timeout on A1 means even the
 count query needs narrowing: add `AND advisor_sid < 'M'` style halves and sum.
@@ -192,7 +200,7 @@ python3 scripts/extract_chunked.py \
 **Correct result (Round 2a plan):** 7 single-table chunks + one
 monthly-balance chunk per month (never a UNION) + 4 hash buckets each for
 account / acct_eci_rel / acct_eci_map + (months × advisor batches)
-transaction chunks — 109 chunks at firm scale — each with a per-chunk row
+transaction chunks — 105 chunks at the client-defined 5,455-advisor cohort — each with a per-chunk row
 projection from the committed EXPECTED_COUNTS.json, plus live per-month
 counts when connected. Compare with Part A — they should match. **If a
 chunk projects above ~2M rows:** raise `--buckets` (account-scoped tables)

@@ -122,7 +122,7 @@
         "eci_id": "eci_id",
         "account_count": "account_count"
       },
-      "expected_rows": 152,
+      "expected_rows": 151,
       "order": 7,
       "phase": 1
     },
@@ -140,7 +140,7 @@
         "client_employee_ind": "client_employee_ind",
         "is_owner_role": "is_owner_role"
       },
-      "expected_rows": 156,
+      "expected_rows": 152,
       "order": 8,
       "phase": 1
     },
@@ -229,7 +229,7 @@
         "file_key": "file_key",
         "trade_description": "trade_description"
       },
-      "expected_rows": 1707,
+      "expected_rows": 1705,
       "order": 12,
       "phase": 1
     },
@@ -250,7 +250,7 @@
         "txn_count": "txn_count",
         "distinct_accounts": "distinct_accounts"
       },
-      "expected_rows": 764,
+      "expected_rows": 779,
       "order": 13,
       "phase": 1
     },
@@ -413,7 +413,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1707,
+      "expected_rows": 1705,
       "order": 21,
       "phase": 2
     },
@@ -426,7 +426,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1705,
+      "expected_rows": 1703,
       "order": 22,
       "phase": 2
     },
@@ -439,7 +439,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1707,
+      "expected_rows": 1705,
       "order": 23,
       "phase": 2
     },
@@ -452,7 +452,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1707,
+      "expected_rows": 1705,
       "order": 24,
       "phase": 2
     },
@@ -465,7 +465,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 764,
+      "expected_rows": 779,
       "order": 25,
       "phase": 2
     },
@@ -478,7 +478,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 764,
+      "expected_rows": 779,
       "order": 26,
       "phase": 2
     },
@@ -491,7 +491,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 764,
+      "expected_rows": 779,
       "order": 27,
       "phase": 2
     },
@@ -504,7 +504,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 764,
+      "expected_rows": 779,
       "order": 28,
       "phase": 2
     },
@@ -569,7 +569,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 156,
+      "expected_rows": 152,
       "order": 33,
       "phase": 2
     },
@@ -582,7 +582,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 156,
+      "expected_rows": 152,
       "order": 34,
       "phase": 2
     },
@@ -634,7 +634,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 853,
+      "expected_rows": 871,
       "order": 38,
       "phase": 2
     },

@@ -9,8 +9,9 @@
 -- THE 48M-ROW TABLE: filter to cohort + date range BEFORE anything else or it
 -- times out. Credited revenue = post_split_credited_amt (pre_split x split_pct
 -- double-counts across advisors). NEVER join fpic_team_agreement_tb here.
--- Month derives from trade_dt in the build script — never proc_dt.
--- extract_chunked.py swaps the cohort join for a per-chunk advisor batch.
+-- Cohort applied via IN (SELECT ... FROM cohort_adv) — NEVER a join to the
+-- reference tables (Round 5, client-mandated: the 4.1M-row loss).
+-- extract_chunked.py swaps the cohort line for a per-chunk advisor batch.
 SELECT d.trade_ref_no, d.split_seq_no, d.advisor_sid,
        d.account_no, d.product_cd, d.product_sub_cd,
        d.trade_dt, d.proc_dt,
@@ -23,6 +24,6 @@ SELECT d.trade_ref_no, d.split_seq_no, d.advisor_sid,
        COALESCE(d.file_key,'')                   AS file_key,
        COALESCE(d.trade_description,'')          AS trade_description
 FROM   pcr.fpic_daily_trade_details_tb_prod d
-JOIN   cohort_adv ca ON ca.advisor_sid = d.advisor_sid
 WHERE  d.trade_dt >= DATE '2026-04-01'
-  AND  d.trade_dt <  DATE '2026-07-01';
+  AND  d.trade_dt <  DATE '2026-07-01'
+  AND  d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv);

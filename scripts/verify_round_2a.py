@@ -11,7 +11,7 @@
      missing bucket fails / both forms fail; 5e per-chunk contracts;
      5f streaming + memory guard (full 12.4M proof via --full-scale, its output
      recorded in ROUND_2A_COMPLETE.md); 5g account_month month-at-a-time;
-     5h disk checks; 5i advisor_flags reduced; 5j validator V-2 all families
+     5h disk checks; 5i advisor_flags retired (Round 5); 5j validator V-2 all families
  6   manifest carries phase (vertices 1, edges 2)
  7   a phase-2 entity refuses to start while phase 1 is incomplete
  8   --max-parallel defaults to 3 and is respected
@@ -184,15 +184,16 @@ def main() -> int:  # noqa: PLR0915 — one check per stanza, deliberately linea
              "--out", str(TMP / "plan_out"), "--dry-run"])
     dry = buf.getvalue()
     n_est = dry.count("(projected)")
+    # Round 5 re-pin: raw_advisor_flags retired -> 6 singles, 108 chunks.
     check("5  --dry-run prints the FULL plan with per-chunk estimates: 87 txn "
           "+ 3 monthly-balance (never a UNION) + 4 buckets x 3 tables + "
-          "7 small singles",
+          "6 small singles",
           rc == 0 and "87 transaction chunks" in dry
           and "3 monthly-balance chunks" in dry
           and "12 account-bucket chunks (3 tables x 4 buckets)" in dry
-          and "= 109 chunks" in dry and "raw_balance_202606" in dry
+          and "= 108 chunks" in dry and "raw_balance_202606" in dry
           and "UNION" not in dry and n_est >= 100,
-          f"109-chunk plan, {n_est} chunks carry row projections")
+          f"108-chunk plan, {n_est} chunks carry row projections")
     buf2 = io.StringIO()
     with contextlib.redirect_stdout(buf2):
         extract_chunked.main(
@@ -249,12 +250,13 @@ def main() -> int:  # noqa: PLR0915 — one check per stanza, deliberately linea
 
     argv = ["--months", "202604,202605", "--advisors-file", str(adv450),
             "--out", str(out_dir)]
-    # plan: 7 singles + 2 balances + account b1-4 + eci_rel b1-4 + eci_map b1-4
-    # + 6 txn = 27 chunks; 5 setup executes per connection. Fail DURING
-    # raw_acct_eci_rel_b003 (chunk 16 = execute 21 -> fail_after 20).
+    # plan (Round 5: flags retired): 6 singles + 2 balances + account b1-4 +
+    # eci_rel b1-4 + eci_map b1-4 + 6 txn = 26 chunks; 5 setup executes per
+    # connection. Fail DURING raw_acct_eci_rel_b003 (chunk 15 = execute 20
+    # -> fail_after 19).
     with contextlib.redirect_stdout(io.StringIO()), \
             contextlib.redirect_stderr(io.StringIO()):
-        rc1 = extract_chunked.main(argv, connect=lambda: StubConn(20))
+        rc1 = extract_chunked.main(argv, connect=lambda: StubConn(19))
     cp1 = json.loads((out_dir / "extract_checkpoint.json").read_text())
     done1 = set(cp1["completed"])
     execs_run1 = StubCursor.executed
@@ -269,10 +271,10 @@ def main() -> int:  # noqa: PLR0915 — one check per stanza, deliberately linea
           rc1 == 3 and "raw_acct_eci_rel_b001" in done1
           and "raw_acct_eci_rel_b002" in done1
           and "raw_acct_eci_rel_b003" not in done1
-          and rc2 == 0 and len(cp2["completed"]) == 27
-          and StubCursor.executed == 5 + (27 - 15),
+          and rc2 == 0 and len(cp2["completed"]) == 26
+          and StubCursor.executed == 5 + (26 - 14),
           f"first run died in eci_rel_b003 with b001..b002 checkpointed "
-          f"({len(done1)}/27); resume ran exactly the {27 - 15} remaining "
+          f"({len(done1)}/26); resume ran exactly the {26 - 14} remaining "
           f"chunks (+5 session setup)")
     scoped_runs = sum(1 for s in StubCursor.sqls
                       if s.startswith("CREATE TEMP TABLE scoped_acct"))
@@ -381,20 +383,18 @@ def main() -> int:  # noqa: PLR0915 — one check per stanza, deliberately linea
           "both refused on this repo's <20GB filesystem; --skip-disk-check "
           "proceeded")
 
-    # ---- 5i: advisor_flags reduced ---------------------------------------------
+    # ---- 5i: advisor_flags RETIRED (Round 5 task 1 re-pin — the client now
+    # defines the cohort; nothing selects anything, nothing consumes the file)
     from scripts.build_real_data import RAW_CONTRACT
-    flags_sql = "\n".join(ln for ln in
-                          templates()["raw_advisor_flags.sql"].splitlines()
-                          if not ln.strip().startswith("--"))
-    check("5i raw_advisor_flags emits only the four consumed columns; the "
-          "nine scenario-flag subqueries are gone (DECISIONS.md records why)",
-          RAW_CONTRACT["raw_advisor_flags.csv"] == [
-              "advisor_sid", "rep_code", "advisor_name", "total_credited_amt"]
-          and "bool_or" not in flags_sql and "EXISTS" not in flags_sql
-          and "has_fee_reduction" not in flags_sql
-          and "flags reduced" in (ROOT / "docs/DECISIONS.md").read_text().lower()
-          .replace("raw_advisor_flags reduced", "flags reduced"),
-          "contract = 4 columns; no bool_or/EXISTS left in the template")
+    check("5i raw_advisor_flags + select_cohort RETIRED; build_cohort.py "
+          "replaces them (Round 5: the client defines the cohort)",
+          "raw_advisor_flags.sql" not in templates()
+          and "raw_advisor_flags.csv" not in RAW_CONTRACT
+          and not (ROOT / "scripts/select_cohort.py").exists()
+          and not (ROOT / "docs/data/extraction/raw_advisor_flags.sql").exists()
+          and (ROOT / "scripts/build_cohort.py").exists(),
+          "no template, no contract entry, select_cohort.py gone, "
+          "build_cohort.py present")
 
     # ---- 5j: validator V-2 on all five families --------------------------------
     r_vgap = run([sys.executable, "scripts/validate_raw_extracts.py", "--raw",

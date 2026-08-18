@@ -14,6 +14,11 @@ missing acct_eci_rel bucket fails V-2 exactly as a missing transaction batch
 does. Transactions stream through the checks (12.4M rows never sit in memory).
 
 Checks:
+  V-0  NO transaction SQL joins the reference tables (fpic_prm_rr_tb /
+       fpic_employee_tb) — they carry one row per branch/location, so a join
+       to the trade table drops unmatched rows AND multiplies matched ones
+       (the mistake that cost 4.1M rows and a full re-extraction). The cohort
+       is applied via IN (SELECT ... FROM cohort_adv), never a join.
   V-1  the three source kinds detected (all four NNM categories present, CRM
        export present, no ambiguous duplicates, no gap in any chunk family's
        sequence) — build_real_data.detect_sources
@@ -80,6 +85,27 @@ def main() -> int:
     if not raw_dir.is_dir():
         print(f"ERROR: {raw_dir} is not a directory", file=sys.stderr)
         return 1
+
+    # V-0 — no reference-table join in any generated transaction SQL. This
+    # guards the GENERATOR, not the drop: the join that caused the 4.1M-row
+    # loss must never silently reappear in a template edit. Checks the
+    # template AND a real chunk (what actually runs against the database).
+    from scripts.generate_extraction_sql import templates as _templates
+    from scripts.extract_chunked import txn_chunk_sql as _txn_chunk_sql
+
+    ref_join = re.compile(
+        r"JOIN\s+(pcr\.)?(fpic_prm_rr_tb|fpic_employee_tb)", re.IGNORECASE)
+    txn_sqls = {
+        "raw_revenue_transaction.sql template":
+            _templates()["raw_revenue_transaction.sql"],
+        "txn chunk SQL (sample)": _txn_chunk_sql(["T000001"], "202604"),
+    }
+    joined = [name for name, sql in txn_sqls.items() if ref_join.search(sql)]
+    check("V-0 no transaction SQL joins fpic_prm_rr_tb/fpic_employee_tb "
+          "(cohort via IN (SELECT ...), never a join)", not joined,
+          f"reference-table JOIN found in: {joined} — this is the 4.1M-row "
+          f"bug; use advisor_sid IN (SELECT advisor_sid FROM cohort_adv)"
+          if joined else "template + sample chunk clean")
 
     # V-1 — three source kinds (detect_sources also sequence-checks every
     # chunk family and refuses ambiguous both-forms drops)

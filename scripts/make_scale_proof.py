@@ -72,18 +72,15 @@ def generate(raw: Path) -> None:
     raw.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
 
-    # advisors + flags
+    # advisors (Round 5: +em_status_cd/work state/city; flags file retired)
     f, wr = w(raw / "raw_advisor.csv",
               ["advisor_sid", "rep_code", "advisor_name", "branch_cd",
-               "employee_id", "in_cohort", "job_code"])
+               "employee_id", "in_cohort", "job_code",
+               "em_status_cd", "em_work_st_cd", "em_work_city_txt"])
     for i in range(N_ADV):
         wr.writerow([sid(i), f"R{i:05d}", f"Advisor {i}", f"B{i % 40:03d}",
-                     sid(i), "true", "HK0186" if i % 3 else ""])
-    f.close()
-    f, wr = w(raw / "raw_advisor_flags.csv",
-              ["advisor_sid", "rep_code", "advisor_name", "total_credited_amt"])
-    for i in range(N_ADV):
-        wr.writerow([sid(i), f"R{i:05d}", f"Advisor {i}", "99000.00"])
+                     sid(i), "true", "HK0186" if i % 3 else "",
+                     "A" if i % 29 else "T", "NY", "New York"])
     f.close()
 
     # month meta / products (transcribed shape, tiny)

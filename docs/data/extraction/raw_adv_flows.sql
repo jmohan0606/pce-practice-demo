@@ -27,7 +27,11 @@ SELECT r.standard_id                             AS advisor_sid,
        sum(COALESCE((f.other_attributes->>'large_flow_cap_adj_am')::numeric,0))      AS large_flow_cap_adj_am,
        sum(COALESCE((f.other_attributes->>'forced_closure_excl_am')::numeric,0))     AS forced_closure_excl_am
 FROM   pcr.fpic_daily_adv_flows_tb_pm f
-JOIN   pcr.fpic_prm_rr_tb r
+-- rep-code -> SID resolution needs fpic_prm_rr_tb, but that reference table
+-- carries ONE ROW PER BRANCH (client, 17 Aug) — the DISTINCT subselect
+-- collapses it to one row per (standard_id, prm_rr_no) so the join can
+-- never multiply flow rows.
+JOIN   (SELECT DISTINCT standard_id, prm_rr_no FROM pcr.fpic_prm_rr_tb) r
        ON r.standard_id = f.rep_wrkr_sid OR r.prm_rr_no = f.pri_rep_cd
 WHERE  f.bus_dt::date >= DATE '2026-04-01' AND f.bus_dt::date < DATE '2026-07-01'
   AND  r.standard_id IN (SELECT advisor_sid FROM cohort_adv)

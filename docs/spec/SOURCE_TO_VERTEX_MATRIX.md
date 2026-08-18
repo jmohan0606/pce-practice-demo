@@ -20,7 +20,7 @@ checks all three kinds before anything loads.
 |---|---|---|---|
 | `fpic_daily_trade_details_tb_prod` | PostgreSQL | `raw_txn_<month>_b<batch>.csv` chunks (or a single `raw_revenue_transaction.csv`) | `phx_dm_pce_revenue_transaction`; `phx_dm_pce_monthly_revenue` and `phx_dm_pce_rpg` **derived from it** by build_real_data.py |
 | `product_hierarchy` | PostgreSQL | `raw_product_hierarchy.csv` | `phx_dm_pce_product` |
-| `fpic_prm_rr_tb` + `fpic_employee_tb` | PostgreSQL | `raw_advisor.csv` (+ `raw_advisor_flags.csv` cohort flags) | `phx_dm_pce_advisor` |
+| `fpic_prm_rr_tb` + `fpic_employee_tb` | PostgreSQL | `raw_advisor.csv` (Round 5: `raw_advisor_flags.csv` retired — the client defines the cohort via `scripts/build_cohort.py`) | `phx_dm_pce_advisor` |
 | `fpic_acct_tb_pm` | PostgreSQL | `raw_account.csv` | `phx_dm_pce_account` |
 | `fpic_rr_changes_from_nacs_logs` | PostgreSQL | `raw_rr_changes.csv` | `phx_dm_pce_account_transfer` |
 | `fpic_monthly_acct_balance_tb_april/_may/_june` | PostgreSQL | `raw_monthly_balance.csv` | `phx_dm_pce_account_month` |

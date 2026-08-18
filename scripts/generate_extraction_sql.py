@@ -34,10 +34,15 @@ Corrections baked in (ROUND_D_EXTRACTION.md §4, client-confirmed):
     daily rows across the three months aggregate to 166,985 output rows; the
     aggregate is what extracts, never the daily rows); other_attributes JSONB
     flattened into the six named columns.
-  - raw_advisor_flags (Round 2a task 2.8): reduced to the four columns
-    build_real_data actually consumes — the nine scenario-flag columns and
-    their correlated EXISTS subqueries were a cohort-SELECTION aid, and the
-    cohort is now the firm; nothing selects anything.
+  - raw_advisor_flags (Round 5 task 1): RETIRED — it existed only to score
+    advisors for scripts/select_cohort.py's 20-advisor demo selection, and the
+    client now DEFINES the cohort (scripts/build_cohort.py runs their query);
+    nothing selects anything and nothing consumes the file.
+  - cohort application (Round 5 task 1, client-mandated): the cohort is
+    applied via ``advisor_sid IN (SELECT advisor_sid FROM cohort_adv)`` —
+    NEVER a join. fpic_prm_rr_tb / fpic_employee_tb are reference tables with
+    one row per branch/location; joining them to the trade table both drops
+    unmatched rows and multiplies matched ones (the 4.1M-row loss).
   - month meta: expect 30/31/30 calendar days (the table accrues daily).
 """
 from __future__ import annotations
@@ -70,6 +75,12 @@ BALANCE_TABLES = {
     "202605": "fpic_monthly_acct_balance_tb_may",
     "202606": "fpic_monthly_acct_balance_tb_june",
 }
+
+# Round 5 task 1: the ONE cohort-application line every scoped extract uses —
+# IN (SELECT ...), NEVER a join (client-mandated; reference tables carry one
+# row per branch/location, so a join fans out / drops rows — the 4.1M loss).
+# extract_chunked.txn_chunk_sql swaps this exact line for a per-chunk batch.
+TXN_COHORT_LINE = "  AND  d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv)\n"
 
 # Templates that carry the /*BUCKET*/ marker — extract_chunked.py splits each
 # into --buckets deterministic chunks over scoped_acct's key hash.
@@ -140,37 +151,19 @@ def templates(sids: list[str] | None = None) -> dict[str, str]:
     """Every extract's SQL. Round 2a: NO SID or account-key list is inlined —
     the templates join the session temp tables from session_setup_statements()
     (the sids parameter is kept for call compatibility; the setup owns them).
-    The transaction template's cohort join line is swapped for a per-chunk
-    advisor batch by extract_chunked.txn_chunk_sql()."""
+    The transaction template's cohort IN-line (TXN_COHORT_LINE — never a
+    join) is swapped for a per-chunk advisor batch by
+    extract_chunked.txn_chunk_sql()."""
     return {
-        # ---- reduced to what build_real_data consumes (Round 2a task 2.8):
-        # the nine scenario flags scored advisors so select_cohort.py could
-        # pick 20; the cohort is now the firm and nothing selects anything.
-        "raw_advisor_flags.sql": f"""
--- Per-advisor identity + credited total (contract columns for the build).
--- Round 2a: scenario-flag columns and their correlated EXISTS subqueries
--- REMOVED — they were a cohort-selection aid and the cohort is the firm.
-SELECT s.advisor_sid,
-       max(r.prm_rr_no)                          AS rep_code,
-       max(e.em_name_txt)                        AS advisor_name,
-       sum(CASE WHEN COALESCE(NULLIF(trim(s.reason_cd),''),'__NONE__') = '__NONE__'
-                THEN s.post_split_credited_amt ELSE 0 END) AS total_credited_amt
-FROM (
-  SELECT d.advisor_sid, d.post_split_credited_amt, d.reason_cd
-  FROM   pcr.fpic_daily_trade_details_tb_prod d
-  JOIN   cohort_adv ca ON ca.advisor_sid = d.advisor_sid
-  WHERE  d.trade_dt >= DATE '{SCOPE_START}' AND d.trade_dt < DATE '{SCOPE_END}'
-) s
-JOIN   pcr.fpic_prm_rr_tb r ON r.standard_id = s.advisor_sid
-LEFT   JOIN pcr.fpic_employee_tb e ON e.em_standard_id = s.advisor_sid
-GROUP  BY s.advisor_sid;
-""",
         "raw_advisor.sql": f"""
 -- Cohort advisors (in_cohort=true) PLUS every transfer counterparty
 -- (in_cohort=false) — miss them and every transfer edge pointing at them
 -- drops silently at load. Blank names stay blank; never invent one.
 -- job_code (Round 1b): fpic_employee_tb.job_cd, carried for plan
--- eligibility (SAG p.9). No employee row -> blank; a blank stays blank.
+-- eligibility. Round 5: em_status_cd / em_work_st_cd / em_work_city_txt
+-- added (client requirements 17 Aug). No employee row -> blank; a blank
+-- stays blank. DISTINCT ON collapses fpic_prm_rr_tb's one-row-per-branch
+-- fan-out to ONE row per advisor (the client's reference-table warning).
 WITH cohort(advisor_sid) AS (
   SELECT advisor_sid FROM cohort_adv
 ),
@@ -185,17 +178,22 @@ counterparties AS (
   WHERE  c.transfer_ts >= DATE '{SCOPE_START}' AND c.transfer_ts < DATE '{SCOPE_END}'
     AND  c.from_mem_sid IN (SELECT advisor_sid FROM cohort)
 )
-SELECT r.standard_id                              AS advisor_sid,
+SELECT DISTINCT ON (r.standard_id)
+       r.standard_id                              AS advisor_sid,
        r.prm_rr_no                                AS rep_code,
        COALESCE(e.em_name_txt,'')                 AS advisor_name,
        r.cwm_branch_cd                            AS branch_cd,
        COALESCE(e.em_standard_id,'')              AS employee_id,
        (r.standard_id IN (SELECT advisor_sid FROM cohort)) AS in_cohort,
-       COALESCE(e.job_cd,'')                      AS job_code
+       COALESCE(e.job_cd,'')                      AS job_code,
+       COALESCE(e.em_status_cd,'')                AS em_status_cd,
+       COALESCE(e.em_work_st_cd,'')               AS em_work_st_cd,
+       COALESCE(e.em_work_city_txt,'')            AS em_work_city_txt
 FROM   pcr.fpic_prm_rr_tb r
 LEFT   JOIN pcr.fpic_employee_tb e ON e.em_standard_id = r.standard_id
 WHERE  r.standard_id IN (SELECT advisor_sid FROM cohort)
-   OR  r.standard_id IN (SELECT advisor_sid FROM counterparties);
+   OR  r.standard_id IN (SELECT advisor_sid FROM counterparties)
+ORDER  BY r.standard_id;
 """,
         "raw_account.sql": f"""
 -- Accounts with in-scope cohort trades. Current snapshot — do NOT extract
@@ -233,8 +231,9 @@ FROM   pcr.product_hierarchy h;
 -- THE 48M-ROW TABLE: filter to cohort + date range BEFORE anything else or it
 -- times out. Credited revenue = post_split_credited_amt (pre_split x split_pct
 -- double-counts across advisors). NEVER join fpic_team_agreement_tb here.
--- Month derives from trade_dt in the build script — never proc_dt.
--- extract_chunked.py swaps the cohort join for a per-chunk advisor batch.
+-- Cohort applied via an IN-subquery on the session cohort temp table —
+-- NEVER a join to the reference tables (Round 5, client-mandated: the
+-- 4.1M-row loss). extract_chunked.py swaps that line for a per-chunk batch.
 SELECT d.trade_ref_no, d.split_seq_no, d.advisor_sid,
        d.account_no, d.product_cd, d.product_sub_cd,
        d.trade_dt, d.proc_dt,
@@ -247,9 +246,9 @@ SELECT d.trade_ref_no, d.split_seq_no, d.advisor_sid,
        COALESCE(d.file_key,'')                   AS file_key,
        COALESCE(d.trade_description,'')          AS trade_description
 FROM   pcr.fpic_daily_trade_details_tb_prod d
-JOIN   cohort_adv ca ON ca.advisor_sid = d.advisor_sid
 WHERE  d.trade_dt >= DATE '{SCOPE_START}'
-  AND  d.trade_dt <  DATE '{SCOPE_END}';
+  AND  d.trade_dt <  DATE '{SCOPE_END}'
+{TXN_COHORT_LINE.rstrip()};
 """,
         "raw_rr_changes.sql": f"""
 -- Account transfers touching a cohort advisor, in scope.
@@ -269,8 +268,8 @@ SELECT to_char(d.trade_dt,'YYYYMM')              AS month_id,
        to_char(max(d.trade_dt),'YYYY-MM-DD HH24:MI:SS')                      AS end_dt,
        count(DISTINCT d.trade_dt)                AS trading_days
 FROM   pcr.fpic_daily_trade_details_tb_prod d
-JOIN   cohort_adv ca ON ca.advisor_sid = d.advisor_sid
 WHERE  d.trade_dt >= DATE '{SCOPE_START}' AND d.trade_dt < DATE '{SCOPE_END}'
+  AND  d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv)
 GROUP  BY 1 ORDER BY 1;
 """,
         "raw_acct_eci_rel.sql": f"""
@@ -339,7 +338,11 @@ SELECT r.standard_id                             AS advisor_sid,
        sum(COALESCE((f.other_attributes->>'large_flow_cap_adj_am')::numeric,0))      AS large_flow_cap_adj_am,
        sum(COALESCE((f.other_attributes->>'forced_closure_excl_am')::numeric,0))     AS forced_closure_excl_am
 FROM   pcr.fpic_daily_adv_flows_tb_pm f
-JOIN   pcr.fpic_prm_rr_tb r
+-- rep-code -> SID resolution needs fpic_prm_rr_tb, but that reference table
+-- carries ONE ROW PER BRANCH (client, 17 Aug) — the DISTINCT subselect
+-- collapses it to one row per (standard_id, prm_rr_no) so the join can
+-- never multiply flow rows.
+JOIN   (SELECT DISTINCT standard_id, prm_rr_no FROM pcr.fpic_prm_rr_tb) r
        ON r.standard_id = f.rep_wrkr_sid OR r.prm_rr_no = f.pri_rep_cd
 WHERE  f.bus_dt::date >= DATE '{SCOPE_START}' AND f.bus_dt::date < DATE '{SCOPE_END}'
   AND  r.standard_id IN (SELECT advisor_sid FROM cohort_adv)

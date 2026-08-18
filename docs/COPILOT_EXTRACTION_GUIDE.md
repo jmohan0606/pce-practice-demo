@@ -38,7 +38,7 @@ than doubles the load window for no benefit.
 **2 · The IAM token expires after 30 minutes. This is normal, not a failure.**
 Extraction will stop mid-run with a clean message and a saved checkpoint. Refresh the token, rerun
 **the exact same command**, and it resumes at the first uncompleted chunk. It never restarts from
-the beginning. Expect this to happen several times across a 109-chunk extraction — **do not treat it
+the beginning. Expect this to happen several times across a ~105-chunk extraction — **do not treat it
 as an error and do not attempt to work around it.**
 
 **3 · Stop at the review gate (step 5).**
@@ -146,13 +146,17 @@ python3 scripts/extract_chunked.py \
   --dry-run
 ```
 
-**Expected:** a **109-chunk** plan —
+**Expected:** a **105-chunk** plan (Round 5: `raw_advisor_flags` retired, and the
+client-defined cohort is 5,455 advisors -> 28 transaction batches per month) —
 
 ```
-7 single-table chunks + 3 monthly-balance chunks + 12 account-bucket chunks
-(3 tables x 4 buckets) + 87 transaction chunks (3 months x 29 advisor batches of <= 200)
-= 109 chunks
+6 single-table chunks + 3 monthly-balance chunks + 12 account-bucket chunks
+(3 tables x 4 buckets) + 84 transaction chunks (3 months x 28 advisor batches of <= 200)
+= 105 chunks
 ```
+
+(The transaction-chunk count scales with the cohort file: at the pre-Round-5
+5,746-advisor cohort the same plan was 108 chunks.)
 
 with a projected row count on each. Nothing is extracted by a dry run.
 
@@ -171,7 +175,7 @@ python3 scripts/extract_chunked.py \
   --out data/real/_raw
 ```
 
-Runs the 109 chunks, writing one CSV each. **Expect this to take a while and to be interrupted.**
+Runs the chunks in the plan, writing one CSV each. **Expect this to take a while and to be interrupted.**
 
 ### When the token expires
 
@@ -199,7 +203,7 @@ at **4 concurrent** and back off on contention. This is optional — sequential 
 ### Expected output
 
 ```bash
-ls data/real/_raw/*.csv | wc -l    # ~109 plus the CRM file
+ls data/real/_raw/*.csv | wc -l    # ~105 plus the CRM file
 ```
 
 ---
@@ -388,7 +392,7 @@ python3 scripts/reconcile_load.py --raw data/real/_raw --data-dir data/real
 
 ## Definition of done
 
-- 109 chunks extracted, validation passed, operator gave a go-ahead
+- every chunk in the plan extracted (105 at the 5,455 cohort), validation passed, operator gave a go-ahead
 - Build passed all 12 validations
 - Both load phases complete
 - **Reconciliation passed on all 49 targets**

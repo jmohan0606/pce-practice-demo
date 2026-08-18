@@ -66,6 +66,7 @@ from scripts.generate_extraction_sql import (  # noqa: E402
     BALANCE_TABLES,
     BUCKET_MARKER,
     BUCKETED_SQL,
+    TXN_COHORT_LINE,
     bucket_predicate,
     session_setup_statements,
     templates,
@@ -83,10 +84,13 @@ CHUNK_ROW_WARN = 2_000_000
 # a partial run still yields a coherent review set. raw_crm_opportunity.sql is
 # EXCLUDED on purpose: the CRM export is a flat file, not a PostgreSQL extract.
 SINGLE_TABLES = [
-    "raw_advisor_flags.sql", "raw_advisor.sql", "raw_product_hierarchy.sql",
+    "raw_advisor.sql", "raw_product_hierarchy.sql",
     "raw_rr_changes.sql", "raw_month_meta.sql", "raw_team_agreement.sql",
     "raw_adv_flows.sql",
 ]
+# Round 5 task 1: raw_advisor_flags.sql RETIRED (with scripts/select_cohort.py)
+# — it only scored advisors for the demo-scale cohort selection, and the
+# client now defines the cohort. The chunk plan drops from 109 to 108.
 
 
 def month_bounds(month_id: str) -> tuple[str, str]:
@@ -97,11 +101,12 @@ def month_bounds(month_id: str) -> tuple[str, str]:
 
 def txn_chunk_sql(sids: list[str], month_id: str) -> str:
     """The transaction template re-scoped to one month x one advisor batch.
-    The template carries exactly two DATE literals (the full range) and one
-    cohort_adv join line; the dates are replaced with the chunk month's bounds
-    and the join with an inline batch (<= --batch-size SIDs — the full cohort
-    is NEVER inlined). Both shapes are asserted so a template edit fails
-    loudly here instead of extracting wrong."""
+    The template carries exactly two DATE literals (the full range) and the
+    one cohort IN-line (TXN_COHORT_LINE — never a join, per the client's
+    reference-table rule); the dates are replaced with the chunk month's
+    bounds and the IN-subquery with an inline batch (<= --batch-size SIDs —
+    the full cohort is NEVER inlined). Both shapes are asserted so a template
+    edit fails loudly here instead of extracting wrong."""
     sql = templates()["raw_revenue_transaction.sql"]
     dates = re.findall(r"DATE '(\d{4}-\d{2}-\d{2})'", sql)
     if len(dates) != 2:
@@ -109,17 +114,18 @@ def txn_chunk_sql(sids: list[str], month_id: str) -> str:
             f"raw_revenue_transaction.sql template no longer carries exactly "
             f"two DATE literals (found {len(dates)}) — update txn_chunk_sql "
             f"before extracting")
-    join_line = "JOIN   cohort_adv ca ON ca.advisor_sid = d.advisor_sid\n"
-    if join_line not in sql:
+    cohort_line = TXN_COHORT_LINE.rstrip("\n")
+    if cohort_line not in sql:
         raise RuntimeError(
             "raw_revenue_transaction.sql template no longer carries the "
-            "cohort_adv join line — update txn_chunk_sql before extracting")
+            "cohort IN-line (TXN_COHORT_LINE) — update txn_chunk_sql before "
+            "extracting")
     start, end = month_bounds(month_id)
     sql = sql.replace(f"DATE '{dates[0]}'", f"DATE '{start}'", 1)
     sql = sql.replace(f"DATE '{dates[1]}'", f"DATE '{end}'", 1)
     in_list = ",".join(f"'{s}'" for s in sids)
-    sql = sql.replace(join_line, "", 1)
-    sql = sql.rstrip().rstrip(";") + f"\n  AND  d.advisor_sid IN ({in_list});"
+    sql = sql.replace(cohort_line,
+                      f"  AND  d.advisor_sid IN ({in_list})", 1)
     return sql
 
 

@@ -36,8 +36,18 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts.build_real_data import RAW_CONTRACT  # noqa: E402
-from scripts.select_cohort import select  # noqa: E402
 from app.shared.fee_schedule import STANDARD_MANAGED_FEE_BPS  # noqa: E402
+
+# Round 5 task 1: scripts/select_cohort.py is RETIRED (the client defines the
+# cohort now), so the fixture cohort is DECLARED here — the same 20 advisors
+# the retired selector used to pick, with their scenario flags kept as
+# fixture-internal configuration (they drive which scenarios each advisor
+# exercises; no raw_advisor_flags.csv is written any more).
+SCENARIO_FLAG_NAMES = [
+    "has_fee_reduction_gt10", "has_recorded_grid_reduction", "has_transfer_in",
+    "has_transfer_out", "has_new_account", "has_zeroed_account",
+    "has_team_agreement", "has_flows", "has_non_credited",
+]
 
 RNG = random.Random(4242)
 
@@ -81,14 +91,16 @@ def write(out: Path, name: str, rows: list[dict]) -> None:
 
 
 def build_flags() -> list[dict]:
-    """26 candidates: 3 grid-reduction, 14 with assorted flags, 3 with none,
-    6 low-revenue losers whose flags duplicate already-covered ones."""
+    """The 20 fixture-cohort advisors with their scenario configuration:
+    3 grid-reduction, 14 with assorted flags, 3 with none. (The 6 low-revenue
+    'loser' candidates of the retired selector era are gone — nothing selects
+    anything any more.)"""
     def row(i: int, rev: float, **flags) -> dict:
         sid = f"T{i:06d}"
         r = {"advisor_sid": sid, "rep_code": f"R{500000 + i}",
              "advisor_name": "" if i == 15 else f"Test Advisor {i:02d}",
              "total_credited_amt": money(rev)}
-        for c in RAW_CONTRACT["raw_advisor_flags.csv"][4:]:
+        for c in SCENARIO_FLAG_NAMES:
             r[c] = bl(bool(flags.get(c, False)))
         return r
 
@@ -119,13 +131,6 @@ def build_flags() -> list[dict]:
         row(18, 35_000),
         row(19, 34_000),
         row(20, 33_000),
-        # losers: low revenue, only already-covered flags — must NOT be selected
-        row(21, 9_000, has_flows=True),
-        row(22, 8_500, has_non_credited=True),
-        row(23, 8_000, has_new_account=True),
-        row(24, 7_500, has_flows=True),
-        row(25, 7_000, has_zeroed_account=True),
-        row(26, 6_500, has_transfer_in=True),
     ]
     return rows
 
@@ -137,30 +142,36 @@ def main() -> int:
     out = Path(args.out)
 
     flags = build_flags()
-    write(out, "raw_advisor_flags.csv", flags)
 
-    # the cohort the selector will pick — fabricate raw extracts for exactly it
-    selected, _reasons = select([dict(r) for r in flags])
-    cohort = [r["advisor_sid"] for r in selected]
+    # the DECLARED fixture cohort — fabricate raw extracts for exactly it
+    cohort = [r["advisor_sid"] for r in flags]
     flag_by_sid = {r["advisor_sid"]: r for r in flags}
     print(f"fixture cohort ({len(cohort)}): {cohort}")
 
     counterparties = ["X800001", "X800002"]
 
     # ---- raw_advisor.csv (cohort + transfer counterparties) ----
-    # Round 1b: job_code from fpic_employee_tb.job_cd — Select codes (SAG p.9)
-    # mixed with a non-Select code; one blank (blank stays blank). No RNG.
-    job_codes = ["HK0176", "HK0186", "HK0187", "HK0188", "HK0300"]
+    # Round 1b: job_code from fpic_employee_tb.job_cd — Select codes mixed
+    # with a Private Client code and an UNMAPPED code (HK0300); one blank
+    # (blank stays blank). Round 5: em_status_cd (one 'T' departed, one 'L'
+    # on leave, rest 'A'), work state/city — deterministic, no RNG.
+    # Counterparties have no employee row: all four employee fields blank.
+    job_codes = ["HK0176", "HK0186", "HK0058", "HK0188", "HK0300"]
+    states = [("NY", "New York"), ("TX", "Dallas"), ("CA", "San Francisco"),
+              ("IL", "Chicago")]
     advisors = []
     for sid in cohort:
         f = flag_by_sid[sid]
         n = int(sid[1:])
+        st, city = states[n % len(states)]
         advisors.append({
             "advisor_sid": sid, "rep_code": f["rep_code"],
             "advisor_name": f["advisor_name"],
             "branch_cd": f"BR{100 + n % 4}",
             "employee_id": f"E{40000 + n}", "in_cohort": "true",
             "job_code": "" if n == 8 else job_codes[n % len(job_codes)],
+            "em_status_cd": "T" if n == 4 else ("L" if n == 11 else "A"),
+            "em_work_st_cd": st, "em_work_city_txt": city,
         })
     for j, sid in enumerate(counterparties, start=1):
         advisors.append({
@@ -168,6 +179,7 @@ def main() -> int:
             "advisor_name": f"Outside Advisor {j}", "branch_cd": "BR900",
             "employee_id": f"E{90000 + j}", "in_cohort": "false",
             "job_code": "",
+            "em_status_cd": "", "em_work_st_cd": "", "em_work_city_txt": "",
         })
     write(out, "raw_advisor.csv", advisors)
 
