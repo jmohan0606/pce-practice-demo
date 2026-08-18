@@ -270,3 +270,147 @@ no-behaviour-yet title). A scope that silently produced nothing would be the
 "worse than not adding it" failure — the absence of behaviour is stated.
 
 <!-- PART D and the verify list are appended after the subagent work lands. -->
+
+## PART D — UI (two subagents, main-thread re-verified by execution)
+
+### Task 11 — product table typography ✓ (observed)
+`th.colhead`/`th.grp` 12px → **13px**, equal to the 13px `.rowhead` product
+names (main-thread headless observation: `{'header': '13px', 'row': '13px'}`).
+The grey `.pfx` prefix span is gone from `ProductChangeTable` (and the unused
+`ProductTable` for consistency): the TWHS cell is ONE span —
+`{'text': 'TWHS – Structured Products', 'hasPfxChild': False, 'weight': '700',
+'color': 'rgb(22, 54, 92)'}`. Other display_prefix sites already rendered
+plain concatenated strings; rule-code `.pfx` chips are genuinely secondary
+labels and stay grey.
+
+### Task 14 — firm vs advisor total, explained ✓ (observed)
+Tooltip text lives ONLY in the glossary (`metric.firm_vs_advisor`, served by
+GET /api/glossary through the shared `<Term>` machinery): on the dashboard
+Total row, on each transition-chart bar total (via a new optional
+`totalTermCode` prop — the advisor page's chart, whose totals are
+advisor-basis, deliberately does NOT get it), and on the drill-down level-1
+amount tiles (`firmBasis` prop; advisor/account levels unchanged).
+Main-thread observation: 4 elements on the dashboard carry the glossary
+title text. The text: the firm total uses the wider firm-level reason-code
+filter and includes unattributed transactions, so it exceeds the sum of the
+advisor-level figures — correct, not a bug.
+
+### Task 12 — rules grouped by status ✓ (observed)
+RuleListManager renders eight collapsible sections — observed live:
+`Draft (12) · Needs Input (5) · Needs Data (6) · Compiled (3) ·
+Published (14) · Superseded (19)` (Inactive/Rejected hidden while empty —
+empty sections never render). Draft/Needs Input/Needs Data/Compiled expand by
+default; Published/Inactive/Superseded collapse; pagination is per-section;
+the status dropdown now COLLAPSES the other sections. Each header carries its
+plain-English meaning from GET /api/glossary (`rule_status.<KEY>`,
+RULE_STATUS_DEFINITIONS — the spec's table verbatim; observed on screen:
+"This list is the client conversation", "produce findings and exceptions",
+"Replaced by a newer version"). **Inactive is the flag, not a status**: only
+PUBLISHED && active=false rules land there (the subagent caught and fixed its
+own initial misclassification of a deactivated SUPERSEDED row); proven by
+deactivate→observe→reactivate with audited reasons (versions v14/v15).
+
+### Task 13 — the upload→approval journey ✓ (proven live)
+- **13.1** `ExtractionProgress` polls the document_ingest job:
+  "Extracting rules — 14 of 26  parse ✓ chunk ✓ embed ✓ extract ▓ compile ·
+  audit ·"; INTERRUPTED shows a red badge + explicit **Resume**
+  (POST /api/jobs/{id}/resume) — proven with a temporary job fixture; never
+  auto-resumes.
+- **13.2** Document rows show "N extracted · N compiled · N need a value ·
+  N need data we don't have", each a link into the Rules tab pre-filtered to
+  that document AND status — main-thread observation: clicking "5 need a
+  value" lands on the Rules tab with the document filter set and Needs Input
+  expanded.
+- **13.3** Document filter on the Rules tab (options derived from the rules'
+  document_ids, resolved to names); survives arriving from a 13.2 link.
+- **13.4** POST /api/rules/batch-approve {document_id}: approves the
+  document's COMPILED drafts, calls publish() ONCE (the store's documented
+  sweep = one version per batch), returns approved/failures/skipped with
+  per-rule reasons and the minted version. Refusals proven live: no COMPILED
+  drafts → 400 naming the 21 ineligible ("NEEDS_INPUT / NEEDS_DATA / DRAFT
+  rules cannot be batch-approved; they are incomplete by definition");
+  unknown document → 404. Success proven: ONE version minted per batch
+  (`RSV_v13 … "batch approval: 1 compiled rule(s) from
+  cwm_pca_plan_2026.pdf"`), immediate re-call refuses. The UI confirm dialog
+  LISTS every rule before approving.
+- **13.5** Result panel: "Published rule set vN — X rules from <doc>" with
+  [View in Rule Versions] and a clearly-labelled "Regenerate insights (on the
+  Dashboard)" link — generation is never auto-triggered.
+- Store state advanced intentionally during verification: latest is now
+  **RSV_v16** (14 rules, all active) — v13/v16 the batch-approve proofs,
+  v14/v15 the deactivate/reactivate audit pair, plus NNM_AWARD_MINIMUM
+  honestly landing NEEDS_DATA on compile.
+
+## The verify list
+
+```
+ 1  build_cohort.py expects 5,455 and STOPS on any other count (client-side
+    run — no PostgreSQL reachable here; report-and-stop proven by code path)
+ 2  V-0 PASS: no txn SQL joins fpic_prm_rr_tb/fpic_employee_tb (template +
+    real chunk); the check fails loudly if one reappears
+ 3  cohort via IN (SELECT ... FROM cohort_adv) — the join line is GONE
+ 4  month_id from proc_dt; trade_dt still extracted and stored
+ 5  corrected in SCHEMA_SPEC / ROUND_D_EXTRACTION / Copilot guide / DECISIONS
+    (+ runbook, TRACEABILITY, three prompts, historical-spec annotations)
+ 6  FIRM_REASON_FILTER + ADVISOR_REASON_FILTER in app/shared/reason_codes.py
+    only — grep shows no inlined copy
+ 7  firm aggregates include __UNATTRIBUTED__ (fixture-proven end to end);
+    dropdown/rankings/peer/exceptions exclude it
+ 8  seven advisor attributes present everywhere; migration 003 additive;
+    parity: (001, 002, 003) == clean install, 31V/44E
+ 9  all 12 job codes map (display name + plan family); blank source title
+    still yields the client's display name; unmapped HK0300 renders raw
+10  NNM trailer parsed + asserted; mismatch fails loudly (check_nnm_parse 23/23)
+11  build imports cleanly with resource absent (simulated Windows); psutil a
+    dependency; guard reports or states plainly that it cannot
+12  CRM map built from the real header; Salesforce names resolve; missing
+    contracted columns fail naming each; id derives when absent
+13  V-2 reports operator-supplied flow files; flow months informational
+14  V-10 states its denominator (distinct advisors present) and the cohort-
+    file count beside it
+15  COMPENSATION_ENGINE selectable / proposable / filterable / displayed,
+    carried through model+compiler+evaluator (which skips with the reason)
+14a firm_credited_amt + advisor_credited_amt on txn + monthly_revenue;
+    credited_amt retained == advisor_credited_amt (post-pass verified)
+14b all 46 catalog queries audited above, column + reason each
+15a select_cohort.py + raw_advisor_flags.sql retired; plan 108 not 109;
+    build_cohort.py writes cohort.txt from the client's query
+15b raw_advisor.sql selects the three employee columns; counterparties still
+    extracted in_cohort=false with blank employee fields
+16  headers == product-name size (13px == 13px, computed styles)      [observed]
+17  TWHS prefix one label, identical style, every site                [observed]
+18  firm-total tooltip present, glossary-served                       [observed]
+19  collapsible status sections, counts, correct default expansion,
+    empty sections hidden                                             [observed]
+20  section meanings from /api/glossary (rule_status.*), not hardcoded[observed]
+21  an Inactive rule appears under Inactive, not Published            [proven by
+    deactivate→observe→reactivate]
+22  live stage progress with item counts; INTERRUPTED offers explicit
+    Resume (job fixture)                                              [observed]
+23  extraction counts link to the pre-filtered Rules tab              [observed]
+24  document filter survives arriving from such a link                [observed]
+25  batch approval lists rules first, mints ONE version, refuses
+    NEEDS_INPUT/NEEDS_DATA (curl-proven both ways)                    [proven]
+26  post-approval panel names the version with links                  [observed]
+```
+
+## Regression
+
+```
+a 25/25 · b 19/19 · c 13/13 · e 8/8 · h 9/9 · a1 17/17 · round_1 12/12 ·
+round_1b 8/8 · round_2a 16/16 (check 11 deferred by design) · round_3 10/10 ·
+flags 8/8 · manual 17/17 · nnm 23/23 · exports 43/43 · numeric gate 9/9 ·
+parity (001,002,003) == clean install 31V/44E · npm run build clean (10 routes)
+```
+
+Servers left running: uvicorn :8002 (healthy, 0 mismatches, serving the dual
+credited columns + firm-basis dashboard) · next dev :3002 (200).
+
+## Carried / open
+
+- Running build_cohort.py + the re-extraction itself: client-environment
+  operator work (this round's stated scope).
+- The advisor-screen cascading filters (client req §7) have their DATA now
+  (job/state/city on the vertex) but no UI task this round — next round.
+- COMPENSATION_ENGINE evaluation target: a later decision, skip-reason states it.
+- Port visibility for 8002/3002 still needs the Ports panel (carried).

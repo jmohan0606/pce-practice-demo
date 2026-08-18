@@ -1,5 +1,78 @@
 # Build Progress
 
+## Round 5 (docs/spec/ROUND_5_SPEC.md) — client cohort, reason codes, extraction fixes
+- [x] Task 1 (b88e424): the CLIENT defines the cohort — build_cohort.py runs
+      their query verbatim (5,455 expected; report-and-stop on any other
+      count); select_cohort.py + raw_advisor_flags.sql RETIRED (chunk plan
+      109→108); cohort applied via IN (SELECT ... FROM cohort_adv), NEVER a
+      join; NEW validator V-0 fails on any reference-table join in txn SQL;
+      raw_advisor.sql +em_status_cd/work_st/work_city + DISTINCT ON (the
+      one-row-per-branch fan-out); adv_flows rep join de-fanned.
+- [x] Task 2 (ce9df85): proc_dt IS the month/scope basis (client-confirmed:
+      reconciles 0.36% where trade_dt never does) — templates, scoped_acct,
+      month_meta, transform_txn; trade_dt still stored; "never use proc_dt"
+      corrected in SCHEMA_SPEC/ROUND_D/guide/runbook/TRACEABILITY/prompts +
+      superseded-notes on historical specs.
+- [x] Task 3 (07cfd0b): TWO client reason filters in ONE place
+      (FIRM_REASON_FILTER not-in 9X,XX; ADVISOR_REASON_FILTER also 9R/98/99/
+      9H) → firm_credited_amt + advisor_credited_amt on txn AND
+      monthly_revenue (migration 003, three vertices); credited_amt KEPT ==
+      advisor_credited_amt so every rule/finding/insight keeps meaning;
+      committed mock CSVs column-appended by a post-pass that VERIFIES stored
+      credited against the filter; dashboard queries switched to FIRM basis
+      over cohort+__UNATTRIBUTED__ (May: firm $951,879.85 vs advisor
+      $890,127.59 — the client's expected gap, visible); demo cause codes are
+      registry-excluded at advisor level so no data pin moved; ALL 46 catalog
+      queries audited column-by-column in ROUND_5_COMPLETE.md.
+- [x] Task 4 (5b5b02d): advisor vertex +7 attributes (the client mapping's
+      job_display_name — authoritative over blank source titles, unmapped →
+      raw code; em_status_cd/is_departed('T')/work_state/work_city/
+      advisor_plan family/is_synthetic) in every schema place;
+      app/shared/job_codes.py is the ONE mapping; NULL-advisor rows extract
+      via (IN cohort OR IS NULL) riding exactly one chunk per month and load
+      under the synthetic __UNATTRIBUTED__ advisor (fixture-proven, reconcile
+      exact via a negative row-added delta); mock advisor CSV post-passed.
+- [x] Task 5 (5ea5779): NNM T-trailer parsed and ASSERTED against the parsed
+      row count (mismatch/after-trailer/junk all loud); fabricator emits
+      trailers; check_nnm_parse 23/23.
+- [x] Task 6 (12a39a5): resource import guarded; psutil fallback (dependency
+      added); guard reports or states plainly it cannot; simulated-Windows
+      import proven (peak 20 MB via psutil).
+- [x] Task 7 (fd2bc0a): CRM source→target map BUILT FROM THE REAL HEADER
+      (Salesforce names accepted; unresolved contracted columns fail naming
+      each; opportunity_id derives CRM|eci|createddate when absent —
+      DECISIONS).
+- [x] Task 8 (59ebcbb): operator-supplied raw_adv_flows_<month>.csv accepted —
+      V-2 reports them, never fails; flow months informational (June honestly
+      absent, never fabricated); build reads either form.
+- [x] Task 9 (69621e1): V-10 divides by DISTINCT advisors PRESENT in the
+      extract, states the denominator + cohort-file count, FIRM-filter
+      amounts, client $37k reference ($34,210 on the fixture over 20).
+- [x] Part C (ff2103f): COMPENSATION_ENGINE applies-to level — store enum,
+      extractor proposal (lenient→ALL), evaluator SKIPS with the stated
+      no-target-yet reason, Write-a-Rule/edit/chip/filter carried through.
+- [x] Tasks 11+14 (Subagent A, verified in main thread, a9dbef0): table
+      headers 13px == product names; TWHS one label everywhere (observed:
+      single span, weight 700, one colour); glossary-served firm-vs-advisor
+      tooltip on the Total row / chart bar totals / drill level-1 tiles
+      (observed: 4 on the dashboard; advisor page deliberately excluded).
+- [x] Tasks 12+13 (Subagent B, verified in main thread, 3d7d15e): rules list
+      → collapsible status sections with counts + glossary meanings
+      (rule_status.*; Inactive = PUBLISHED-and-off only, own section, proven
+      by deactivate/reactivate v14/v15); extraction job progress with
+      explicit Resume (never automatic); extraction counts link into a
+      document+status-prefiltered Rules tab (document filter survives the
+      link — observed); POST /api/rules/batch-approve mints ONE version per
+      batch (RSV_v13/v16 proven live) and refuses NEEDS_INPUT/NEEDS_DATA
+      (curl-proven); close-the-loop panel names the version with links.
+- [x] Verification: full regression green (a25 b19 c13 e8 h9 a1-17, r1 12,
+      r1b 8, r2a 16, r3 10, flags 8, manual 17, nnm 23, exports 43, gate 9,
+      parity 001+002+003==clean 31V/44E, npm build 10 routes); Part D
+      observed in headless chromium BY THE MAIN THREAD. Actual output in
+      docs/ROUND_5_COMPLETE.md. Session app-LLM spend $0.00 of $10. Servers
+      left running :8002/:3002. Rule store advanced to RSV_v16 during
+      batch-approve proofs (recorded).
+
 ## Round 4 (docs/spec/ROUND_4_SPEC.md) — CLI generation scripts + Round 3 on-screen fixes
 - [x] Post-round (operator fix; committed locally during the GitHub outage,
       pushed once it returned): the numeric gate's percentage branch accepted
