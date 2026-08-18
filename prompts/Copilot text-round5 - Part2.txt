@@ -17,3 +17,21 @@ Move-Item data\real\_raw\raw_balance_*.csv        data\real\_raw_old_trade_dt\
 4 · Extract, then rebuild with --max-memory-mb 8192.
 
 Report the new txn_for_account and am_for_account dropped counts. They should fall to near zero.
+-----------------------------------------------------------------------------------------------------------------------
+Start the graph load. The build is complete and verified: 40,047,855 vertex rows and 104,273,975 edge rows across 49 files.
+
+powershell
+uv run python scripts\load_real_data.py --data-dir data\real --max-parallel 3
+
+Expect about 3 hours. Two phases, enforced: all 18 vertex entities, then all 31 edge entities. A phase-2 entity refusing to start while phase 1 is incomplete is correct behaviour, not an error — rerun to finish phase 1 first.
+
+If interrupted, rerun the identical command. Checkpoints skip completed entities. Never pass --fresh — it discards all completed work.
+
+Report at the end of phase 1 (elapsed time and rows loaded), then at the end of phase 2. Do not stop to ask in between.
+
+When the load finishes, run reconciliation and paste the complete output:
+
+powershell
+uv run python scripts\reconcile_load.py --raw data\real\_raw --data-dir data\real
+
+Two identical failures = stop and report. Never a third attempt. Never estimate a number.
