@@ -10,6 +10,9 @@ dependencies = [
     "pydantic-settings>=2.3",
     "httpx>=0.27",
     "python-multipart>=0.0.9",
+    # Round 5 task 6: the build's memory guard on Windows (`resource` is
+    # Unix-only; without a fallback the 4 GB guard is inert mid-build)
+    "psutil>=5.9",
 ]
 
 [project.optional-dependencies]

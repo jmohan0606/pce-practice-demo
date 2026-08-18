@@ -63,9 +63,17 @@ import argparse
 import csv
 import json
 import re
-import resource
 import shutil
 import sys
+
+# Round 5 task 6: `resource` is Unix-only — on Windows the build must still
+# run, falling back to psutil for the memory guard (or reporting plainly that
+# the guard cannot enforce). Without this the 4 GB guard is inert exactly
+# where a 12.4M-row build needs it.
+try:
+    import resource
+except ImportError:  # Windows
+    resource = None
 from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
@@ -354,8 +362,27 @@ def prior_month(month_id: str) -> str:
     return f"{y}{m:02d}"
 
 
+_MEMORY_GUARD_NOTE_PRINTED = False
+
+
 def peak_rss_mb() -> int:
-    return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
+    """Peak (Unix: ru_maxrss) or current (Windows: psutil RSS) memory in MB.
+    Returns 0 with a clear one-time note when neither source exists — the
+    guard then cannot enforce, and says so instead of silently passing."""
+    global _MEMORY_GUARD_NOTE_PRINTED
+    if resource is not None:
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024
+    try:
+        import psutil
+
+        return int(psutil.Process().memory_info().rss // (1024 * 1024))
+    except ImportError:
+        if not _MEMORY_GUARD_NOTE_PRINTED:
+            _MEMORY_GUARD_NOTE_PRINTED = True
+            print("  [memory] WARNING: neither 'resource' (Unix) nor 'psutil' "
+                  "is available — the --max-memory-mb guard CANNOT enforce on "
+                  "this platform. pip install psutil to restore it.")
+        return 0
 
 
 class MemoryGuard:

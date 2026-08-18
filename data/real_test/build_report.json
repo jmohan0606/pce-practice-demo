@@ -137,9 +137,9 @@
     }
   },
   "peak_rss_mb_per_entity": {
-    "account": 20,
-    "revenue_transaction": 24,
-    "monthly_revenue": 24,
+    "account": 19,
+    "revenue_transaction": 25,
+    "monthly_revenue": 25,
     "small_entities": 25,
     "account_eci_rel": 25,
     "account_eci_map": 25,
