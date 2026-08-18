@@ -468,8 +468,11 @@ def product_transition_metrics(store: FoundationGraphStore, params: dict) -> lis
         # AUM = end balances of the accounts producing this group's revenue
         "aum": _balances(store, to_accts, to),
         "prior_aum": _balances(store, frm_accts, frm),
-        "advisor_count": len({str(t.get("advisor_sid")) for t in to_txns}),
-        "prior_advisor_count": len({str(t.get("advisor_sid")) for t in frm_txns}),
+        # advisor COUNTS exclude the synthetic unattributed row (not an advisor)
+        "advisor_count": len({str(t.get("advisor_sid")) for t in to_txns}
+                             - {UNATTRIBUTED_SID}),
+        "prior_advisor_count": len({str(t.get("advisor_sid")) for t in frm_txns}
+                                   - {UNATTRIBUTED_SID}),
         "account_count": len(to_accts),
         "prior_account_count": len(frm_accts),
     }]
@@ -769,6 +772,9 @@ def advisor_count_by_product(store: FoundationGraphStore, params: dict) -> list[
     advisors: set[str] = set()
     for m in metrics.values():
         advisors |= m["advisors"]
+    # firm-basis activity, but an advisor COUNT means real advisors — the
+    # synthetic unattributed row is not one (Round 5)
+    advisors.discard(UNATTRIBUTED_SID)
     return [{"group_id": gid, "month_id": month, "advisor_count": len(advisors)}]
 
 
