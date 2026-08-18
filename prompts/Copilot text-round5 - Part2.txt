@@ -60,6 +60,17 @@ Section 5 is the most important — determine exactly how measure_ingest_rate.py
 
 Report using the exact template at the end of the document, and finish with one sentence naming the bottleneck.
 
+-----------------------------loading job assessment
+Read docs/COPILOT_ASSESS_LOADING_JOBS.md in full and work through all five sections.
+
+Feasibility analysis only. Do not change the ingestion design. Do not stop the running load unless a test requires it — say so first if it does.
+
+The key constraint: we cannot place files on the TigerGraph server by hand. Everything must be code-driven, including getting the CSVs to where the server can read them. Section 2 decides whether this is viable at all.
+
+Section 4 must be measured, not estimated. If the speedup is under 5×, the checkpoint fix in section 5 is the better answer.
+
+Report using the exact template at the end, ending with a one-paragraph recommendation.
+
 Never estimate a number — every figure comes from a command that ran. If a file or symbol is not where expected, report it rather than searching elsewhere.
 
 Two identical failures = stop and report. Never a third attempt. Never estimate a number.
