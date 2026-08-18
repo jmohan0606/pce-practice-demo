@@ -76,5 +76,7 @@ print([l.strip() for l in s.splitlines() if 'rpg' in l][:3])
 The rpg line must show ::text. Do not run a chunk until that output confirms it.
 
 While you are there, check every other COALESCE(col,'') in the transaction template against the column's actual type in information_schema.columns, and report any others that are non-text. A second type error would cost another failed chunk.
+---------------------------
+Good rates. Continue to completion and report at 28, 56 and 84 chunks — completed count, elapsed time for that block, and any failure. Refresh the token and rerun the identical command whenever it expires; expect two or three refreshes. Do not stop to ask between milestones.
 
 Then run the extraction and report the first 5 chunks with wall time and row counts.
