@@ -83,6 +83,14 @@ Report step 1b before running anything: whether the single edge job can be drive
 Step 3's progress file matters as much as the loader — I need to read live progress from a second window during the run.
 
 Rejected rows stop the phase. A loading job that rejects rows still reports success, and silently rejected rows produce a graph that looks loaded and computes wrong figures.
+-----------------------------loading job building fix
+Fix the header declaration. On this TigerGraph version, DEFINE FILENAME f; with USING HEADER="true" and $"column" references fails the semantic check. Change each job to declare its header explicitly:
+
+DEFINE HEADER h FOR FILENAME f = "col1","col2",...;
+
+Take the column list from each job's existing $"..." references — they already match the CSV headers exactly, verified. Keep named references. Do not switch to positional $0.
+
+Prove it on load_month.gsql first — install it, run it with runLoadingJobWithFile, confirm 3 rows. Only then apply the same change to the other 18.
 
 Two identical failures = stop and report. Never estimate a number.
 
