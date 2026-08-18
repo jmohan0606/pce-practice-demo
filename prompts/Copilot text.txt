@@ -52,3 +52,12 @@ Do not retry flows while transactions are still running.
 Continue to completion. Report at 40, 60 and 87 chunks with completed count, elapsed time and any failure. Do not stop to ask between milestones. Refresh the token and rerun the same command whenever it expires.
 
 Once all 87 transaction chunks are done, retry flows as-is for one month — the merge join may now complete within 900s. Report the result either way.
+
+---------------------------round 5
+Do not apply a fix. Report two things first.
+
+1 · Which chunk timed out and at what limit — the exact chunk id, the statement timeout in force, and the full error text.
+
+2 · EXPLAIN on that chunk's actual SQL, with its real parameters. Report the top three plan nodes, and say explicitly whether any node references fpic_prm_rr_tb or fpic_employee_tb.
+
+Do not run the extraction again in this pass.
