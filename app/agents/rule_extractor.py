@@ -89,6 +89,11 @@ def build_system_prompt() -> str:
         "(a maximum/limit), CALCULATION (a formula/schedule).\n"
         "- `grain` is the entity the rule applies to: one of "
         + "|".join(GRAINS) + ".\n"
+        "- `applies_to`: which level the provision governs — PRACTICE (the "
+        "firm), ADVISOR, PRODUCT, COMPENSATION_ENGINE (the provision is about "
+        "how compensation itself is calculated — a grid, a payout formula, an "
+        "engine-level adjustment — rather than about a practice, advisor or "
+        "product), or ALL when it is not limited. Default ALL when unsure.\n"
         "- `missing`: if the document REFERENCES a threshold, rate, date or cap "
         "but does not STATE its value, extract the rule anyway and set `missing` "
         "to one plain sentence naming exactly what is absent. Never invent a "
@@ -283,6 +288,11 @@ def extract_rules_for_document(document_id: str, chunks: list[dict],
             rule["kind"] = kind if kind in KINDS else "CALCULATION"
             rule.setdefault("rule_name", rule["rule_code"].replace("_", " ").title())
             rule.setdefault("driver_tag", "Other")
+            # Round 5 Part C: applies_to proposal — lenient coercion against
+            # the store's closed set; absent/invalid lands at ALL, never drops
+            applies = str(rule.get("applies_to") or "").upper().replace(" ", "_")
+            from app.rules.store import APPLIES_TO as _APPLIES_TO
+            rule["applies_to"] = applies if applies in _APPLIES_TO else "ALL"
             # Round A1 task 2: severity is extractor-assigned; an absent or
             # invalid level lands honestly at INFO with a reason saying so —
             # never silently promoted.

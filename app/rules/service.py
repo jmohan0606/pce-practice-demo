@@ -70,6 +70,13 @@ def applies_to_skip_reason(rule: dict, scope: str, advisor_sid: str | None,
         if key and str(group_id) != str(key):
             return f"rule applies to product group {key} only — this evaluation is for {group_id}"
         return None
+    if level == "COMPENSATION_ENGINE":
+        # Round 5 Part C: forward-looking scope — stored, displayed and
+        # filterable; what a Compensation Engine rule evaluates against is a
+        # later decision, so EVERY evaluation skips it with this reason.
+        return ("rule applies at COMPENSATION_ENGINE level — its evaluation "
+                "target is not yet defined; the rule is stored and displayed "
+                "but produces no findings")
     return f"unknown applies_to level {level!r} — rule skipped, not errored"
 
 

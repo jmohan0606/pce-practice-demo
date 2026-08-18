@@ -20,7 +20,7 @@ import {
  * here — deactivate/reactivate has its own ReasonModal on the rule row. */
 
 const SEVERITIES = ["CRITICAL", "HIGH", "MODERATE", "LOW", "INFO"] as const;
-const APPLIES_TO = ["ALL", "PRACTICE", "ADVISOR", "PRODUCT"] as const;
+const APPLIES_TO = ["ALL", "PRACTICE", "ADVISOR", "PRODUCT", "COMPENSATION_ENGINE"] as const;
 
 // PATCH /api/rules/{key}/driver-label has no client in lib/api.ts or
 // lib/rulesApi.ts (main-thread owned — gap reported); same helper pattern.

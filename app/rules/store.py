@@ -70,7 +70,12 @@ SEVERITIES = ("CRITICAL", "HIGH", "MODERATE", "LOW", "INFO")
 # Distinct from Round G's ``scopes`` (which evaluation scopes a rule CAN run
 # at): a rule can be ADVISOR-applied yet practice-evaluable. DECISIONS.md.
 # ALL is the default and matches pre-Round-C behaviour.
-APPLIES_TO = ("PRACTICE", "ADVISOR", "PRODUCT", "ALL")
+# Round 5 Part C: COMPENSATION_ENGINE — a rule about compensation
+# calculation itself rather than a practice/advisor/product. Selectable for
+# BOTH origins (extracted + manually written); stored, displayed, filterable.
+# No behaviour yet BY DESIGN: what it evaluates against is a later decision
+# (the evaluator skips it with an honest reason).
+APPLIES_TO = ("PRACTICE", "ADVISOR", "PRODUCT", "COMPENSATION_ENGINE", "ALL")
 
 # Round C (docs/rules) task 1.2 — explicit provenance tags, code -> chip label.
 # The tag renders everywhere a rule appears so the client always sees where a

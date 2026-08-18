@@ -17,11 +17,17 @@ export default function AppliesToChip({
         ? `Advisor${appliesToKey ? ` ${appliesToKey}` : "-level"}`
         : appliesTo === "PRODUCT"
           ? `Product${appliesToKey ? ` ${appliesToKey}` : "-level"}`
-          : appliesTo;
+          : appliesTo === "COMPENSATION_ENGINE"
+            ? "Compensation Engine"
+            : appliesTo;
   return (
     <span
       className="chip aigen"
-      title={`Applies to ${label} — other evaluations skip this rule with a reason.`}
+      title={
+        appliesTo === "COMPENSATION_ENGINE"
+          ? "Applies to the Compensation Engine — stored and displayed; its evaluation target is a later decision, so it produces no findings yet."
+          : `Applies to ${label} — other evaluations skip this rule with a reason.`
+      }
     >
       {label}
     </span>

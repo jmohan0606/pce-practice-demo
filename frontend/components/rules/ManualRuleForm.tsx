@@ -182,6 +182,7 @@ export default function ManualRuleForm({ onCreated }: { onCreated?: () => void }
             <option value="PRACTICE">Practice (firm level only)</option>
             <option value="ADVISOR">One advisor</option>
             <option value="PRODUCT">One product group</option>
+            <option value="COMPENSATION_ENGINE">Compensation Engine (calculation-level)</option>
           </select>
         </div>
         <div>
