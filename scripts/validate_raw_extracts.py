@@ -35,8 +35,9 @@ Checks:
        raw_month_meta.csv and vice versa;
        when balances arrive as per-month chunks, their months must match too
   V-9  unmapped product codes listed with counts — silence is not allowed
-  V-10 THE SANITY ANCHOR: credited revenue per cohort advisor per month is
-       roughly $33k firmwide.
+  V-10 THE SANITY ANCHOR: FIRM-credited revenue per DISTINCT advisor
+       actually present in the extract, per month (~$33k-$37k; the
+       denominator is stated and real — Round 5 task 9).
 
 Exit 0 = safe to proceed to the Phase 4 review gate. Exit 1 = fix the extract
 first; loading is not safe.
@@ -55,6 +56,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.shared.ids import normalize_account_key  # noqa: E402
+from app.shared.reason_codes import FIRM_REASON_FILTER  # noqa: E402
 from scripts import parse_nnm  # noqa: E402
 from scripts.build_real_data import (  # noqa: E402
     CHUNK_FAMILIES, CRM_LEGACY_NAME, RAW_CONTRACT, ColumnMismatchError,
@@ -199,6 +201,7 @@ def main() -> int:
     n_files_checked = 0
     txn_months: collections.Counter = collections.Counter()
     txn_credited_by_month: collections.Counter = collections.Counter()
+    txn_advisors: set = set()  # DISTINCT advisors actually present (Round 5 task 9)
     literal_none = blanks = 0
     coded: collections.Counter = collections.Counter()
     unmapped: collections.Counter = collections.Counter()
@@ -226,17 +229,22 @@ def main() -> int:
                         month = (t.get("proc_dt") or "")[:7].replace("-", "")  # Round 5: proc month
                         if month:
                             txn_months[month] += 1
+                        sid = (t.get("advisor_sid") or "").strip()
+                        if sid:
+                            txn_advisors.add(sid)
                         reason = (t.get("reason_cd") or "").strip()
                         if reason == "__NONE__":
                             literal_none += 1
                         elif not reason:
                             blanks += 1
-                            txn_credited_by_month[month] += 0
-                        if not reason:
-                            txn_credited_by_month[month] += float(
-                                t.get("post_split_credited_amt") or 0)
                         else:
                             coded[reason] += 1
+                        # Round 5: the anchor compares against the client's
+                        # FIRM-level PCE figure — accumulate under the FIRM
+                        # reason filter (one place, never inlined)
+                        if reason != "__NONE__" and FIRM_REASON_FILTER(reason):
+                            txn_credited_by_month[month] += float(
+                                t.get("post_split_credited_amt") or 0)
                         key = (t.get("product_cd", ""), t.get("product_sub_cd", ""))
                         if key not in known:
                             unmapped[key] += 1
@@ -349,21 +357,34 @@ def main() -> int:
     check("V-9 unmapped product codes listed (silence not allowed)", True,
           f"{len(unmapped)} distinct unmapped code(s)")
 
-    # V-10 — the sanity anchor (credited totals accumulated during the stream)
+    # V-10 — the sanity anchor. Round 5 task 9: the denominator is DISTINCT
+    # advisors ACTUALLY PRESENT in the extract (a check that passes on a
+    # wrong divisor is worse than one that fails); the cohort-file count is
+    # stated alongside it. Reference: the client's April PCE total is $403.5M
+    # across 10,899 firm-wide advisors ≈ $37,025/advisor/month — our cohort
+    # trades more heavily, so a higher figure is expected.
     _, advisors = read_csv(raw_dir / "raw_advisor.csv")
-    cohort = sum(1 for a in advisors
-                 if str(a.get("in_cohort", "")).strip().lower() in ("true", "t", "1"))
+    cohort_file = sum(1 for a in advisors
+                      if str(a.get("in_cohort", "")).strip().lower() in ("true", "t", "1"))
+    present = len(txn_advisors)
     months_n = max(len(txn_months), 1)
     credited = sum(txn_credited_by_month.values())
-    per_advisor_month = credited / max(cohort, 1) / months_n
-    anchor_ok = 6_600 <= per_advisor_month <= 165_000  # $33k within 5x either way
-    check("V-10 sanity anchor: ~$33k credited per cohort advisor per month",
+    per_advisor_month = credited / max(present, 1) / months_n
+    anchor_ok = present > 0 and 6_600 <= per_advisor_month <= 185_000
+    check("V-10 sanity anchor: FIRM-credited revenue per advisor-present per "
+          "month (~$33k-$37k expected)",
           anchor_ok,
-          f"${per_advisor_month:,.0f}/advisor/month over {cohort} cohort "
-          f"advisors x {months_n} months"
+          f"${per_advisor_month:,.0f}/advisor/month — denominator: {present:,} "
+          f"DISTINCT advisors present in the extract (cohort file lists "
+          f"{cohort_file:,}) x {months_n} months; client reference "
+          f"$403.5M / 10,899 firm advisors ≈ $37,025"
           + ("" if anchor_ok else
              " — ORDER OF MAGNITUDE OUT: check the proc_dt scope bounds and "
              "that no team-agreement join fanned rows out"))
+    if present and cohort_file and abs(present - cohort_file) > 0.2 * cohort_file:
+        print(f"      NOTE: advisors present ({present:,}) differs from the "
+              f"cohort file ({cohort_file:,}) by more than 20% — worth a look "
+              f"(informational)")
 
     print(f"\n{len(FAILURES)} failure(s)" + (" — fix the extract before loading."
                                              if FAILURES else
