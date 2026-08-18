@@ -95,7 +95,29 @@ def parse_nnm_file(path: str | Path) -> dict:
 
     rows: list[dict] = []
     seen_ids: dict[str, int] = {}
+    trailer_count: int | None = None
+    trailer_lineno: int | None = None
     for lineno, line in enumerate(lines[1:], start=2):
+        # Round 5 task 5: a line beginning with 'T' is the TRAILER — 'T'
+        # followed by the record count the file says it holds. It turns a
+        # crash into a verification: we can prove we read every row.
+        if line.startswith("T"):
+            if trailer_count is not None:
+                raise NnmParseError(
+                    f"{path.name}:{lineno}: second trailer line {line!r} "
+                    f"(first at line {trailer_lineno})")
+            try:
+                trailer_count = int(line[1:].strip())
+            except ValueError as exc:
+                raise NnmParseError(
+                    f"{path.name}:{lineno}: trailer is not 'T<count>': "
+                    f"{line!r}") from exc
+            trailer_lineno = lineno
+            continue
+        if trailer_count is not None:
+            raise NnmParseError(
+                f"{path.name}:{lineno}: data after the trailer line "
+                f"(trailer at line {trailer_lineno}): {line!r}")
         if not line.startswith("D"):
             raise NnmParseError(f"{path.name}:{lineno}: expected a D-prefixed line, got {line!r}")
         fields = line[1:].split("|")  # strip the D prefix, split on |
@@ -132,8 +154,15 @@ def parse_nnm_file(path: str | Path) -> dict:
             "entry_dt": _dt(entry_dt_raw),
             "as_of_dt": as_of_dt,
         })
+    # Round 5 task 5: the trailer states how many data rows the file should
+    # hold — a mismatch is a truncated or padded feed and FAILS LOUDLY.
+    if trailer_count is not None and trailer_count != len(rows):
+        raise NnmParseError(
+            f"{path.name}: trailer says {trailer_count} data rows but "
+            f"{len(rows)} were parsed — truncated or altered feed; do not load")
     return {"as_of_dt": as_of_dt, "category": category,
-            "category_source": category_source, "rows": rows}
+            "category_source": category_source, "rows": rows,
+            "trailer_count": trailer_count}
 
 
 def parse_nnm_dir(dir_path: str | Path, pattern: str = "*NNM_*.txt") -> list[dict]:
@@ -205,6 +234,10 @@ def build_mock_nnm_lines(advisor_sids: list[str], seed: int = 77,
                 entry_dt = f"{month_id[:4]}-{month_id[4:6]}-01"
                 lines.append(
                     f"D{entry_dt}|{sid}|{_month_end(month_id)}|{mtd:.2f}|{ytd:.2f}")
+        # Round 5 task 5: the real feed ends with a T<record-count> trailer —
+        # the fabricated files carry one too so generation round-trips the
+        # parser's trailer verification.
+        lines.append(f"T{len(lines) - 2}")  # data rows only (H + column header excluded)
         out[prefix] = lines
     return out
 

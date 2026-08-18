@@ -134,6 +134,31 @@ def main() -> int:
     empty = tmp / "empty"; empty.mkdir()
     expect_error("N12 empty dir raises", lambda: parse_nnm_dir(empty), "no NNM files")
 
+    # --- N13 (Round 5 task 5): the T-trailer — parse, verify, fail loudly
+    t_ok = tmp / "ECNNM_trail.txt"
+    t_ok.write_text("H2026-06-30\nDEntry_Dt|StandardID|Month_Year|MTD_NNM|YTD_NNM\n"
+                    "D2026-01-01|F1|2026-01-31|1.00|1.00\n"
+                    "D2026-02-01|F1|2026-02-28|2.00|3.00\nT2\n")
+    parsed = parse_nnm_file(t_ok)
+    check("N13 T-trailer parses; row count verified against it",
+          len(parsed["rows"]) == 2 and parsed["trailer_count"] == 2)
+    t_bad = tmp / "ECNNM_trailbad.txt"
+    t_bad.write_text("H2026-06-30\nDEntry_Dt|StandardID|Month_Year|MTD_NNM|YTD_NNM\n"
+                     "D2026-01-01|F1|2026-01-31|1.00|1.00\nT2\n")
+    expect_error("N13b trailer/row-count mismatch fails loudly",
+                 lambda: parse_nnm_file(t_bad), "trailer says 2")
+    t_after = tmp / "ECNNM_after.txt"
+    t_after.write_text("H2026-06-30\nDEntry_Dt|StandardID|Month_Year|MTD_NNM|YTD_NNM\n"
+                       "T1\nD2026-01-01|F1|2026-01-31|1.00|1.00\n")
+    expect_error("N13c data after the trailer fails",
+                 lambda: parse_nnm_file(t_after), "after the trailer")
+    t_junk = tmp / "ECNNM_junk.txt"
+    t_junk.write_text("H2026-06-30\nDEntry_Dt|StandardID|Month_Year|MTD_NNM|YTD_NNM\n"
+                      "X2026-01-01|F1|2026-01-31|1.00|1.00\n")
+    expect_error("N13d a non-H/D/T line is still an error",
+                 lambda: parse_nnm_file(t_junk), "expected a D-prefixed line")
+    # the mock fabricator now emits trailers — N11's round-trip proves them
+
     failed = [r for r in RESULTS if not r[1]]
     print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} checks passed")
     return 1 if failed else 0
