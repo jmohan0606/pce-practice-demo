@@ -142,6 +142,10 @@ def main() -> int:
                 months = sorted(spec["regex"].fullmatch(p.name).group(1)
                                 for p in chunks)
                 seq_desc.append(f"balances: {months}")
+            elif spec["sequenced"] == "months_informational":
+                months = sorted(spec["regex"].fullmatch(p.name).group(1)
+                                for p in chunks)
+                seq_desc.append(f"flows (informational): {months}")
             else:
                 nums = sorted(int(spec["regex"].fullmatch(p.name).group(1))
                               for p in chunks)
@@ -165,7 +169,17 @@ def main() -> int:
                                     f"checkpoint recorded {rec.get('rows')}")
             on_disk = {p.stem for chunks in sources["chunks"].values()
                        for p in chunks}
-            unknown = sorted(on_disk - checkpointed)
+            # Round 5 task 8: flow chunk files may be OPERATOR-SUPPLIED
+            # (extracted by hand) — present on disk, absent from the
+            # checkpoint. Correct files, unaware bookkeeping: REPORTED,
+            # never a failure.
+            flow_stems = {p.stem
+                          for p in sources["chunks"].get("raw_adv_flows.csv", [])}
+            unknown = sorted(on_disk - checkpointed - flow_stems)
+            operator_supplied = sorted(flow_stems - checkpointed)
+            if operator_supplied:
+                print(f"      flow files operator-supplied (not in the "
+                      f"checkpoint — accepted): {operator_supplied}")
             if unknown:
                 problems.append(f"chunk files not in the checkpoint: {unknown}")
             check("V-2 chunk files match extract_checkpoint.json (all families)",
@@ -314,6 +328,13 @@ def main() -> int:
             bal_note = f"; balance chunk missing for month(s) {missing_bal}"
         else:
             bal_note = f"; balance chunks cover {sorted(bal_months)}"
+    flow_chunks = sources["chunks"].get("raw_adv_flows.csv", [])
+    if flow_chunks:
+        flow_months = sorted(re.fullmatch(r"raw_adv_flows_(\d{6})\.csv", p.name)
+                             .group(1) for p in flow_chunks)
+        print(f"      flow months present (INFORMATIONAL — never required to "
+              f"cover all months; June has no flow rows in the source, "
+              f"confirmed; never fabricate an empty month file): {flow_months}")
     check("V-8 transaction months == month-meta months (+ balance chunk coverage)",
           not only_txn and not only_meta and bal_ok,
           (f"txn-only={only_txn} meta-only={only_meta}{bal_note}"

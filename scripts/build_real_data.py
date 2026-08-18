@@ -203,6 +203,16 @@ CHUNK_FAMILIES: dict[str, dict] = {
         "regex": re.compile(r"raw_acct_eci_map_b(\d+)\.csv"),
         "sequenced": "buckets",
     },
+    # Round 5 task 8: flows may arrive as OPERATOR-SUPPLIED per-month files
+    # (raw_adv_flows_202604.csv ...) extracted by hand. Month coverage is
+    # INFORMATIONAL — the source genuinely has no June flow rows (confirmed
+    # directly), and two months is complete. NEVER fabricate an empty month
+    # file to satisfy a check.
+    "raw_adv_flows.csv": {
+        "glob": "raw_adv_flows_*.csv",
+        "regex": re.compile(r"raw_adv_flows_(\d{6})\.csv"),
+        "sequenced": "months_informational",
+    },
 }
 TXN_CHUNK_GLOB = CHUNK_FAMILIES["raw_revenue_transaction.csv"]["glob"]
 CRM_EXPORT_NAME = "crm_opportunities.csv"
@@ -1012,7 +1022,8 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
     hier_rows = read_raw(raw_dir, "raw_product_hierarchy.csv")
     rr_rows = read_raw(raw_dir, "raw_rr_changes.csv")
     team_rows = read_raw(raw_dir, "raw_team_agreement.csv")
-    flow_rows = read_raw(raw_dir, "raw_adv_flows.csv")
+    flow_rows = [r for fp in family_files(raw_dir, sources, "raw_adv_flows.csv")
+                 for r in iter_csv_rows(fp, RAW_CONTRACT["raw_adv_flows.csv"])]
     adv_raw = read_raw(raw_dir, "raw_advisor.csv")
     for name, rows in (("raw_month_meta.csv", meta_rows),
                        ("raw_product_hierarchy.csv", hier_rows),
