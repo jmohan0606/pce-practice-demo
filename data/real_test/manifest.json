@@ -84,9 +84,16 @@
         "branch_cd": "branch_cd",
         "employee_id": "employee_id",
         "in_cohort": "in_cohort",
-        "job_code": "job_code"
+        "job_code": "job_code",
+        "job_display_name": "job_display_name",
+        "em_status_cd": "em_status_cd",
+        "is_departed": "is_departed",
+        "work_state": "work_state",
+        "work_city": "work_city",
+        "advisor_plan": "advisor_plan",
+        "is_synthetic": "is_synthetic"
       },
-      "expected_rows": 22,
+      "expected_rows": 23,
       "order": 5,
       "phase": 1
     },
@@ -122,7 +129,7 @@
         "eci_id": "eci_id",
         "account_count": "account_count"
       },
-      "expected_rows": 151,
+      "expected_rows": 152,
       "order": 7,
       "phase": 1
     },
@@ -140,7 +147,7 @@
         "client_employee_ind": "client_employee_ind",
         "is_owner_role": "is_owner_role"
       },
-      "expected_rows": 152,
+      "expected_rows": 153,
       "order": 8,
       "phase": 1
     },
@@ -231,7 +238,7 @@
         "file_key": "file_key",
         "trade_description": "trade_description"
       },
-      "expected_rows": 1705,
+      "expected_rows": 1707,
       "order": 12,
       "phase": 1
     },
@@ -254,7 +261,7 @@
         "txn_count": "txn_count",
         "distinct_accounts": "distinct_accounts"
       },
-      "expected_rows": 777,
+      "expected_rows": 779,
       "order": 13,
       "phase": 1
     },
@@ -276,7 +283,7 @@
         "prior_end_balance": "prior_end_balance",
         "prior_credited_amt": "prior_credited_amt"
       },
-      "expected_rows": 363,
+      "expected_rows": 369,
       "order": 14,
       "phase": 1
     },
@@ -417,7 +424,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1705,
+      "expected_rows": 1707,
       "order": 21,
       "phase": 2
     },
@@ -430,7 +437,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1703,
+      "expected_rows": 1705,
       "order": 22,
       "phase": 2
     },
@@ -443,7 +450,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1705,
+      "expected_rows": 1707,
       "order": 23,
       "phase": 2
     },
@@ -456,7 +463,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 1705,
+      "expected_rows": 1707,
       "order": 24,
       "phase": 2
     },
@@ -469,7 +476,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 777,
+      "expected_rows": 779,
       "order": 25,
       "phase": 2
     },
@@ -482,7 +489,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 777,
+      "expected_rows": 779,
       "order": 26,
       "phase": 2
     },
@@ -495,7 +502,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 777,
+      "expected_rows": 779,
       "order": 27,
       "phase": 2
     },
@@ -508,7 +515,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 777,
+      "expected_rows": 779,
       "order": 28,
       "phase": 2
     },
@@ -521,7 +528,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 360,
+      "expected_rows": 366,
       "order": 29,
       "phase": 2
     },
@@ -534,7 +541,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 363,
+      "expected_rows": 369,
       "order": 30,
       "phase": 2
     },
@@ -547,7 +554,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 363,
+      "expected_rows": 369,
       "order": 31,
       "phase": 2
     },
@@ -573,7 +580,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 152,
+      "expected_rows": 153,
       "order": 33,
       "phase": 2
     },
@@ -586,7 +593,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 152,
+      "expected_rows": 153,
       "order": 34,
       "phase": 2
     },
@@ -638,7 +645,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 871,
+      "expected_rows": 872,
       "order": 38,
       "phase": 2
     },

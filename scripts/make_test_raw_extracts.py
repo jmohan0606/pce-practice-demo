@@ -290,6 +290,12 @@ def main() -> int:
     # trades on an account absent from raw_account.csv -> DROPPED txn_for_account
     emit(cohort[0], "0009999999", "MUFD", "", "202604", 150.0, desc="Orphan account trade")
     emit(cohort[0], "0009999999", "MUFD", "", "202605", 175.0, desc="Orphan account trade")
+    # Round 5: NULL-advisor rows (blank advisor_sid) — they COUNT firm-wide
+    # and load under the synthetic '__UNATTRIBUTED__' advisor
+    emit("", acct_by_sid[cohort[1]][0], "MUFD", "", "202604", 410.0,
+         desc="Unattributed trade")
+    emit("", acct_by_sid[cohort[2]][1], "STRT", "", "202605", 265.0,
+         desc="Unattributed trade")
     write(out, "raw_revenue_transaction.csv", txns)
 
     # ---- transfers (in from X800001, out to X800002) ----

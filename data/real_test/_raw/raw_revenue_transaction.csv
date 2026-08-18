@@ -1704,3 +1704,5 @@ trade_ref_no,split_seq_no,advisor_sid,account_no,product_cd,product_sub_cd,trade
 701703,1,T000005,0000003189,ZZZZ,,2026-05-16,2026-05-18,333.00,391.76,0.85,,0.00,0.00,0.00,0.0,0.00,RPG003,STD,daily_trade_details,Product missing from hierarchy
 701704,1,T000001,0009999999,MUFD,,2026-04-12,2026-04-14,150.00,176.47,0.85,,0.00,0.00,0.00,0.0,0.00,RPG000,STD,daily_trade_details,Orphan account trade
 701705,1,T000001,0009999999,MUFD,,2026-05-25,2026-05-27,175.00,205.88,0.85,,0.00,0.00,0.00,0.0,0.00,RPG000,STD,daily_trade_details,Orphan account trade
+701706,1,,0000003049,MUFD,,2026-04-30,2026-05-01,410.00,482.35,0.85,,0.00,0.00,0.00,0.0,0.00,RPG007,STD,daily_trade_details,Unattributed trade
+701707,1,,0000003098,STRT,,2026-05-13,2026-05-15,265.00,311.76,0.85,,0.00,0.00,0.00,0.0,0.00,,STD,daily_trade_details,Unattributed trade

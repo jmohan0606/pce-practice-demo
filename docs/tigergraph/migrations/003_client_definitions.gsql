@@ -44,5 +44,14 @@ CREATE GLOBAL SCHEMA_CHANGE JOB migration_003_client_definitions {
     firm_credited_amt DOUBLE,
     advisor_credited_amt DOUBLE
   );
+  ALTER VERTEX phx_dm_pce_advisor ADD ATTRIBUTE (
+    job_display_name STRING,
+    em_status_cd STRING,
+    is_departed BOOL,
+    work_state STRING,
+    work_city STRING,
+    advisor_plan STRING,
+    is_synthetic BOOL
+  );
 }
 RUN GLOBAL SCHEMA_CHANGE JOB migration_003_client_definitions

@@ -116,9 +116,23 @@ never a substitute for it; products absent from the hierarchy get empty strings.
 ```sql
 CREATE VERTEX phx_dm_pce_advisor (PRIMARY_ID advisor_sid STRING, rep_code STRING,
   advisor_name STRING, branch_cd STRING, employee_id STRING, in_cohort BOOL,
-  job_code STRING)
+  job_code STRING, job_display_name STRING, em_status_cd STRING,
+  is_departed BOOL, work_state STRING, work_city STRING, advisor_plan STRING,
+  is_synthetic BOOL)
 WITH primary_id_as_attribute="true";
 ```
+Round 5 (client requirements, 17 Aug 2026): `job_display_name` comes from the
+CLIENT'S mapping table in `app/shared/job_codes.py` — it is NOT in any source
+table, the mapping is authoritative and an unmapped code renders as the raw
+code, never a guess. `em_status_cd` A|L|T from `fpic_employee_tb`;
+`is_departed = (em_status_cd = 'T')` — drives the Departed tag in the
+non-credited inheritance drill-down. `work_state`/`work_city` from
+`em_work_st_cd`/`em_work_city_txt` (advisor screen cascading filters).
+`advisor_plan` PRIVATE_CLIENT|SELECT_ADVISOR from the job-code family — the
+answer to "which comp plan applies to which advisor". `is_synthetic=true`
+marks the one `__UNATTRIBUTED__` advisor the NULL-advisor transactions load
+under (firm aggregates include it; rankings/dropdowns never show it).
+A blank employee field stays blank — counterparties have no employee row.
 Source `pcr.fpic_prm_rr_tb` (`standard_id`, `prm_rr_no`, `cwm_branch_cd`) joined to
 `pcr.fpic_employee_tb` (`em_standard_id` → `em_name_txt`, `job_cd` → `job_code`).
 Blank name → leave blank, never invent. `job_code` (Round 1b, confirmed

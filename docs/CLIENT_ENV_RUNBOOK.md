@@ -101,18 +101,21 @@ docs/tigergraph/03_create_graph.gsql
 
 ### 1.2a Already installed at the Round-F2 state (30V/42E)
 
-**Do NOT reinstall — that would drop loaded data.** Run BOTH migrations, in
-order:
+**Do NOT reinstall — that would drop loaded data.** Run ALL THREE migrations,
+in order:
 
 ```
 docs/tigergraph/migrations/001_exceptions_and_jobs.gsql
 docs/tigergraph/migrations/002_schema_additions.gsql
+docs/tigergraph/migrations/003_client_definitions.gsql
 ```
 
-Both are additive-only (no DROP, no data-touching statement). 001 alters
+All are additive-only (no DROP, no data-touching statement). 001 alters
 `phx_dm_pce_rule` and adds the job vertex + two edges; 002 alters
 `phx_dm_pce_advisor` (job_code) and `phx_dm_pce_product` (the two pay-type
-codes).
+codes); 003 (Round 5) adds the two credited columns to
+`phx_dm_pce_revenue_transaction` + `phx_dm_pce_monthly_revenue` and the seven
+client-requirement attributes to `phx_dm_pce_advisor`.
 
 **Correct result:** both schema-change jobs report success; existing vertex
 counts are unchanged; the four new attributes from 002 appear on
@@ -124,10 +127,13 @@ counts are unchanged; the four new attributes from 002 appear on
 
 ```
 docs/tigergraph/migrations/002_schema_additions.gsql
+docs/tigergraph/migrations/003_client_definitions.gsql
 ```
 
-**Correct result:** the schema-change job reports success; vertex/edge type
-counts stay 31/44 (002 adds attributes, not types); existing data untouched.
+(An environment already at the Round-1b state runs only 003.)
+
+**Correct result:** the schema-change jobs report success; vertex/edge type
+counts stay 31/44 (002/003 add attributes, not types); existing data untouched.
 
 ### 1.3 GSQL V1 constraints (for any hand-written query work later)
 
@@ -142,7 +148,7 @@ counts stay 31/44 (002 adds attributes, not types); existing data untouched.
 python3 scripts/verify_schema_parity.py
 ```
 
-**Correct result:** ends `all checks passed — migrations (001, 002) ==
+**Correct result:** ends `all checks passed — migrations (001, 002, 003) ==
 clean install (31 vertices / 44 edges)`. **If not:** the FAIL line names the exact
 vertex/attribute/edge that differs between the migrated and clean paths —
 fix the named file, rerun. Never proceed with a parity failure: it means two

@@ -11,8 +11,9 @@ INSERT INTO cohort_adv (advisor_sid) VALUES ('T000001'),('T000002'),('T000003'),
 CREATE TEMP TABLE scoped_acct AS
 SELECT DISTINCT ltrim(trim(d.account_no),'0') AS k
 FROM   pcr.fpic_daily_trade_details_tb_prod d
-WHERE  d.trade_dt >= DATE '2026-04-01' AND d.trade_dt < DATE '2026-07-01'
-  AND  d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv);
+WHERE  d.proc_dt >= DATE '2026-04-01' AND d.proc_dt < DATE '2026-07-01'
+  AND  (d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv)
+   OR   d.advisor_sid IS NULL);
 
 CREATE INDEX ON scoped_acct (k);
 

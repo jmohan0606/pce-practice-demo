@@ -55,7 +55,14 @@
         "branch_cd": "STRING",
         "employee_id": "STRING",
         "in_cohort": "BOOL",
-        "job_code": "STRING"
+        "job_code": "STRING",
+        "job_display_name": "STRING",
+        "em_status_cd": "STRING",
+        "is_departed": "BOOL",
+        "work_state": "STRING",
+        "work_city": "STRING",
+        "advisor_plan": "STRING",
+        "is_synthetic": "BOOL"
       }
     },
     "phx_dm_pce_account": {

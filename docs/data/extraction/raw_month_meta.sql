@@ -6,14 +6,16 @@
 -- THEN run 00_session_setup.sql (temp tables die with the session — a token
 -- refresh is a reconnect, so re-run it after ANY reconnect).
 -- Save the result as CSV (header row, comma, UTF-8): data/real/_raw/raw_month_meta.csv
--- Month meta: trading_days = distinct trade dates. The table accrues DAILY
+-- Month meta (Round 5: months are PROC months — the client's report basis).
+-- trading_days = distinct processing dates. The table accrues DAILY
 -- (weekends have rows), so expect calendar-day counts 30 / 31 / 30 and
 -- is_partial=false for all three months (client Phase 0 confirmed June complete).
-SELECT to_char(d.trade_dt,'YYYYMM')              AS month_id,
-       to_char(date_trunc('month', min(d.trade_dt)),'YYYY-MM-DD HH24:MI:SS') AS start_dt,
-       to_char(max(d.trade_dt),'YYYY-MM-DD HH24:MI:SS')                      AS end_dt,
-       count(DISTINCT d.trade_dt)                AS trading_days
+SELECT to_char(d.proc_dt,'YYYYMM')               AS month_id,
+       to_char(date_trunc('month', min(d.proc_dt)),'YYYY-MM-DD HH24:MI:SS') AS start_dt,
+       to_char(max(d.proc_dt),'YYYY-MM-DD HH24:MI:SS')                      AS end_dt,
+       count(DISTINCT d.proc_dt)                 AS trading_days
 FROM   pcr.fpic_daily_trade_details_tb_prod d
-WHERE  d.trade_dt >= DATE '2026-04-01' AND d.trade_dt < DATE '2026-07-01'
-  AND  d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv)
+WHERE  d.proc_dt >= DATE '2026-04-01' AND d.proc_dt < DATE '2026-07-01'
+  AND  (d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv)
+   OR   d.advisor_sid IS NULL)
 GROUP  BY 1 ORDER BY 1;

@@ -1,5 +1,5 @@
 opportunity_id,eci_id,ownersid,account_record_type,product_service_type,stage_name,amount,actual_assets,anticipated_investment_dt,created_dt,last_modified_dt,date_of_last_contact,days_to_close,comments
-006000000000000,ECI7001,T000001,PersonAccount,,Contact Attempted,0.00,452655.71,2026-08-16 00:00:00,2026-02-05 00:00:00,2026-06-23 00:00:00,2026-04-23 00:00:00,311,
+006000000000000,ECI7001,T000001,PersonAccount,,Contact Attempted,0.00,0.00,2026-08-16 00:00:00,2026-02-05 00:00:00,2026-06-23 00:00:00,2026-04-23 00:00:00,-174,
 006000000000001,ECI7002,T000002,Prospect,,Contact Made,0.00,0.00,2026-08-19 00:00:00,2026-01-17 00:00:00,2026-06-03 00:00:00,2026-04-04 00:00:00,266,
 006000000000002,ECI7007,T000003,Business_Prospect,,Funding,863544.55,0.00,2026-08-15 00:00:00,2026-04-12 00:00:00,2026-06-26 00:00:00,2026-06-20 00:00:00,282,left voicemail
 006000000000003,ECI7008,T000004,IndustriesBusiness,,Meeting Held,186949.11,0.00,2026-07-20 00:00:00,2026-04-03 00:00:00,2026-06-12 00:00:00,2026-06-01 00:00:00,-103,follow up next week

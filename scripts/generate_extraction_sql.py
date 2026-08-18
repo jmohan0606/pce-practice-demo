@@ -80,7 +80,10 @@ BALANCE_TABLES = {
 # IN (SELECT ...), NEVER a join (client-mandated; reference tables carry one
 # row per branch/location, so a join fans out / drops rows — the 4.1M loss).
 # extract_chunked.txn_chunk_sql swaps this exact line for a per-chunk batch.
-TXN_COHORT_LINE = "  AND  d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv)\n"
+# Round 5 task 3 (client-confirmed): NULL-advisor rows COUNT toward the firm
+# level — the scope is cohort OR NULL, still never a join.
+TXN_COHORT_LINE = ("  AND  (d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv)"
+                   " OR d.advisor_sid IS NULL)\n")
 
 # Templates that carry the /*BUCKET*/ marker — extract_chunked.py splits each
 # into --buckets deterministic chunks over scoped_acct's key hash.
@@ -110,7 +113,8 @@ def session_setup_statements(sids: list[str]) -> list[str]:
 SELECT DISTINCT ltrim(trim(d.account_no),'0') AS k
 FROM   pcr.fpic_daily_trade_details_tb_prod d
 WHERE  d.proc_dt >= DATE '{SCOPE_START}' AND d.proc_dt < DATE '{SCOPE_END}'
-  AND  d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv)""")
+  AND  (d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv)
+   OR   d.advisor_sid IS NULL)""")
     stmts.append("CREATE INDEX ON scoped_acct (k)")
     stmts.append("ANALYZE scoped_acct")
     return stmts
@@ -270,7 +274,8 @@ SELECT to_char(d.proc_dt,'YYYYMM')               AS month_id,
        count(DISTINCT d.proc_dt)                 AS trading_days
 FROM   pcr.fpic_daily_trade_details_tb_prod d
 WHERE  d.proc_dt >= DATE '{SCOPE_START}' AND d.proc_dt < DATE '{SCOPE_END}'
-  AND  d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv)
+  AND  (d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv)
+   OR   d.advisor_sid IS NULL)
 GROUP  BY 1 ORDER BY 1;
 """,
         "raw_acct_eci_rel.sql": f"""

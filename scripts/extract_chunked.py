@@ -99,7 +99,7 @@ def month_bounds(month_id: str) -> tuple[str, str]:
     return f"{y:04d}-{m:02d}-01", f"{nxt[0]:04d}-{nxt[1]:02d}-01"
 
 
-def txn_chunk_sql(sids: list[str], month_id: str) -> str:
+def txn_chunk_sql(sids: list[str], month_id: str, include_null: bool = False) -> str:
     """The transaction template re-scoped to one month x one advisor batch.
     The template carries exactly two DATE literals (the full range) and the
     one cohort IN-line (TXN_COHORT_LINE — never a join, per the client's
@@ -124,8 +124,11 @@ def txn_chunk_sql(sids: list[str], month_id: str) -> str:
     sql = sql.replace(f"DATE '{dates[0]}'", f"DATE '{start}'", 1)
     sql = sql.replace(f"DATE '{dates[1]}'", f"DATE '{end}'", 1)
     in_list = ",".join(f"'{s}'" for s in sids)
-    sql = sql.replace(cohort_line,
-                      f"  AND  d.advisor_sid IN ({in_list})", 1)
+    # Round 5: NULL-advisor rows ride EXACTLY ONE chunk per month (batch 1)
+    # so firm-level figures include them without ever duplicating them.
+    predicate = (f"  AND  (d.advisor_sid IN ({in_list}) OR d.advisor_sid IS NULL)"
+                 if include_null else f"  AND  d.advisor_sid IN ({in_list})")
+    sql = sql.replace(cohort_line, predicate, 1)
     return sql
 
 
@@ -252,7 +255,8 @@ def setup_session(conn, advisors: list[str], statement_timeout: str) -> None:
 
 def chunk_sql(chunk: dict, advisors: list[str]) -> str:
     if chunk["kind"] == "txn":
-        return txn_chunk_sql(chunk["sids"], chunk["month"])
+        return txn_chunk_sql(chunk["sids"], chunk["month"],
+                             include_null=chunk.get("batch_no") == 1)
     if chunk["kind"] == "balance":
         from scripts.generate_extraction_sql import monthly_balance_sql
 

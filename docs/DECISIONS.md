@@ -458,3 +458,13 @@ Decisions:
 - The Non-Credited Revenue section stays keyed on the reason-code cause registry (advisor-level non-credited): its causes — inheritance from a departed advisor included (client req §5) — are advisor-crediting stories. A firm-basis non-credited total is derivable as amount − firm_credited_amt and is stated in the audit, not silently substituted.
 - Measured on mock after the switch: May firm dashboard total $951,879.85 vs advisor-basis $890,127.59 — the firm > sum-of-advisors property the client described, now visible in the demo.
 Reversible: yes
+
+## 2026-08-18 · Round 5 task 4 · Advisor vertex: SEVEN attributes, not six — is_synthetic rides migration 003
+Context: Task 4 lists six advisor attributes; task 3's own load block requires is_synthetic=true on the __UNATTRIBUTED__ synthetic advisor. Deriving it from the SID would leave the spec's stated field unimplemented in schema.
+Decisions:
+- Migration 003 adds SEVEN advisor attributes (the six + is_synthetic BOOL). Additive, parity-proven; the spec's "six" undercounted its own task-3 requirement — recorded here rather than silently diverging.
+- The client's job_cd → DisplayName / plan-family mapping lives in app/shared/job_codes.py ONLY (it exists in no source table; the mapping is authoritative over em_pay_title_txt — four codes have blank source titles by design). Unmapped code → the raw code shown, plan family blank; blank stays blank. The 12 codes double as the cohort filter list (build_cohort.py carries them inside the client's verbatim query).
+- NULL-advisor extraction: the scope is (advisor IN cohort OR advisor IS NULL) — still never a join; NULL rows ride EXACTLY ONE transaction chunk per month (batch 1 carries the OR IS NULL predicate) so they are never duplicated across batches and the chunk plan stays 108. scoped_acct and month_meta include the NULL-advisor scope for consistency (their accounts/months are firm-relevant).
+- build_real_data appends the synthetic advisor row only when the stream actually saw blank-SID rows; the advisor transform delta records it as a NEGATIVE explained delta (a row ADDED), so reconcile_load's raw − explained == built arithmetic stays exact. Fixtures now carry two blank-advisor rows to exercise the path end to end.
+- Committed mock advisor CSV extended by --add-advisor-attributes post-pass (column-append; byte-identical existing columns): all mock advisors em_status_cd 'A' / not departed (inventing mock departures would silently change stored-insight semantics), deterministic work state/city, display name + plan from the real mapping (mock's HK0300 renders as the raw code — the unmapped path visible in the demo).
+Reversible: yes

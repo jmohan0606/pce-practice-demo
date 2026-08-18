@@ -1,5 +1,5 @@
 opportunity_id,eci_id,advisor_sid,advisor_sid_raw,advisor_valid,account_record_type,product_service_type,stage_name,stage_group,amount,actual_assets,anticipated_investment_dt,created_dt,last_modified_dt,date_of_last_contact,days_to_close,is_stalled,comments,ai_read,ai_read_confidence,ai_read_evidence,ai_read_model,data_source
-006000000000000,ECI7001,T000001,T000001,true,PersonAccount,,Contact Attempted,EARLY,0.00,452655.71,2026-08-16 00:00:00,2026-02-05 00:00:00,2026-06-23 00:00:00,2026-04-23 00:00:00,311,false,,,,,,CRM
+006000000000000,ECI7001,T000001,T000001,true,PersonAccount,,Contact Attempted,EARLY,0.00,0.00,2026-08-16 00:00:00,2026-02-05 00:00:00,2026-06-23 00:00:00,2026-04-23 00:00:00,-174,true,,,,,,CRM
 006000000000001,ECI7002,T000002,T000002,true,Prospect,,Contact Made,EARLY,0.00,0.00,2026-08-19 00:00:00,2026-01-17 00:00:00,2026-06-03 00:00:00,2026-04-04 00:00:00,266,false,,,,,,CRM
 006000000000002,ECI7007,T000003,T000003,true,Business_Prospect,,Funding,CLOSING,863544.55,0.00,2026-08-15 00:00:00,2026-04-12 00:00:00,2026-06-26 00:00:00,2026-06-20 00:00:00,282,false,left voicemail,,,,,CRM
 006000000000003,ECI7008,T000004,T000004,true,IndustriesBusiness,,Meeting Held,MID,186949.11,0.00,2026-07-20 00:00:00,2026-04-03 00:00:00,2026-06-12 00:00:00,2026-06-01 00:00:00,-103,true,follow up next week,,,,,CRM

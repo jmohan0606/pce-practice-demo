@@ -194,6 +194,28 @@ def build_products() -> list[dict]:
 JOB_CODES = ["HK0176", "HK0186", "HK0187", "HK0188", "HK0300"]
 
 
+# Round 5 task 4: deterministic mock work locations (no RNG — post-passable
+# onto the committed CSVs) and the advisor-attribute fill from the client's
+# job-code mapping (app/shared/job_codes.py — ONE place).
+MOCK_WORK_LOCATIONS = [("NY", "New York"), ("TX", "Dallas"),
+                       ("CA", "San Francisco"), ("IL", "Chicago")]
+
+
+def mock_advisor_attributes(sid: str, job_code: str, is_cohort: bool) -> dict:
+    from app.shared.job_codes import advisor_plan_for, job_display_name
+    n = int(sid[1:]) if sid[1:].isdigit() else 0
+    st, city = MOCK_WORK_LOCATIONS[n % len(MOCK_WORK_LOCATIONS)]
+    return {
+        "job_display_name": job_display_name(job_code),
+        "em_status_cd": "A" if is_cohort else "",  # counterparties: no employee row
+        "is_departed": bl(False),
+        "work_state": st if is_cohort else "",
+        "work_city": city if is_cohort else "",
+        "advisor_plan": advisor_plan_for(job_code),
+        "is_synthetic": bl(False),
+    }
+
+
 def mock_job_code(i: int) -> str:
     return "" if i == 8 else JOB_CODES[i % len(JOB_CODES)]
 
@@ -209,12 +231,14 @@ def build_advisors() -> tuple[list[dict], list[str]]:
             "advisor_sid": sid, "rep_code": f"R{700000 + i * 7}", "advisor_name": name,
             "branch_cd": f"BR{100 + (i % 5)}", "employee_id": f"E{50000 + i}", "in_cohort": bl(True),
             "job_code": mock_job_code(i),
+            **mock_advisor_attributes(sid, mock_job_code(i), True),
         })
     for j, sid in enumerate(("X900001", "X900002"), start=1):
         rows.append({
             "advisor_sid": sid, "rep_code": f"R{880000 + j}", "advisor_name": f"T. {SURNAMES[19 + j]}",
             "branch_cd": "BR900", "employee_id": f"E{90000 + j}", "in_cohort": bl(False),
             "job_code": "",  # transfer counterparties: employee row not extracted — blank stays blank
+            **mock_advisor_attributes(sid, "", False),
         })
     return rows, cohort
 
@@ -688,6 +712,34 @@ def add_credited_columns_csv() -> None:
     print("manifest: columns updated for the two vertices")
 
 
+def add_advisor_attributes_csv() -> None:
+    """--add-advisor-attributes (Round 5 task 4): deterministic COLUMN-APPEND
+    post-pass on the COMMITTED advisor CSV — the seven Round-5 attributes
+    (job_display_name from the client's authoritative mapping, em_status_cd,
+    is_departed, work_state/work_city, advisor_plan, is_synthetic), derived by
+    the same rule the generator now uses. No row changes; every existing
+    column byte-identical. Refuses double application."""
+    path = VDIR / "phx_dm_pce_advisor.csv"
+    with path.open(newline="", encoding="utf-8-sig") as f:
+        rows = list(csv.DictReader(f))
+    if "job_display_name" in rows[0]:
+        raise RuntimeError("advisor-attributes post-pass already applied")
+    for r in rows:
+        r.update(mock_advisor_attributes(
+            r["advisor_sid"], r["job_code"], r["in_cohort"] == "true"))
+    n = write_csv(path, VERTEX_COLUMNS["phx_dm_pce_advisor"], rows)
+    print(f"vertex phx_dm_pce_advisor: {n} rows, +7 Round-5 attributes")
+    manifest = json.loads((DATA / "manifest.json").read_text(encoding="utf-8"))
+    for entry in manifest["files"]:
+        if entry["target"] == "phx_dm_pce_advisor":
+            entry["columns"] = {c: c for c in VERTEX_COLUMNS["phx_dm_pce_advisor"]}
+    tag = "Round 5 advisor-attributes post-pass (--add-advisor-attributes)"
+    if tag not in manifest["generated_by"]:
+        manifest["generated_by"] += " + " + tag
+    (DATA / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    print("manifest: advisor columns updated")
+
+
 # --------------------------------------------------------------------------- other vertices
 def build_account_month(by_advisor: dict[str, list[dict]], txns: list[dict]) -> list[dict]:
     per = defaultdict(lambda: {"credited": 0.0, "count": 0})
@@ -1004,7 +1056,9 @@ VERTEX_COLUMNS = {
     "phx_dm_pce_revenue_class": ["class_id", "class_name"],
     "phx_dm_pce_product_group": ["group_id", "group_name", "display_prefix", "class_id", "sort_order", "is_aggregated"],
     "phx_dm_pce_product": ["product_id", "product_cd", "product_sub_cd", "product_name", "sor", "file_key", "group_id", "grid_type", "l1_pay_type_cd", "l2_pay_type_cd"],
-    "phx_dm_pce_advisor": ["advisor_sid", "rep_code", "advisor_name", "branch_cd", "employee_id", "in_cohort", "job_code"],
+    "phx_dm_pce_advisor": ["advisor_sid", "rep_code", "advisor_name", "branch_cd", "employee_id", "in_cohort", "job_code",
+                            "job_display_name", "em_status_cd", "is_departed",
+                            "work_state", "work_city", "advisor_plan", "is_synthetic"],
     "phx_dm_pce_account": ["acct_key", "account_no_raw", "account_class_cd", "account_class_nm", "account_lob_cd",
                             "account_purpose_cd", "managed_platform_cd", "service_channel_cd", "account_open_dt",
                             "is_managed", "opened_in_scope", "primary_eci_id"],
@@ -1133,7 +1187,14 @@ def main() -> None:
                          "monthly_revenue CSVs from the two client reason "
                          "filters. Column-append only — no row changes, "
                          "existing columns byte-identical.")
+    ap.add_argument("--add-advisor-attributes", action="store_true",
+                    help="Round 5 task 4: append the seven client-requirement "
+                         "advisor attributes to the COMMITTED advisor CSV "
+                         "(column-append only; existing columns byte-identical).")
     args = ap.parse_args()
+    if args.add_advisor_attributes:
+        add_advisor_attributes_csv()
+        return
     if args.add_credited_columns:
         add_credited_columns_csv()
         return

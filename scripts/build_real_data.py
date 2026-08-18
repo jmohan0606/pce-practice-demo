@@ -88,6 +88,7 @@ from app.shared.crm import stage_group_for, strip_invalid_advisor_suffix  # noqa
 from app.shared.reason_codes import (  # noqa: E402
     ADVISOR_REASON_FILTER, FIRM_REASON_FILTER, UNATTRIBUTED_SID,
 )
+from app.shared.job_codes import advisor_plan_for, job_display_name  # noqa: E402
 
 # Round F2: the NNM parser is Subagent B's module — imported, never retyped.
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -407,7 +408,9 @@ VERTEX_COLUMNS = {
     "phx_dm_pce_revenue_class": ["class_id", "class_name"],
     "phx_dm_pce_product_group": ["group_id", "group_name", "display_prefix", "class_id", "sort_order", "is_aggregated"],
     "phx_dm_pce_product": ["product_id", "product_cd", "product_sub_cd", "product_name", "sor", "file_key", "group_id", "grid_type", "l1_pay_type_cd", "l2_pay_type_cd"],
-    "phx_dm_pce_advisor": ["advisor_sid", "rep_code", "advisor_name", "branch_cd", "employee_id", "in_cohort", "job_code"],
+    "phx_dm_pce_advisor": ["advisor_sid", "rep_code", "advisor_name", "branch_cd", "employee_id", "in_cohort", "job_code",
+                           "job_display_name", "em_status_cd", "is_departed",
+                           "work_state", "work_city", "advisor_plan", "is_synthetic"],
     "phx_dm_pce_account": ["acct_key", "account_no_raw", "account_class_cd", "account_class_nm", "account_lob_cd",
                            "account_purpose_cd", "managed_platform_cd", "service_channel_cd", "account_open_dt",
                            "is_managed", "opened_in_scope", "primary_eci_id"],
@@ -712,10 +715,14 @@ def transform_txn(r: dict) -> dict | None:
     credited = ADVISOR_REASON_FILTER(reason)
     acct_key = intern(normalize_account_key(r["account_no"]))
     dtp = (proc_dt.date() - trade_dt.date()).days if trade_dt else 0
+    # Round 5 task 3: NULL/blank-advisor rows COUNT toward firm-wide figures
+    # (client-confirmed) — they load under the synthetic advisor, name blank,
+    # never invented; advisor-level scopes exclude it.
+    sid = r["advisor_sid"].strip() or UNATTRIBUTED_SID
     return {
-        "txn_id": f"{r['trade_ref_no']}|{r['split_seq_no']}|{r['advisor_sid']}",
+        "txn_id": f"{r['trade_ref_no']}|{r['split_seq_no']}|{sid}",
         "trade_ref_no": r["trade_ref_no"], "split_seq_no": r["split_seq_no"],
-        "advisor_sid": intern(r["advisor_sid"]), "acct_key": acct_key,
+        "advisor_sid": intern(sid), "acct_key": acct_key,
         "product_id": intern(make_product_id(r["product_cd"], r["product_sub_cd"])),
         "month_id": month_id, "trade_dt": ts(trade_dt), "proc_dt": ts(proc_dt),
         "days_to_process": str(dtp),
@@ -924,17 +931,29 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
             adv_dupes += 1
             continue
         _adv_seen.add(r["advisor_sid"])
+        status = r["em_status_cd"].strip().upper()
         advisors.append({
             "advisor_sid": r["advisor_sid"], "rep_code": r["rep_code"],
             "advisor_name": r["advisor_name"],  # blank stays blank — never invented
             "branch_cd": r["branch_cd"], "employee_id": r["employee_id"],
             "in_cohort": bl(as_bool(r["in_cohort"])),
             "job_code": r["job_code"],  # blank stays blank — never invented
+            # Round 5 task 4: the client's authoritative mapping (job_codes.py)
+            # — an unmapped code renders as the raw code, never a guess; the
+            # plan family is blank when unknown. Blank employee fields stay
+            # blank (counterparties have no employee row).
+            "job_display_name": job_display_name(r["job_code"]),
+            "em_status_cd": status,
+            "is_departed": bl(status == "T"),
+            "work_state": r["em_work_st_cd"], "work_city": r["em_work_city_txt"],
+            "advisor_plan": advisor_plan_for(r["job_code"]),
+            "is_synthetic": bl(False),
         })
     if adv_dupes:
         print(f"raw_advisor: {adv_dupes} duplicate SID row(s) collapsed "
               f"(reference table carries one row per branch — first row kept)")
     advisor_set = {intern(a["advisor_sid"]) for a in advisors}
+    advisor_set.add(UNATTRIBUTED_SID)  # NULL-advisor txns resolve here
     cohort = {a["advisor_sid"] for a in advisors if a["in_cohort"] == "true"}
     transfers = build_transfers(rr_rows)
 
@@ -1067,6 +1086,8 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
                     txn_pk_hashes.add(h)
                 w_txn.write(t)
                 tid, sid, acct = t["txn_id"], t["advisor_sid"], t["acct_key"]
+                if sid == UNATTRIBUTED_SID:
+                    agg["unattributed_txns"] = agg.get("unattributed_txns", 0) + 1
                 month, pid = t["month_id"], t["product_id"]
                 edges.emit("phx_dm_pce_txn_by_advisor", tid, sid, advisor_set)
                 edges.emit("phx_dm_pce_txn_for_account", tid, acct, acct_set)
@@ -1196,6 +1217,21 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
     guard.check("monthly_revenue")
 
     # ---- products / groups / classes / months / advisors / rpg --------------
+    # Round 5 task 3: NULL-advisor rows appeared in the stream -> the synthetic
+    # firm advisor exists as a vertex (is_synthetic=true, name BLANK — never
+    # invented; firm aggregates include it, advisor scopes exclude it).
+    n_unattr = agg.get("unattributed_txns", 0)
+    if n_unattr:
+        advisors.append({
+            "advisor_sid": UNATTRIBUTED_SID, "rep_code": "", "advisor_name": "",
+            "branch_cd": "", "employee_id": "", "in_cohort": bl(False),
+            "job_code": "", "job_display_name": "", "em_status_cd": "",
+            "is_departed": bl(False), "work_state": "", "work_city": "",
+            "advisor_plan": "", "is_synthetic": bl(True),
+        })
+        print(f"unattributed: {n_unattr} NULL-advisor transaction(s) loaded "
+              f"under {UNATTRIBUTED_SID} (firm-wide figures include them; "
+              f"advisor views never do)")
     for target, rows in (
         ("phx_dm_pce_month", build_months(meta_rows)),
         ("phx_dm_pce_revenue_class", revenue_class_rows()),
@@ -1217,7 +1253,10 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
     agg["month_rows"] = build_months(meta_rows)
     report["raw_input_rows"]["raw_month_meta.csv"] = len(meta_rows)
     report["transform_deltas"]["advisor"] = {
-        "raw_rows": len(adv_raw), "deduplicated": len(adv_raw) - len(advisors),
+        "raw_rows": len(adv_raw), "deduplicated": adv_dupes,
+        # negative = a row ADDED by the transform (the synthetic
+        # __UNATTRIBUTED__ advisor) — reconcile_load sums deltas as losses
+        "synthetic_unattributed_added": -1 if n_unattr else 0,
         "rows": len(advisors)}
     report["transform_deltas"]["account_transfer"] = {
         "raw_rows": len(rr_rows),

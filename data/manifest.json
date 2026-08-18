@@ -1,6 +1,6 @@
 {
   "graph": "phx_dm_pce_practice_demo",
-  "generated_by": "scripts/generate_mock_data.py (seed 42) + 9X non-credited post-pass (--retag-noncredited) + Round F2 CRM+NNM rebuild (--rebuild-crm-nnm) + Round 5 credited-columns post-pass (--add-credited-columns)",
+  "generated_by": "scripts/generate_mock_data.py (seed 42) + 9X non-credited post-pass (--retag-noncredited) + Round F2 CRM+NNM rebuild (--rebuild-crm-nnm) + Round 5 credited-columns post-pass (--add-credited-columns) + Round 5 advisor-attributes post-pass (--add-advisor-attributes)",
   "batch_size": 5000,
   "files": [
     {
@@ -84,7 +84,14 @@
         "branch_cd": "branch_cd",
         "employee_id": "employee_id",
         "in_cohort": "in_cohort",
-        "job_code": "job_code"
+        "job_code": "job_code",
+        "job_display_name": "job_display_name",
+        "em_status_cd": "em_status_cd",
+        "is_departed": "is_departed",
+        "work_state": "work_state",
+        "work_city": "work_city",
+        "advisor_plan": "advisor_plan",
+        "is_synthetic": "is_synthetic"
       },
       "expected_rows": 22,
       "order": 5,
