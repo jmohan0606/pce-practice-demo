@@ -35,3 +35,17 @@ powershell
 uv run python scripts\reconcile_load.py --raw data\real\_raw --data-dir data\real
 
 Two identical failures = stop and report. Never a third attempt. Never estimate a number.
+--------------------------------------------------------------------------------------
+Read docs/COPILOT_FIX_CONNECTIVITY_AND_LOAD.md in full before running anything.
+
+The load failed completely — all 18 vertex entities were served by the local fallback store instead of TigerGraph. The root cause is already identified in Part A: the wrong environment variable family is set. app/graph/tiered_client.py reads TG_HOST first and only falls back to TIGERGRAPH_HOST, and the TG_* family is the only one that carries ports and credentials. Do not re-diagnose; verify and fix.
+
+Do not tune memory. The 24.6 GB was rows buffering for a destination that never accepted them — a symptom, not the cause.
+
+Do not start the full load until A3 and A4 pass: the client class must be the TigerGraph client, and loading month alone must show 3 rows in GSQL. A 144M-row load on an unproven connection is what the last attempt cost.
+
+Also fix the blank advisor_sid on row 1 of phx_dm_pce_advisor.csv (Part C) — it should be the literal __UNATTRIBUTED__. Fix the value; never delete the row.
+
+Run the load from a standalone PowerShell window, not the IntelliJ terminal — the IDE hung on this output volume once already.
+
+Two identical failures = stop and report. Never a third attempt. Never estimate a number.
