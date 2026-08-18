@@ -149,3 +149,10 @@ WHERE  d.proc_dt >= DATE '2026-04-01' AND d.proc_dt < DATE '2026-05-01'
   AND  (d.reason_cd IS NULL OR trim(d.reason_cd) NOT IN ('9X','XX'))
   AND  d.advisor_sid IS NOT NULL
   AND  d.advisor_sid NOT IN (SELECT advisor_sid FROM cohort_adv);
+---------------------------
+uv run python -c "
+import json
+m=json.load(open('data/real/manifest.json'))
+for f in m['files']:
+    if 'opportunity' in f['target']: print(f['target'], f['expected_rows'])
+"
