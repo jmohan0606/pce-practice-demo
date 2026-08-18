@@ -69,6 +69,23 @@ The key constraint: we cannot place files on the TigerGraph server by hand. Ever
 
 Section 4 must be measured, not estimated. If the speedup is under 5×, the checkpoint fix in section 5 is the better answer.
 
+---------------------------loading job building
+Read docs/COPILOT_BUILD_BULK_LOADER.md in full, then execute it.
+
+This is built on your own measurements — runLoadingJobWithFile proven working, 56,018 rows/sec against 2,058 on the current path. Do not re-investigate any of it, and do not retry the two transfer paths that already refused.
+
+The loading jobs already exist and are verified current — I checked all 18 vertex jobs against their CSV headers and the edge job against the manifest. Every one matches. Do not generate, rewrite or edit any job file. Install them and build the runner.
+
+Start at step 0: stop the running load and report what it got in.
+
+Report step 1b before running anything: whether the single edge job can be driven per edge type via fileTag.
+
+Step 3's progress file matters as much as the loader — I need to read live progress from a second window during the run.
+
+Rejected rows stop the phase. A loading job that rejects rows still reports success, and silently rejected rows produce a graph that looks loaded and computes wrong figures.
+
+Two identical failures = stop and report. Never estimate a number.
+
 Report using the exact template at the end, ending with a one-paragraph recommendation.
 
 Never estimate a number — every figure comes from a command that ran. If a file or symbol is not where expected, report it rather than searching elsewhere.
