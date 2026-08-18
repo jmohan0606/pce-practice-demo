@@ -105,3 +105,18 @@ print('accounts in extract:', len(acc))
 print('accounts in Apr txns:', len(txn))
 print('missing:', len(txn-acc))
 "
+
+---------------------------------
+uv run python -c "
+import csv, glob
+csv.field_size_limit(10**9)
+f=a=0.0
+for p in glob.glob('data/real/vertices/phx_dm_pce_revenue_transaction.csv'):
+    for r in csv.DictReader(open(p,newline='',encoding='utf-8-sig')):
+        if r['month_id']=='202604':
+            f+=float(r.get('firm_credited_amt') or 0)
+            a+=float(r.get('credited_amt') or 0)
+print(f'April firm:    \${f:,.2f}')
+print(f'April advisor: \${a:,.2f}')
+"
+-----------------------------------

@@ -1,0 +1,19 @@
+Re-extract the account-scoped families. The reused extracts are stale: April transactions reference 2,803,758 accounts but only 2,022,076 were extracted — 943,439 missing in April alone, which is why the build dropped 4.87M txn_for_account edges.
+
+The cause: those files came from the old trade_dt extraction with the 5,746 cohort. Under proc_dt with 5,455 advisors, scoped_acct resolves to a different account set.
+
+1 · Move the stale files aside:
+
+powershell
+Move-Item data\real\_raw\raw_account_b*.csv       data\real\_raw_old_trade_dt\
+Move-Item data\real\_raw\raw_acct_eci_rel_b*.csv  data\real\_raw_old_trade_dt\
+Move-Item data\real\_raw\raw_acct_eci_map_b*.csv  data\real\_raw_old_trade_dt\
+Move-Item data\real\_raw\raw_balance_*.csv        data\real\_raw_old_trade_dt\
+
+2 · Remove their checkpoint entries — the 12 bucket chunks and 3 balance chunks — keeping everything else, especially raw_adv_flows and all raw_txn_*.
+
+3 · Dry-run first. Only those 15 chunks should be pending. If any raw_txn_* shows pending, stop and report — the checkpoint edit went wrong and you'd re-extract 84 chunks unnecessarily.
+
+4 · Extract, then rebuild with --max-memory-mb 8192.
+
+Report the new txn_for_account and am_for_account dropped counts. They should fall to near zero.
