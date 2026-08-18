@@ -208,6 +208,79 @@ TXN_CHUNK_GLOB = CHUNK_FAMILIES["raw_revenue_transaction.csv"]["glob"]
 CRM_EXPORT_NAME = "crm_opportunities.csv"
 CRM_LEGACY_NAME = "raw_crm_opportunity.csv"
 
+# Round 5 task 7 — the CRM export uses SALESFORCE column names. Contracted
+# target -> accepted source spellings, tried in order against the REAL header
+# (case-insensitive): the target name itself (a SQL-shaped extract), then the
+# Salesforce export name. The map is built from the header actually read —
+# never assumed — and every contracted column must resolve or the build fails
+# naming the ones that did not.
+CRM_COLUMN_MAP: dict[str, tuple[str, ...]] = {
+    "opportunity_id": ("opportunity_id", "id"),
+    "eci_id": ("eci_id", "eci__c"),
+    "ownersid": ("ownersid", "ownersid__c"),
+    "stage_name": ("stage_name", "stagename"),
+    "amount": ("amount",),
+    "actual_assets": ("actual_assets", "actual_assets__c"),
+    "account_record_type": ("account_record_type", "account_record_type_name__c"),
+    "product_service_type": ("product_service_type", "product_service_type__c"),
+    "anticipated_investment_dt": ("anticipated_investment_dt",
+                                  "anticipated_investment_date__c"),
+    "date_of_last_contact": ("date_of_last_contact", "date_of_last_contact__c"),
+    "comments": ("comments", "additional_comments__c"),
+    "created_dt": ("created_dt", "createddate"),
+    "last_modified_dt": ("last_modified_dt", "lastmodifieddate"),
+    "days_to_close": ("days_to_close",),
+}
+
+
+def resolve_crm_header(header: list[str]) -> tuple[dict[str, str], list[str]]:
+    """(target -> actual header column, notes) from the REAL header.
+
+    opportunity_id and days_to_close may be absent (notes say so):
+    opportunity_id is then DERIVED deterministically from eci + createddate
+    (DECISIONS.md); days_to_close defaults 0. Any other unresolved contracted
+    column raises, naming every miss and the header seen."""
+    by_lower = {h.strip().lower(): h.strip() for h in header}
+    mapping: dict[str, str] = {}
+    missing: list[str] = []
+    notes: list[str] = []
+    for target, sources in CRM_COLUMN_MAP.items():
+        actual = next((by_lower[s] for s in sources if s in by_lower), None)
+        if actual is not None:
+            mapping[target] = actual
+        elif target == "opportunity_id":
+            notes.append("opportunity_id: no source column — DERIVED from "
+                         "eci_id + created_dt (deterministic)")
+        elif target == "days_to_close":
+            notes.append("days_to_close: no source column — 0")
+        else:
+            missing.append(f"{target} (accepted: {', '.join(sources)})")
+    if missing:
+        raise ColumnMismatchError(
+            f"CRM export header does not resolve contracted column(s): "
+            f"{missing} — header seen: {sorted(by_lower.values())}")
+    return mapping, notes
+
+
+def iter_crm_rows(path: Path):
+    """Stream the CRM export with the source->target map built from ITS OWN
+    header. Yields dicts keyed by the CONTRACTED target names."""
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        mapping, notes = resolve_crm_header(reader.fieldnames or [])
+        for note in notes:
+            print(f"CRM header: {note}")
+        derive_id = "opportunity_id" not in mapping
+        for row in reader:
+            clean = {(k or "").strip(): (v or "").strip() for k, v in row.items() if k}
+            out = {t: clean.get(src, "") for t, src in mapping.items()}
+            out.setdefault("days_to_close", "")
+            if derive_id:
+                out["opportunity_id"] = (
+                    f"CRM|{out.get('eci_id', '')}|"
+                    f"{out.get('created_dt', '').replace(' ', 'T')}")
+            yield out
+
 
 def _check_sequence(family: str, spec: dict, chunks: list[Path]) -> None:
     """A missing bucket/batch in a dense sequence is a LOST CHUNK, not a small
@@ -1430,7 +1503,8 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
     w_opp = vwriter("phx_dm_pce_opportunity")
     crm_path = raw_dir / sources["crm_file"]
     crm_raw = crm_kept = crm_out_of_scope = crm_invalid = crm_ungrouped = 0
-    for r in iter_csv_rows(crm_path, RAW_CONTRACT[CRM_LEGACY_NAME]):
+    # Round 5 task 7: the map is built from the file's REAL header
+    for r in iter_crm_rows(crm_path):
         crm_raw += 1
         sid, valid = strip_invalid_advisor_suffix(r["ownersid"])
         in_scope = (sid in advisor_set) or (r["eci_id"] in hh_set)

@@ -250,12 +250,24 @@ def main() -> int:
         check("V-4 NNM files parse with rows in all four categories", False,
               f"{type(exc).__name__}: {exc}")
 
-    # V-5 — CRM export
+    # V-5 — CRM export: the source->target map is built from the REAL header
+    # (Round 5 task 7 — the export uses Salesforce names; either spelling
+    # resolves, and every contracted column must)
+    from scripts.build_real_data import iter_crm_rows, resolve_crm_header
     crm_header, crm_rows = read_csv(raw_dir / sources["crm_file"])
-    crm_missing = [c for c in RAW_CONTRACT[CRM_LEGACY_NAME] if c not in crm_header]
-    check("V-5 CRM export columns + rows", not crm_missing and bool(crm_rows),
-          f"missing columns {crm_missing}" if crm_missing
-          else f"{sources['crm_file']}: {len(crm_rows)} rows")
+    try:
+        crm_map, crm_notes = resolve_crm_header(crm_header)
+        n_crm = sum(1 for _ in iter_crm_rows(raw_dir / sources["crm_file"]))
+        renamed = {t_: s for t_, s in crm_map.items() if t_ != s.lower()}
+        check("V-5 CRM export columns resolve via the header-built map + rows",
+              n_crm > 0,
+              f"{sources['crm_file']}: {n_crm} rows; "
+              + (f"mapped from Salesforce names: {renamed}; " if renamed else
+                 "header already target-named; ")
+              + ("; ".join(crm_notes) if crm_notes else "all columns present"))
+    except ColumnMismatchError as exc:
+        check("V-5 CRM export columns resolve via the header-built map + rows",
+              False, str(exc))
 
     # V-6 — account keys normalise cleanly (streams the account family)
     padded = n_accounts = 0
