@@ -232,8 +232,16 @@ def main() -> int:
         ref += 1
         d = RNG.randint(1, MONTH_DAYS[month])
         trade = day_in(month, d)
-        proc = day_in(month, min(d + 2, MONTH_DAYS[month])) if d + 2 <= MONTH_DAYS[month] \
-            else day_in("202607" if month == "202606" else MONTHS[MONTHS.index(month) + 1], 1)
+        # proc_dt = trade + 2 days, rolling into the NEXT month at month end
+        # (exercises Round 5's proc-month attribution: a late-April trade
+        # credits May). The extraction filter is proc-scoped, so June's tail
+        # clamps to 30 June — a July proc date would never be extracted.
+        if d + 2 <= MONTH_DAYS[month]:
+            proc = day_in(month, d + 2)
+        elif month == "202606":
+            proc = day_in("202606", 30)
+        else:
+            proc = day_in(MONTHS[MONTHS.index(month) + 1], 1)
         eff = round((std - cli) / std * 100, 1) if std else 0.0
         txns.append({
             "trade_ref_no": str(ref), "split_seq_no": "1", "advisor_sid": sid,

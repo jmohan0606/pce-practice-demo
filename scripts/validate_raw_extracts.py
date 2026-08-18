@@ -31,7 +31,8 @@ Checks:
   V-5  CRM export columns + row count
   V-6  account keys normalise cleanly (no empties, no collisions)
   V-7  reason_cd: blank is the only "none" spelling in the raw feed
-  V-8  every transaction month appears in raw_month_meta.csv and vice versa;
+  V-8  every transaction month (from proc_dt — Round 5) appears in
+       raw_month_meta.csv and vice versa;
        when balances arrive as per-month chunks, their months must match too
   V-9  unmapped product codes listed with counts — silence is not allowed
   V-10 THE SANITY ANCHOR: credited revenue per cohort advisor per month is
@@ -208,7 +209,7 @@ def main() -> int:
                 n_files_checked += 1
                 if family == "raw_revenue_transaction.csv":
                     for t in iter_csv_rows(path, RAW_CONTRACT[family]):
-                        month = (t.get("trade_dt") or "")[:7].replace("-", "")
+                        month = (t.get("proc_dt") or "")[:7].replace("-", "")  # Round 5: proc month
                         if month:
                             txn_months[month] += 1
                         reason = (t.get("reason_cd") or "").strip()
@@ -328,8 +329,8 @@ def main() -> int:
           f"${per_advisor_month:,.0f}/advisor/month over {cohort} cohort "
           f"advisors x {months_n} months"
           + ("" if anchor_ok else
-             " — ORDER OF MAGNITUDE OUT: check that trade_dt (not proc_dt) "
-             "scoped the extract and that no team-agreement join fanned rows out"))
+             " — ORDER OF MAGNITUDE OUT: check the proc_dt scope bounds and "
+             "that no team-agreement join fanned rows out"))
 
     print(f"\n{len(FAILURES)} failure(s)" + (" — fix the extract before loading."
                                              if FAILURES else

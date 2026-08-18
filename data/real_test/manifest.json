@@ -250,7 +250,7 @@
         "txn_count": "txn_count",
         "distinct_accounts": "distinct_accounts"
       },
-      "expected_rows": 779,
+      "expected_rows": 777,
       "order": 13,
       "phase": 1
     },
@@ -465,7 +465,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 779,
+      "expected_rows": 777,
       "order": 25,
       "phase": 2
     },
@@ -478,7 +478,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 779,
+      "expected_rows": 777,
       "order": 26,
       "phase": 2
     },
@@ -491,7 +491,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 779,
+      "expected_rows": 777,
       "order": 27,
       "phase": 2
     },
@@ -504,7 +504,7 @@
       "from_column": "from_id",
       "to_column": "to_id",
       "columns": {},
-      "expected_rows": 779,
+      "expected_rows": 777,
       "order": 28,
       "phase": 2
     },

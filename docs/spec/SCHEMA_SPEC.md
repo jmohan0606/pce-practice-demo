@@ -27,7 +27,7 @@ credited_amt = post_split_credited_amt WHERE reason_cd IS NULL OR trim(reason_cd
 Rows with a populated reason code are **still loaded** (as `non_credited_amt`) so the agent can
 investigate eligibility movement. They are excluded from credited totals.
 
-**Month.** Derived from `trade_dt`, never `proc_dt`. `month_id = to_char(trade_dt,'YYYYMM')`.
+**Month.** Derived from `proc_dt` (Round 5, client-confirmed: their authoritative PCE report is dated by `proc_dt`; it reconciles to 0.36% where `trade_dt` never reconciles). `month_id = to_char(proc_dt,'YYYYMM')`. `trade_dt` is still stored — it remains the business date. *(The pre-Round-5 rule "never `proc_dt`" was wrong for this client and is superseded.)*
 
 **Team agreements are reference data only.** `post_split_credited_amt` already carries the team
 share (verified: `split_pct == prm_share_pct`). Never re-apply a share percentage. Never join

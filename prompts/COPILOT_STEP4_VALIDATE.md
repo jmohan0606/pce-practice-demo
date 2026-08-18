@@ -80,7 +80,7 @@ determined, write `NOT DETERMINED` and say why.
    ÷ 5,746 advisors:           $__________ per advisor per month
 
    The published firm-wide reference implies about $33,000 per advisor per month.
-   An order of magnitude out means proc_dt was used instead of trade_dt, or a join
+   An order of magnitude out means the proc_dt scope bounds are wrong (Round 5: proc_dt IS the month basis, client-confirmed), or a join
    fanned out. Report the number either way — do not adjust anything to make it fit.
 
 5 · UNMAPPED PRODUCTS

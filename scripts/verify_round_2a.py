@@ -78,7 +78,8 @@ def make_chunked_drop(dst: Path) -> None:
         elif n == "txn":
             by_month: dict[str, list] = {}
             for r in rows:
-                by_month.setdefault(r["trade_dt"][:7].replace("-", ""), []).append(r)
+                # Round 5: txn chunks are PROC-month bounded (month_id basis)
+                by_month.setdefault(r["proc_dt"][:7].replace("-", ""), []).append(r)
             for m, mrows in sorted(by_month.items()):
                 half = (len(mrows) + 1) // 2
                 for b, part in enumerate((mrows[:half], mrows[half:]), start=1):

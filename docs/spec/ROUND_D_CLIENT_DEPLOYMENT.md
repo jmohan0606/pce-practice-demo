@@ -213,7 +213,7 @@ turns out unusable during a demo.
 | Health shows tier 4 in real mode | TigerGraph unreachable or auth failed | `app/graph/tier_log` — it records which tiers were tried and why each failed |
 | All revenue figures zero | `reason_cd` empty string instead of `__NONE__`, so nothing is credited | `SELECT DISTINCT reason_cd` in the loaded transaction CSV |
 | Product table missing rows | `product_id` not resolving; everything in `unmapped` | `validate_real_data.py` prints the unmapped list |
-| Totals an order of magnitude out | Extraction filtered on `proc_dt` instead of `trade_dt`, or the team-agreement join fanned out | Compare row counts per month against the extraction manifest |
+| Totals an order of magnitude out | Wrong `proc_dt` scope bounds (Round 5: `proc_dt` IS the correct filter), or the team-agreement join fanned out | Compare row counts per month against the extraction manifest |
 | Chunks with no page numbers | Parser fell back to `pypdf` because `pdfplumber` is missing | `docs/CLIENT_PREFLIGHT.md` |
 | Rules extracted but none compile | Field names in expressions do not match the schema catalog | Compile errors name the field and vertex |
 | Narrative contains a figure not in findings | Reporter assertion failed and the fallback did not engage | The run log records the assertion failure |

@@ -190,7 +190,7 @@ Reads `cohort.txt`, writes `docs/data/extraction/*.sql` with the SIDs substitute
 Transformations (all in Python, none in SQL):
 - `normalize_account_key()` from `app/shared/ids.py` on every account column; keep `*_raw`
 - credited/non-credited split on `reason_cd == '__NONE__'`
-- `month_id` from `trade_dt`, **never `proc_dt`**
+- `month_id` from `trade_dt`, **never `proc_dt`** *(SUPERSEDED by Round 5: the client confirmed `proc_dt` is the month basis)*
 - **import the product model from `app/revenue/products.py`** — do not retype the 25 groups
 - `monthly_revenue` aggregated **from the transaction rows already written**, never re-queried
 - `prior_end_balance` / `prior_credited_amt` **computed** from the previous month, `0` for 202604

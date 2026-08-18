@@ -16,7 +16,7 @@ Legend — **✅** specified · **⚠** partially specified, see note · **⛔**
 | 3 | `post_split_credited_amt` already carries the team split — never re-apply | SCHEMA_SPEC §0, V8 | ✅ |
 | 4 | Never join trades to team agreements when summing — fans out per secondary member | SCHEMA_SPEC §0 | ✅ |
 | 5 | Team shares are fractions (0.0–1.0), not percents | SCHEMA_SPEC V8 | ✅ |
-| 6 | Month from `trade_dt`, never `proc_dt` | SCHEMA_SPEC §0, ROUND_D D6 | ✅ |
+| 6 | Month from `proc_dt` (Round 5 correction — client-confirmed; was "from `trade_dt`, never `proc_dt`", which was wrong for this client) | SCHEMA_SPEC §0, ROUND_D D6, ROUND_5 task 2 | ✅ |
 | 7 | Account keys normalised `ltrim(trim(x),'0')` in ONE shared function | SCHEMA_SPEC §0; `app/shared/ids.py`. **Round B must wire it into ingestion** | ⚠ |
 | 8 | April is the baseline month; lost-account detection starts at May | SCHEMA_SPEC §0, ROUND_B B3.7, ROUND_C C6.10 | ✅ |
 | 9 | June is partial (12 of 21 trading days) — `trading_days` on the month vertex | SCHEMA_SPEC V1, ROUND_C C1 (`month_meta`) | ✅ |

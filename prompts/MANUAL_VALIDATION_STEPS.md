@@ -84,7 +84,7 @@ function Rows($pattern) {
 ## Step 4 · The sanity anchor
 
 **Roughly $33,000 credited revenue per advisor per month.** An order of magnitude out means
-`proc_dt` was used instead of `trade_dt`, or a join fanned out.
+the `proc_dt` scope bounds are wrong (Round 5: `proc_dt` IS the month basis, client-confirmed), or a join fanned out.
 
 ```powershell
 python -c "

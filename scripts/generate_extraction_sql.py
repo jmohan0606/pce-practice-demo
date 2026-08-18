@@ -109,7 +109,7 @@ def session_setup_statements(sids: list[str]) -> list[str]:
     stmts.append(f"""CREATE TEMP TABLE scoped_acct AS
 SELECT DISTINCT ltrim(trim(d.account_no),'0') AS k
 FROM   pcr.fpic_daily_trade_details_tb_prod d
-WHERE  d.trade_dt >= DATE '{SCOPE_START}' AND d.trade_dt < DATE '{SCOPE_END}'
+WHERE  d.proc_dt >= DATE '{SCOPE_START}' AND d.proc_dt < DATE '{SCOPE_END}'
   AND  d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv)""")
     stmts.append("CREATE INDEX ON scoped_acct (k)")
     stmts.append("ANALYZE scoped_acct")
@@ -246,8 +246,8 @@ SELECT d.trade_ref_no, d.split_seq_no, d.advisor_sid,
        COALESCE(d.file_key,'')                   AS file_key,
        COALESCE(d.trade_description,'')          AS trade_description
 FROM   pcr.fpic_daily_trade_details_tb_prod d
-WHERE  d.trade_dt >= DATE '{SCOPE_START}'
-  AND  d.trade_dt <  DATE '{SCOPE_END}'
+WHERE  d.proc_dt >= DATE '{SCOPE_START}'
+  AND  d.proc_dt <  DATE '{SCOPE_END}'
 {TXN_COHORT_LINE.rstrip()};
 """,
         "raw_rr_changes.sql": f"""
@@ -260,15 +260,16 @@ WHERE  c.transfer_ts >= DATE '{SCOPE_START}' AND c.transfer_ts < DATE '{SCOPE_EN
    OR   c.to_mem_sid   IN (SELECT advisor_sid FROM cohort_adv));
 """,
         "raw_month_meta.sql": f"""
--- Month meta: trading_days = distinct trade dates. The table accrues DAILY
+-- Month meta (Round 5: months are PROC months — the client's report basis).
+-- trading_days = distinct processing dates. The table accrues DAILY
 -- (weekends have rows), so expect calendar-day counts 30 / 31 / 30 and
 -- is_partial=false for all three months (client Phase 0 confirmed June complete).
-SELECT to_char(d.trade_dt,'YYYYMM')              AS month_id,
-       to_char(date_trunc('month', min(d.trade_dt)),'YYYY-MM-DD HH24:MI:SS') AS start_dt,
-       to_char(max(d.trade_dt),'YYYY-MM-DD HH24:MI:SS')                      AS end_dt,
-       count(DISTINCT d.trade_dt)                AS trading_days
+SELECT to_char(d.proc_dt,'YYYYMM')               AS month_id,
+       to_char(date_trunc('month', min(d.proc_dt)),'YYYY-MM-DD HH24:MI:SS') AS start_dt,
+       to_char(max(d.proc_dt),'YYYY-MM-DD HH24:MI:SS')                      AS end_dt,
+       count(DISTINCT d.proc_dt)                 AS trading_days
 FROM   pcr.fpic_daily_trade_details_tb_prod d
-WHERE  d.trade_dt >= DATE '{SCOPE_START}' AND d.trade_dt < DATE '{SCOPE_END}'
+WHERE  d.proc_dt >= DATE '{SCOPE_START}' AND d.proc_dt < DATE '{SCOPE_END}'
   AND  d.advisor_sid IN (SELECT advisor_sid FROM cohort_adv)
 GROUP  BY 1 ORDER BY 1;
 """,

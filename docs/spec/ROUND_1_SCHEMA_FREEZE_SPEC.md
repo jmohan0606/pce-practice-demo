@@ -211,7 +211,7 @@ interleave, a PostgreSQL failure leaves the graph half-populated with no way to 
 - `reason_cd` is `__NONE__` where blank, never an empty string
 - unmapped product codes listed with counts
 - **the sanity anchor**: roughly $33k per advisor per month firmwide — an order of magnitude out
-  means `proc_dt` was used instead of `trade_dt`, or the team-agreement join fanned out
+  means `proc_dt` was used instead of `trade_dt` *(superseded by Round 5: `proc_dt` is now the month basis)*, or the team-agreement join fanned out
 
 ---
 

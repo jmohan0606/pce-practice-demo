@@ -256,7 +256,7 @@ to two lines even when they pass:
 **If a check fails:** the message names the file and the defect (a missing
 batch in the chunk sequence, a row-count/checkpoint mismatch, a missing NNM
 category, a column contract violation, an order-of-magnitude anchor miss
-pointing at proc_dt/team-join fan-out). Fix the extract and rerun — do not
+pointing at wrong proc_dt scope bounds/team-join fan-out; Round 5: proc_dt IS the month basis). Fix the extract and rerun — do not
 edit CSVs by hand.
 
 ---

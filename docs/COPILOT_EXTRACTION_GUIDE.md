@@ -232,7 +232,7 @@ Report:
 - row counts per entity against the baseline
 - any unmapped product codes with counts
 - the sanity anchor — roughly **$33,000 credited revenue per advisor per month**. An order of
-  magnitude out means `proc_dt` was used instead of `trade_dt`, or a join fanned out
+  magnitude out means the `proc_dt` scope bounds are wrong, or a join fanned out (Round 5: `proc_dt` IS the month/scope basis — client-confirmed)
 - per-month transaction counts: expect 4,184,088 / 4,236,888 / 4,015,762
 
 **Do not proceed without a go-ahead.**

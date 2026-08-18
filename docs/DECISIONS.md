@@ -438,3 +438,12 @@ Decisions beyond the spec's list, all from the same fan-out mechanism:
 - make_test_raw_extracts.py DECLARES its 20-advisor fixture cohort (the same advisors the retired selector picked); the 6 "loser" candidate rows existed only to exercise selection and are gone. Fixtures legitimately reshuffled (regenerable, no byte pins — Round 1b precedent).
 - build_cohort.py refuses to write cohort.txt when the count differs from the client's stated 5,455 (report-and-stop per spec); --allow-count-mismatch is the explicit operator override for after the client confirms a population move.
 Reversible: yes
+
+## 2026-08-18 · Round 5 task 2 · proc_dt is the month/scope basis — SUPERSEDES every "never use proc_dt" statement
+Context: The client confirmed (17 Aug) their authoritative PCE report is dated by proc_dt (reconciles to 0.36%; trade_dt is 1.7% off and never reconciles). Every earlier spec said "never use proc_dt" — sound reasoning in the abstract (processing runs after month end), wrong for this client. Their definition wins.
+Decisions:
+- Extraction scope filter AND month_id derive from proc_dt (templates, scoped_acct, month_meta, transform_txn). trade_dt is still extracted and stored — it remains the business date. A row with an unparseable proc_dt cannot be month-attributed and is counted out_of_scope_or_undated, never guessed.
+- month_meta's trading_days is now count(DISTINCT proc_dt) — months are PROC months throughout, one basis everywhere.
+- Corrected in place: SCHEMA_SPEC §0, ROUND_D_EXTRACTION (rule + diagnostics), COPILOT_EXTRACTION_GUIDE, CLIENT_ENV_RUNBOOK, TRACEABILITY row 6, the three Copilot prompts, and superseded-note annotations on the historical specs (ROUND_F, ROUND_1, ROUND_D_CLIENT_DEPLOYMENT) so no old document silently re-teaches the wrong rule.
+- The committed DEMO mock data keeps its stored month_id values (generated trade-dt-based; regenerating data/ breaks every data-derived pin — the 2026-08-12 hash() finding). The mock generator is not regenerated this round; the proc_dt rule governs the real-data path, which is what re-extraction runs. The fixture generator now emits proc dates that roll month-end trades into the next PROC month (in scope), so the fixture path exercises proc-month attribution end to end.
+Reversible: yes

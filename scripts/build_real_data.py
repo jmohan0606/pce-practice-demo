@@ -40,7 +40,8 @@ staging directory and leaves --out untouched). Free disk is checked up front
 Transformations (ROUND_D_EXTRACTION.md §2 — all in Python, none in SQL):
   - normalize_account_key() from app/shared/ids.py on every account column
   - credited / non-credited split on reason_cd == '__NONE__'
-  - month_id from trade_dt, never proc_dt
+  - month_id from proc_dt (Round 5, client-confirmed: their PCE report is
+    dated by proc_dt; trade_dt is still stored as the business date)
   - product model IMPORTED from app/revenue/products.py (never retyped)
   - monthly_revenue aggregated from the transaction stream, never re-queried
   - prior_end_balance / prior_credited_amt from the previous month; baseline 0
@@ -688,14 +689,18 @@ def transform_txn(r: dict) -> dict | None:
     """One raw transaction row -> vertex row (None = out of scope/undated)."""
     trade_dt = parse_dt(r["trade_dt"])
     proc_dt = parse_dt(r["proc_dt"])
-    if trade_dt is None or not (SCOPE_FROM <= trade_dt.date() < SCOPE_TO):
+    # Round 5 (client-confirmed): scope AND month_id derive from proc_dt — the
+    # client's authoritative PCE report is dated by it. trade_dt is still
+    # stored (the business date). An undated proc_dt cannot be attributed to a
+    # month and is counted out-of-scope, never guessed.
+    if proc_dt is None or not (SCOPE_FROM <= proc_dt.date() < SCOPE_TO):
         return None
-    month_id = intern(month_of(trade_dt))  # month from trade_dt, NEVER proc_dt
+    month_id = intern(month_of(proc_dt))
     reason = r["reason_cd"].strip() or "__NONE__"
     amount = num(r["post_split_credited_amt"])
     credited = reason == "__NONE__"
     acct_key = intern(normalize_account_key(r["account_no"]))
-    dtp = (proc_dt.date() - trade_dt.date()).days if proc_dt else 0
+    dtp = (proc_dt.date() - trade_dt.date()).days if trade_dt else 0
     return {
         "txn_id": f"{r['trade_ref_no']}|{r['split_seq_no']}|{r['advisor_sid']}",
         "trade_ref_no": r["trade_ref_no"], "split_seq_no": r["split_seq_no"],
@@ -816,7 +821,7 @@ def run_validations(agg: dict) -> None:
         flag = ""
         if not (1e5 <= v["credited"] <= 1e7):
             flag = ("  << SANITY: outside high-hundreds-of-thousands..low-millions — "
-                    "check proc_dt misuse or a team-agreement fan-out "
+                    "check the extract scope or a team-agreement fan-out "
                     "(EXPECTED at firm scale: 5,746 advisors x ~$33k ≈ $190M/month)")
         print(f"    {m}: credited ${v['credited']:,.2f}  txns {v['count']}{flag}")
 
@@ -1080,7 +1085,7 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
                 pm = agg["per_month"][month]
                 pm["credited"] += cred
                 pm["count"] += 1
-                agg["trade_dates"][month].add(t["trade_dt"][:10])
+                agg["trade_dates"][month].add(t["proc_dt"][:10])
                 exp = expected_totals.setdefault(
                     (sid, month), {"credited_amt": 0.0, "non_credited_amt": 0.0,
                                    "txn_count": 0})

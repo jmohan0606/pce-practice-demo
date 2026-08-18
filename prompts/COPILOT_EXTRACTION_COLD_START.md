@@ -129,7 +129,7 @@ but must exist in the graph.
 team share (verified: `split_pct = prm_share_pct`). Joining also fans out one row per secondary
 team member, multiplying revenue. Team agreements are extracted as standalone reference data only.
 
-**Month** = `to_char(trade_dt,'YYYYMM')`. **Never `proc_dt`** — `proc_dt` runs after month end and
+**Month** = `to_char(proc_dt,'YYYYMM')` — **CORRECTED (Round 5, client-confirmed 17 Aug 2026):** month and scope derive from `proc_dt` — the client's authoritative PCE report is dated by it (`proc_dt` reconciles to 0.36%; `trade_dt` is 1.7% off and never reconciles). `trade_dt` is still extracted and stored as the business date. *(Original, superseded text said never `proc_dt` because it runs after month end and
 will mis-assign rows across month boundaries.
 
 **Never extract PII:** `tax_id`, `tax_id_type`, `mail_addr_line_1..6`, `mail_addr_zip_cd`,
@@ -422,7 +422,7 @@ Then print every line of this report:
 **Sanity anchor for line 10.** A published reference figure implies roughly $363M per month across
 10,899 advisors — about $33k per advisor per month. A 20-advisor cohort selected for high revenue
 should land in the high hundreds of thousands to low millions per month. An order of magnitude out
-almost certainly means either `proc_dt` was used instead of `trade_dt`, or the team-agreement join
+almost certainly means either the `proc_dt` scope bounds are wrong (Round 5: `proc_dt` is the correct basis), or the team-agreement join
 fanned out and multiplied revenue.
 
 **Do not proceed past a failing validation line. Report it and stop.**

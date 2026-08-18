@@ -73,7 +73,7 @@ Reason-coded rows are **still loaded** — excluded from credited totals, visibl
 share (verified: `split_pct == prm_share_pct`). Joining also fans out one row per secondary member,
 multiplying revenue. Team agreements are reference data only.
 
-**Month** = `to_char(trade_dt,'YYYYMM')`. **Never `proc_dt`** — it runs after month end and
+**Month** = `to_char(proc_dt,'YYYYMM')`. **CORRECTED (Round 5, client-confirmed 17 Aug 2026):** month and scope derive from `proc_dt` — the client's authoritative PCE report is dated by it (`proc_dt` reconciles to 0.36%; `trade_dt` is 1.7% off and never reconciles). `trade_dt` is still extracted and stored as the business date. *(Original text — wrong for this client: "Never `proc_dt` — it runs after month end and
 mis-assigns rows across boundaries.
 
 **No PII** ever extracted: `tax_id`, `tax_id_type`, `mail_addr_line_1..6`, `mail_addr_zip_cd`,
@@ -256,7 +256,7 @@ produces** — same keys, same column maps, so the ingestion pipeline consumes i
 **Sanity anchor for line 11:** a published reference figure implies roughly $363M/month across
 10,899 advisors — about $33k per advisor per month. A 20-advisor cohort selected for high revenue
 should land in the high hundreds of thousands to low millions per month. An order of magnitude out
-means `proc_dt` was used instead of `trade_dt`, or the team-agreement join fanned out.
+means the scope bounds are wrong, or the team-agreement join fanned out. *(Round 5: `proc_dt` IS the correct scope/month basis — the old trade_dt-vs-proc_dt diagnosis here is superseded.)*
 
 ### Fabricated test set (`data/real_test/`)
 
