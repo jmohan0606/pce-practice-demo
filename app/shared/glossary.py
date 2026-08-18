@@ -14,10 +14,18 @@ from __future__ import annotations
 
 # Task 3 definitions — "and they must be consistent everywhere".
 METRIC_DEFINITIONS: dict[str, str] = {
-    "accounts": "Distinct accounts with credited revenue in the month for that product.",
-    "trades": "Count of credited transactions in the month.",
-    "revenue": "Sum of post-split credited amount where the reason code is empty "
-               "(reason_cd = '__NONE__').",
+    "accounts": "Distinct accounts with firm-credited revenue in the month for that product.",
+    "trades": "Count of firm-credited transactions in the month.",
+    "revenue": "Sum of post-split credited amount under the FIRM reason-code filter "
+               "(reason code blank or not in 9X/XX) — the filter that reconciles to "
+               "the firm's PCE report. Advisor-level figures use the narrower advisor "
+               "filter (also excluding 9R/98/99/9H), so a firm total exceeds the sum "
+               "of its advisors; both filters are the client's definitions.",
+    "firm_vs_advisor": "The firm total uses the wider firm-level reason-code filter and "
+                       "includes unattributed transactions (no advisor), so it will "
+                       "exceed the sum of the advisor-level figures. That is correct, "
+                       "not a bug — the advisor view excludes transactions that count "
+                       "firm-wide.",
     "aum": "Assets under management: sum of month-end balances from account_month "
            "for accounts holding that product.",
     "share": "Share of the selected view's total credited revenue for the to-month. "

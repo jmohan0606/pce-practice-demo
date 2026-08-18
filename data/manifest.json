@@ -1,6 +1,6 @@
 {
   "graph": "phx_dm_pce_practice_demo",
-  "generated_by": "scripts/generate_mock_data.py (seed 42) + 9X non-credited post-pass (--retag-noncredited) + Round F2 CRM+NNM rebuild (--rebuild-crm-nnm)",
+  "generated_by": "scripts/generate_mock_data.py (seed 42) + 9X non-credited post-pass (--retag-noncredited) + Round F2 CRM+NNM rebuild (--rebuild-crm-nnm) + Round 5 credited-columns post-pass (--add-credited-columns)",
   "batch_size": 5000,
   "files": [
     {
@@ -215,6 +215,8 @@
         "days_to_process": "days_to_process",
         "credited_amt": "credited_amt",
         "non_credited_amt": "non_credited_amt",
+        "firm_credited_amt": "firm_credited_amt",
+        "advisor_credited_amt": "advisor_credited_amt",
         "pre_split_amt": "pre_split_amt",
         "split_pct": "split_pct",
         "reason_cd": "reason_cd",
@@ -247,6 +249,8 @@
         "class_id": "class_id",
         "credited_amt": "credited_amt",
         "non_credited_amt": "non_credited_amt",
+        "firm_credited_amt": "firm_credited_amt",
+        "advisor_credited_amt": "advisor_credited_amt",
         "txn_count": "txn_count",
         "distinct_accounts": "distinct_accounts"
       },

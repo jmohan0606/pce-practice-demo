@@ -1,0 +1,48 @@
+// Round 5 — migration 003: the client definitions of 17 Aug 2026.
+//
+// FOR AN ENVIRONMENT WHERE 001 + 002 ARE ALREADY INSTALLED (the Round-1b
+// state, 31 vertices / 44 edges) and may already hold loaded data. Additive
+// only — no vertex changes shape, nothing is removed, no existing attribute
+// changes meaning, and NOTHING here touches data: no DROP, no DELETE, no
+// UPDATE, no loading statement of any kind.
+//
+// A fresh environment skips this file and installs 01_vertices.gsql →
+// 02_edges.gsql → 03_create_graph.gsql instead. All install paths MUST
+// converge on the identical schema — scripts/verify_schema_parity.py asserts
+// it (baseline_f2/ + 001 + 002 + 003 == clean install).
+USE GLOBAL
+
+// ---------------------------------------------------------------------------
+// One global schema-change job, three vertices (the spec's earlier statement
+// that only the advisor vertex changes was wrong — Round 5 task 3 supersedes
+// it):
+//   - revenue_transaction + monthly_revenue: the client uses TWO reason-code
+//     filters — firm/dashboard (NOT IN 9X,XX) and advisor (NOT IN
+//     9X,XX,9R,98,99,9H) — and credited_amt is precomputed at build time, so
+//     TWO precomputed columns must exist. firm_credited_amt passes the FIRM
+//     filter (else 0); advisor_credited_amt passes the ADVISOR filter
+//     (else 0). The existing credited_amt is KEPT and equals
+//     advisor_credited_amt (every query/rule/finding references it —
+//     app/shared/reason_codes.py holds both filters, DECISIONS.md records
+//     the choice).
+//   - advisor: the six client-requirement attributes (job_display_name from
+//     the client's authoritative mapping — NOT in any source table;
+//     em_status_cd A|L|T; is_departed = status 'T'; work_state/work_city from
+//     fpic_employee_tb; advisor_plan PRIVATE_CLIENT|SELECT_ADVISOR from the
+//     job-code family) PLUS is_synthetic — task 3's own requirement: the
+//     4,125,052 NULL-advisor transactions count firm-wide and load under the
+//     synthetic advisor '__UNATTRIBUTED__' (is_synthetic=true, name blank —
+//     never invented; excluded from rankings/peer/exceptions/dropdown).
+// Existing rows keep working — new attributes default empty/0/false.
+// ---------------------------------------------------------------------------
+CREATE GLOBAL SCHEMA_CHANGE JOB migration_003_client_definitions {
+  ALTER VERTEX phx_dm_pce_revenue_transaction ADD ATTRIBUTE (
+    firm_credited_amt DOUBLE,
+    advisor_credited_amt DOUBLE
+  );
+  ALTER VERTEX phx_dm_pce_monthly_revenue ADD ATTRIBUTE (
+    firm_credited_amt DOUBLE,
+    advisor_credited_amt DOUBLE
+  );
+}
+RUN GLOBAL SCHEMA_CHANGE JOB migration_003_client_definitions

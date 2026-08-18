@@ -26,6 +26,7 @@ from typing import Any
 
 from app.graph.client import mock_query
 from app.graph.foundation_store import FoundationGraphStore
+from app.shared.reason_codes import FIRM_REASON_FILTER, UNATTRIBUTED_SID
 
 V_ADVISOR = "phx_dm_pce_advisor"
 V_MONTH = "phx_dm_pce_month"
@@ -62,6 +63,23 @@ def _advisor_scope(store: FoundationGraphStore, advisor: str) -> set[str]:
     if advisor not in advisors:
         raise CatalogError(f"unknown advisor '{advisor}'")
     return {str(advisor)}
+
+
+def _firm_scope(store: FoundationGraphStore) -> set[str]:
+    """FIRM scope (Round 5): the cohort PLUS the synthetic
+    '__UNATTRIBUTED__' advisor when present — firm-wide aggregates include
+    unattributed transactions; rankings/peer/drill scopes never do."""
+    scope = _advisor_scope(store, "all")
+    if UNATTRIBUTED_SID in store.all_vertices(V_ADVISOR):
+        scope = scope | {UNATTRIBUTED_SID}
+    return scope
+
+
+def _firm_amt(row: dict) -> float:
+    """firm_credited_amt with a fallback to credited_amt for rows from a
+    pre-Round-5 store (mock rows all carry the column after the post-pass)."""
+    v = row.get("firm_credited_amt")
+    return _num(row.get("credited_amt")) if v in (None, "") else _num(v)
 
 
 def _require_month(store: FoundationGraphStore, month_id: str, label: str = "month_id") -> dict:
@@ -433,11 +451,17 @@ def product_transition_metrics(store: FoundationGraphStore, params: dict) -> lis
     _require_month(store, frm, "from_month")
     _require_month(store, to, "to_month")
     gid = str(params["group_id"])
-    frm_txns = _group_txns(store, gid, frm)
-    to_txns = _group_txns(store, gid, to)
+    # Round 5: this is the PRODUCT level of the drill-down — it must tie to
+    # the dashboard contribution row, which is FIRM basis. The advisor rows
+    # beneath it (product_advisors) are advisor basis, so this level's total
+    # can exceed their sum — correct, and the UI says so (task 14).
+    firm = _firm_scope(store)
+    frm_txns = _group_txns(store, gid, frm, firm)
+    to_txns = _group_txns(store, gid, to, firm)
     frm_accts = {str(t.get("acct_key")) for t in frm_txns}
     to_accts = {str(t.get("acct_key")) for t in to_txns}
-    from_amt, to_amt = _sum_credited(frm_txns), _sum_credited(to_txns)
+    from_amt = round(sum(_firm_amt(t) for t in frm_txns), 2)
+    to_amt = round(sum(_firm_amt(t) for t in to_txns), 2)
     return [{
         "from_amt": from_amt, "to_amt": to_amt,
         "change_amt": round(to_amt - from_amt, 2),
@@ -578,7 +602,7 @@ def product_movement_causes(store: FoundationGraphStore, params: dict) -> list[d
 # served by GET /api/dashboard/definitions, never restated here:
 #   accounts = distinct acct_key with credited revenue in the month for that product
 #   trades   = count of credited transactions
-#   revenue  = sum(credited_amt) where reason_cd = '__NONE__'
+#   revenue  = sum(firm_credited_amt) under the FIRM reason filter (Round 5)
 #   AUM      = sum(end_balance) from account_month for accounts holding that product
 
 PRODUCT_VIEWS = ("all", "split", "recurring", "non_recurring")
@@ -606,11 +630,14 @@ def _product_group_map(store: FoundationGraphStore) -> dict[str, str]:
 
 
 def _credited_txns(store: FoundationGraphStore, month_id: str) -> list[dict]:
-    """Credited transactions = reason_cd '__NONE__' (the revenue definition),
-    cohort advisors only."""
-    scope = _advisor_scope(store, "all")
+    """FIRM-credited transactions (Round 5): rows passing the client's FIRM
+    reason filter (NOT IN 9X,XX / blank), cohort + unattributed scope — the
+    dashboard reconciles to the client's PCE report, which uses exactly this
+    filter. Advisor-level queries use credited_amt (= advisor filter)."""
+    scope = _firm_scope(store)
     return [t for t in _txn_rows(store, scope, month_id)
-            if str(t.get("reason_cd")) == "__NONE__"]
+            if FIRM_REASON_FILTER("" if str(t.get("reason_cd")) == "__NONE__"
+                                  else str(t.get("reason_cd")))]
 
 
 def _group_month_metrics(store: FoundationGraphStore, month_id: str,
@@ -628,7 +655,7 @@ def _group_month_metrics(store: FoundationGraphStore, month_id: str,
         row["accts"].add(str(t.get("acct_key")))
         row["advisors"].add(str(t.get("advisor_sid")))
         row["trades"] += 1
-        row["amt"] += _num(t.get("credited_amt"))
+        row["amt"] += _firm_amt(t)  # Round 5: dashboard totals are FIRM basis
     return out
 
 

@@ -59,8 +59,11 @@ def main() -> int:
     # 2 — parity: clean install == baseline_f2 + 001 + 002
     r = subprocess.run([sys.executable, "scripts/verify_schema_parity.py"],
                        capture_output=True, text=True, cwd=ROOT)
-    check("2  verify_schema_parity: clean install == 001 + 002",
-          r.returncode == 0 and "migrations (001, 002) == clean install" in r.stdout,
+    # Round 5 re-pin: the migration chain grew to 003 (widening precedent) —
+    # the pin is "parity passes with every migration applied in order".
+    check("2  verify_schema_parity: clean install == applied migration chain",
+          r.returncode == 0 and "== clean install" in r.stdout
+          and "001, 002" in r.stdout,
           r.stdout.strip().splitlines()[-1])
 
     # 3 — job_code present everywhere; SQL selects job_cd; blank stays blank

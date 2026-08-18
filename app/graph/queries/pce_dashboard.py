@@ -14,6 +14,7 @@ from typing import Any
 
 from app.graph.client import mock_query
 from app.graph.foundation_store import FoundationGraphStore
+from app.shared.reason_codes import UNATTRIBUTED_SID
 
 V_ADVISOR = "phx_dm_pce_advisor"
 V_MONTH = "phx_dm_pce_month"
@@ -36,13 +37,33 @@ def _num(value: Any) -> float:
 
 
 def _advisor_scope(store: FoundationGraphStore, advisor: str) -> set[str]:
-    """The advisor SIDs a request aggregates over. 'all' = cohort only."""
+    """The advisor SIDs a request aggregates over. 'all' = FIRM scope
+    (Round 5): the cohort PLUS the synthetic '__UNATTRIBUTED__' advisor when
+    present — firm-wide dashboard totals include unattributed transactions."""
     advisors = store.all_vertices(V_ADVISOR)
     if advisor in ("", "all", None):
-        return {sid for sid, attrs in advisors.items() if attrs.get("in_cohort") is True}
+        scope = {sid for sid, attrs in advisors.items() if attrs.get("in_cohort") is True}
+        if UNATTRIBUTED_SID in advisors:
+            scope.add(UNATTRIBUTED_SID)
+        return scope
     if advisor not in advisors:
         raise ValueError(f"unknown advisor '{advisor}'")
     return {advisor}
+
+
+def _is_firm(advisor) -> bool:
+    return advisor in ("", "all", None)
+
+
+def _amt(row: dict[str, Any], firm: bool) -> float:
+    """Round 5: firm scope reads firm_credited_amt (the client's dashboard
+    filter — reconciles to their PCE report); a single advisor reads
+    credited_amt (== advisor_credited_amt). Fallback covers pre-Round-5 rows."""
+    if firm:
+        v = row.get("firm_credited_amt")
+        if v not in (None, ""):
+            return _num(v)
+    return _num(row.get("credited_amt"))
 
 
 def _mr_rows(store: FoundationGraphStore, scope: set[str]) -> list[dict[str, Any]]:
@@ -57,7 +78,8 @@ def _months_sorted(store: FoundationGraphStore) -> list[tuple[str, dict[str, Any
     return sorted(store.all_vertices(V_MONTH).items(), key=lambda kv: kv[0])
 
 
-def _month_totals(store: FoundationGraphStore, scope: set[str]) -> list[dict[str, Any]]:
+def _month_totals(store: FoundationGraphStore, scope: set[str],
+                  firm: bool = False) -> list[dict[str, Any]]:
     """Per-month credited totals (with recurring / non-recurring split) over scope."""
     sums: dict[str, dict[str, float]] = {}
     for row in _mr_rows(store, scope):
@@ -65,7 +87,7 @@ def _month_totals(store: FoundationGraphStore, scope: set[str]) -> list[dict[str
         bucket = sums.setdefault(
             month_id, {"credited": 0.0, "recurring": 0.0, "non_recurring": 0.0, "txn": 0.0}
         )
-        credited = _num(row.get("credited_amt"))
+        credited = _amt(row, firm)
         bucket["credited"] += credited
         if str(row.get("class_id")) == "RECURRING":
             bucket["recurring"] += credited
@@ -102,6 +124,10 @@ def dashboard_advisors(store: FoundationGraphStore, params: dict) -> list[dict]:
             "in_cohort": attrs.get("in_cohort") is True,
         }
         for sid, attrs in sorted(store.all_vertices(V_ADVISOR).items())
+        # Round 5: the synthetic unattributed advisor is a ROW in firm
+        # aggregates, never a selectable advisor — you cannot rank or open
+        # an advisor that does not exist.
+        if sid != UNATTRIBUTED_SID
     ]
     cohort_count = sum(1 for a in advisors if a["in_cohort"])
     return [{"advisors": advisors, "cohort_count": cohort_count}]
@@ -109,14 +135,14 @@ def dashboard_advisors(store: FoundationGraphStore, params: dict) -> list[dict]:
 
 @mock_query("pce_dashboard_months")
 def dashboard_months(store: FoundationGraphStore, params: dict) -> list[dict]:
-    scope = _advisor_scope(store, params.get("advisor", "all"))
-    return [{"months": _month_totals(store, scope)}]
+    adv = params.get("advisor", "all")
+    return [{"months": _month_totals(store, _advisor_scope(store, adv), _is_firm(adv))}]
 
 
 @mock_query("pce_dashboard_transitions")
 def dashboard_transitions(store: FoundationGraphStore, params: dict) -> list[dict]:
-    scope = _advisor_scope(store, params.get("advisor", "all"))
-    months = _month_totals(store, scope)
+    adv = params.get("advisor", "all")
+    months = _month_totals(store, _advisor_scope(store, adv), _is_firm(adv))
     transitions: list[dict[str, Any]] = []
     for prev, curr in zip(months, months[1:]):
         from_amt, to_amt = prev["credited_amt"], curr["credited_amt"]
@@ -150,7 +176,9 @@ def dashboard_product_contribution(store: FoundationGraphStore, params: dict) ->
     if class_filter not in ("all", *CLASS_ORDER):
         raise ValueError(f"unknown class '{class_filter}' (expected all|RECURRING|NON_RECURRING)")
 
-    scope = _advisor_scope(store, params.get("advisor", "all"))
+    adv = params.get("advisor", "all")
+    scope = _advisor_scope(store, adv)
+    firm = _is_firm(adv)
     groups = store.all_vertices(V_PRODUCT_GROUP)
     classes = store.all_vertices(V_REVENUE_CLASS)
 
@@ -163,7 +191,7 @@ def dashboard_product_contribution(store: FoundationGraphStore, params: dict) ->
             continue
         group_id = str(row.get("group_id"))
         bucket = sums.setdefault(group_id, [0.0, 0.0])
-        bucket[0 if month_id == from_month else 1] += _num(row.get("credited_amt"))
+        bucket[0 if month_id == from_month else 1] += _amt(row, firm)
 
     wanted_classes = CLASS_ORDER if class_filter == "all" else [class_filter]
     sections: list[dict[str, Any]] = []

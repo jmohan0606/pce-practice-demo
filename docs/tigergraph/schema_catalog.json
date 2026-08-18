@@ -144,6 +144,8 @@
         "days_to_process": "INT",
         "credited_amt": "DOUBLE",
         "non_credited_amt": "DOUBLE",
+        "firm_credited_amt": "DOUBLE",
+        "advisor_credited_amt": "DOUBLE",
         "pre_split_amt": "DOUBLE",
         "split_pct": "DOUBLE",
         "reason_cd": "STRING",
@@ -170,6 +172,8 @@
         "class_id": "STRING",
         "credited_amt": "DOUBLE",
         "non_credited_amt": "DOUBLE",
+        "firm_credited_amt": "DOUBLE",
+        "advisor_credited_amt": "DOUBLE",
         "txn_count": "INT",
         "distinct_accounts": "INT"
       }

@@ -66,6 +66,62 @@ REASON_CODES: dict[str, dict] = {
 }
 
 
+# --------------------------------------------------------------------------
+# Round 5 task 3 — THE TWO CLIENT REASON-CODE FILTERS (17 Aug 2026), the ONE
+# place they live. Never inline either.
+#
+#   Firm / dashboard level:  reason_cd NOT IN ('9X','XX') OR blank/NULL
+#     — "this matches the other reconcile report" (reconciles to the PCE
+#     report at 0.36%). Firm level also includes NULL-advisor transactions
+#     (loaded under the synthetic advisor '__UNATTRIBUTED__').
+#
+#   Advisor level:  reason_cd NOT IN ('9X','XX','9R','98','99','9H') OR blank
+#     — four further exclusions. THE TWO ARE DIFFERENT POPULATIONS: a firm
+#     total and the sum of its advisors will NOT be equal, and that is
+#     correct (the UI says so where both appear).
+#
+# The registered DEMO stand-in codes above (9G/9D/9E + legacy ADJ/INELG) do
+# not exist in the client feed — they model the advisor-excluded class in the
+# committed mock data (this module's docstring has said since Round A1 that
+# real extraction maps the client's actual codes into this table). They are
+# therefore advisor-excluded HERE as well, so on real client data both
+# filters are exactly the client's literal sets and on mock data the demo's
+# non-credited causes keep their meaning. 9H is in both worlds already.
+
+FIRM_EXCLUDED_REASON_CODES = frozenset({"9X", "XX"})
+ADVISOR_EXCLUDED_REASON_CODES = frozenset({"9X", "XX", "9R", "98", "99", "9H"})
+
+# Blank / NULL / the build's '__NONE__' marker all mean "no reason code".
+_NO_REASON = frozenset({"", "__NONE__"})
+
+
+def _norm(reason_cd: str | None) -> str:
+    return str(reason_cd or "").strip()
+
+
+def FIRM_REASON_FILTER(reason_cd: str | None) -> bool:  # noqa: N802 — spec-mandated name
+    """True = the transaction counts toward FIRM-level credited revenue."""
+    return _norm(reason_cd) in _NO_REASON \
+        or _norm(reason_cd) not in FIRM_EXCLUDED_REASON_CODES
+
+
+def ADVISOR_REASON_FILTER(reason_cd: str | None) -> bool:  # noqa: N802 — spec-mandated name
+    """True = the transaction counts toward ADVISOR-level credited revenue.
+    Registered demo cause codes are excluded too (absent from the real feed —
+    see the block comment above)."""
+    code = _norm(reason_cd)
+    if code in _NO_REASON:
+        return True
+    return code not in ADVISOR_EXCLUDED_REASON_CODES and code not in REASON_CODES
+
+
+# The synthetic advisor NULL-advisor transactions load under (Round 5 task 3).
+# It is a ROW, never a clickable advisor: firm-wide aggregates include it;
+# advisor rankings, peer comparisons, exception rates and the advisor
+# dropdown exclude it.
+UNATTRIBUTED_SID = "__UNATTRIBUTED__"
+
+
 def cause_for_code(reason_cd: str | None) -> dict:
     """Mapping row for a reason code — an unknown code comes back labelled as
     exactly that (shown, never dropped, never guessed)."""

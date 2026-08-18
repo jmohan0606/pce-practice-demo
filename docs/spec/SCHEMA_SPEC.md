@@ -20,12 +20,25 @@ ltrim(trim(account_no), '0')     -- '0000001590' -> '1590'
 Apply this to **every** account column at extraction: `account_no`, `account_number`,
 `wm_acct_src_nb`. Store the raw value alongside as `account_no_raw` for evidence display.
 
-**Credited revenue.**
+**Credited revenue — TWO client filters (Round 5, client-confirmed 17 Aug 2026;
+supersedes the old blank/non-blank rule, which matched neither of the client's measures).**
 ```sql
-credited_amt = post_split_credited_amt WHERE reason_cd IS NULL OR trim(reason_cd) = ''
+-- FIRM / dashboard level (reconciles to the client's PCE report):
+firm_credited_amt    = post_split_credited_amt WHERE reason_cd NOT IN ('9X','XX')
+                                                  OR reason_cd IS NULL OR trim(reason_cd) = ''
+-- ADVISOR level (four further exclusions):
+advisor_credited_amt = post_split_credited_amt WHERE reason_cd NOT IN ('9X','XX','9R','98','99','9H')
+                                                  OR reason_cd IS NULL OR trim(reason_cd) = ''
 ```
-Rows with a populated reason code are **still loaded** (as `non_credited_amt`) so the agent can
-investigate eligibility movement. They are excluded from credited totals.
+Both filters live in ONE place — `app/shared/reason_codes.py`
+(`FIRM_REASON_FILTER` / `ADVISOR_REASON_FILTER`) — and are **never inlined**.
+`credited_amt` is KEPT and **equals `advisor_credited_amt`** (every query, rule plan and
+finding references it); `non_credited_amt` is its complement. A firm total will NOT equal
+the sum of its advisors — correct, and the UI says so. Firm level also includes the
+NULL-advisor transactions, loaded under the synthetic advisor `__UNATTRIBUTED__`
+(`is_synthetic=true`, name blank; a row in firm aggregates, never a selectable advisor).
+Rows excluded by a filter are **still loaded** so the agent can investigate eligibility
+movement.
 
 **Month.** Derived from `proc_dt` (Round 5, client-confirmed: their authoritative PCE report is dated by `proc_dt`; it reconciles to 0.36% where `trade_dt` never reconciles). `month_id = to_char(proc_dt,'YYYYMM')`. `trade_dt` is still stored — it remains the business date. *(The pre-Round-5 rule "never `proc_dt`" was wrong for this client and is superseded.)*
 
@@ -204,22 +217,27 @@ Shares are **fractions** (0.0–1.0), stored as-is. Reference only.
 CREATE VERTEX phx_dm_pce_revenue_transaction (PRIMARY_ID txn_id STRING, trade_ref_no STRING,
   split_seq_no STRING, advisor_sid STRING, acct_key STRING, product_id STRING,
   month_id STRING, trade_dt DATETIME, proc_dt DATETIME, days_to_process INT,
-  credited_amt DOUBLE, non_credited_amt DOUBLE, pre_split_amt DOUBLE, split_pct DOUBLE,
+  credited_amt DOUBLE, non_credited_amt DOUBLE,
+  firm_credited_amt DOUBLE, advisor_credited_amt DOUBLE,
+  pre_split_amt DOUBLE, split_pct DOUBLE,
   reason_cd STRING, is_credited BOOL, standard_rate_bps DOUBLE, client_rate_bps DOUBLE,
   discount_amt DOUBLE, eff_disc_pct DOUBLE, grid_reduction DOUBLE, rpg STRING,
   concession_type STRING, file_key STRING, trade_description STRING)
 WITH primary_id_as_attribute="true";
 ```
 `txn_id = trade_ref_no ||'|'|| split_seq_no ||'|'|| advisor_sid`.
-`reason_cd` blank/null → store `__NONE__`. `is_credited = (reason_cd = '__NONE__')`.
-`credited_amt` = post-split amount when credited, else 0. `non_credited_amt` = the mirror.
+`reason_cd` blank/null → store `__NONE__`. Round 5: `is_credited` = passes the ADVISOR
+reason filter; `credited_amt` = `advisor_credited_amt`; `non_credited_amt` = the mirror;
+`firm_credited_amt` = post-split amount under the FIRM filter, else 0 (see §0).
 Estimated ~60k rows for 20 advisors over 3 months.
 
 ### V10 · `phx_dm_pce_monthly_revenue` — drives the chart and product table
 ```sql
 CREATE VERTEX phx_dm_pce_monthly_revenue (PRIMARY_ID mr_id STRING, advisor_sid STRING,
   month_id STRING, product_id STRING, group_id STRING, class_id STRING,
-  credited_amt DOUBLE, non_credited_amt DOUBLE, txn_count INT, distinct_accounts INT)
+  credited_amt DOUBLE, non_credited_amt DOUBLE,
+  firm_credited_amt DOUBLE, advisor_credited_amt DOUBLE,
+  txn_count INT, distinct_accounts INT)
 WITH primary_id_as_attribute="true";
 ```
 `mr_id = advisor_sid ||'|'|| month_id ||'|'|| product_id` — **advisor-scoped, per the R16 lesson.**

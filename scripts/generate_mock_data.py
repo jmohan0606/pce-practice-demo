@@ -57,6 +57,10 @@ from app.revenue.products import (  # noqa: E402
     revenue_class_rows,
 )
 from app.shared.ids import normalize_account_key  # noqa: E402
+from app.shared.reason_codes import (  # noqa: E402  (Round 5 — the two client filters)
+    ADVISOR_REASON_FILTER,
+    FIRM_REASON_FILTER,
+)
 from app.shared import crm  # noqa: E402  (Round F2 — stage grouping, ONE place)
 
 # Round F2: the NNM parser/fabricator is Subagent B's module; imported, never
@@ -347,6 +351,10 @@ def build_transactions(products: list[dict], by_advisor: dict[str, list[dict]], 
             "days_to_process": str(dtp),
             "credited_amt": money(amount if credited else 0.0),
             "non_credited_amt": money(0.0 if credited else amount),
+            # Round 5: the two client reason-filter columns (one place —
+            # app/shared/reason_codes.py). credited_amt == advisor_credited_amt.
+            "firm_credited_amt": money(amount if FIRM_REASON_FILTER(reason_cd) else 0.0),
+            "advisor_credited_amt": money(amount if ADVISOR_REASON_FILTER(reason_cd) else 0.0),
             "pre_split_amt": money(amount / 0.85),
             "split_pct": "0.85", "reason_cd": reason_cd, "is_credited": bl(credited),
             "standard_rate_bps": money(std_bps), "client_rate_bps": money(cli_bps),
@@ -472,6 +480,8 @@ def apply_noncredited_postpass(txns: list[dict], eci_of_acct: dict[str, str],
             "month_id": month_id, "trade_dt": f"{day} 00:00:00", "proc_dt": f"{day} 00:00:00",
             "days_to_process": str(rng.randint(1, 5)),
             "credited_amt": money(0.0), "non_credited_amt": money(amount),
+            "firm_credited_amt": money(amount if FIRM_REASON_FILTER(reason_cd) else 0.0),
+            "advisor_credited_amt": money(amount if ADVISOR_REASON_FILTER(reason_cd) else 0.0),
             "pre_split_amt": money(amount / 0.85), "split_pct": "0.85",
             "reason_cd": reason_cd, "is_credited": "false",
             "standard_rate_bps": money(std), "client_rate_bps": money(cli),
@@ -618,6 +628,64 @@ def retag_noncredited_csv() -> None:
         manifest["generated_by"] += " + 9X non-credited post-pass (--retag-noncredited)"
     (DATA / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(f"manifest: {len(new_counts)} file counts updated")
+
+
+def add_credited_columns_csv() -> None:
+    """--add-credited-columns (Round 5 task 3): deterministic COLUMN-APPEND
+    post-pass on the COMMITTED data/ CSVs (Round 1b precedent — regenerating
+    breaks every data-derived pin). Adds firm_credited_amt /
+    advisor_credited_amt to the transaction and monthly_revenue CSVs from the
+    two client reason filters (app/shared/reason_codes.py — never inlined).
+    NO row is added or removed; every existing column is byte-identical;
+    advisor_credited_amt is a verbatim copy of credited_amt (the recorded
+    equality). Refuses double application."""
+
+    def load(name: str) -> list[dict]:
+        with (VDIR / f"{name}.csv").open(newline="", encoding="utf-8-sig") as f:
+            return list(csv.DictReader(f))
+
+    txns = load("phx_dm_pce_revenue_transaction")
+    if "firm_credited_amt" in txns[0]:
+        raise RuntimeError("credited-columns post-pass already applied "
+                           "(firm_credited_amt present)")
+    firm_by_mr: dict[str, float] = defaultdict(float)
+    for t in txns:
+        amount = float(t["credited_amt"]) + float(t["non_credited_amt"])
+        reason = t["reason_cd"]
+        t["firm_credited_amt"] = money(amount if FIRM_REASON_FILTER(reason) else 0.0)
+        t["advisor_credited_amt"] = t["credited_amt"]  # verbatim — the equality
+        # sanity: the stored credited_amt must agree with the advisor filter
+        stored_credited = float(t["credited_amt"]) != 0.0
+        if stored_credited != (ADVISOR_REASON_FILTER(reason) and amount != 0.0):
+            raise RuntimeError(
+                f"txn {t['txn_id']}: stored credited_amt disagrees with "
+                f"ADVISOR_REASON_FILTER for reason '{reason}' — the committed "
+                f"data and the filter definitions have diverged; STOP")
+        mr_id = f"{t['advisor_sid']}|{t['month_id']}|{t['product_id']}"
+        firm_by_mr[mr_id] += float(t["firm_credited_amt"])
+
+    mrows = load("phx_dm_pce_monthly_revenue")
+    if "firm_credited_amt" in mrows[0]:
+        raise RuntimeError("monthly_revenue already carries firm_credited_amt")
+    for r in mrows:
+        r["firm_credited_amt"] = money(firm_by_mr.get(r["mr_id"], 0.0))
+        r["advisor_credited_amt"] = r["credited_amt"]  # verbatim — the equality
+
+    for target, rows in (("phx_dm_pce_revenue_transaction", txns),
+                         ("phx_dm_pce_monthly_revenue", mrows)):
+        n = write_csv(DATA / f"vertices/{target}.csv", VERTEX_COLUMNS[target], rows)
+        print(f"vertex {target}: {n} rows, +firm_credited_amt/+advisor_credited_amt")
+
+    manifest = json.loads((DATA / "manifest.json").read_text(encoding="utf-8"))
+    for entry in manifest["files"]:
+        if entry["target"] in ("phx_dm_pce_revenue_transaction",
+                               "phx_dm_pce_monthly_revenue"):
+            entry["columns"] = {c: c for c in VERTEX_COLUMNS[entry["target"]]}
+    tag = "Round 5 credited-columns post-pass (--add-credited-columns)"
+    if tag not in manifest["generated_by"]:
+        manifest["generated_by"] += " + " + tag
+    (DATA / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    print("manifest: columns updated for the two vertices")
 
 
 # --------------------------------------------------------------------------- other vertices
@@ -949,11 +1017,14 @@ VERTEX_COLUMNS = {
                                    "prm_advisor_sid", "prm_share_pct", "sec_advisor_sid", "sec_share_pct", "start_ts", "end_ts"],
     "phx_dm_pce_revenue_transaction": ["txn_id", "trade_ref_no", "split_seq_no", "advisor_sid", "acct_key", "product_id",
                                         "month_id", "trade_dt", "proc_dt", "days_to_process", "credited_amt", "non_credited_amt",
+                                        "firm_credited_amt", "advisor_credited_amt",
                                         "pre_split_amt", "split_pct", "reason_cd", "is_credited", "standard_rate_bps",
                                         "client_rate_bps", "discount_amt", "eff_disc_pct", "grid_reduction", "rpg",
                                         "concession_type", "file_key", "trade_description"],
     "phx_dm_pce_monthly_revenue": ["mr_id", "advisor_sid", "month_id", "product_id", "group_id", "class_id",
-                                    "credited_amt", "non_credited_amt", "txn_count", "distinct_accounts"],
+                                    "credited_amt", "non_credited_amt",
+                                    "firm_credited_amt", "advisor_credited_amt",
+                                    "txn_count", "distinct_accounts"],
     "phx_dm_pce_account_month": ["am_id", "acct_key", "advisor_sid", "month_id", "end_balance", "credited_amt",
                                   "txn_count", "is_zero_balance", "present_prior_month",
                                   "prior_end_balance", "prior_credited_amt"],
@@ -1056,7 +1127,16 @@ def main() -> None:
                          "against the COMMITTED data/ CSVs — every other CSV "
                          "stays byte-identical. Use this on the committed "
                          "set; a from-scratch regen does not reproduce it.")
+    ap.add_argument("--add-credited-columns", action="store_true",
+                    help="Round 5 task 3: append firm_credited_amt / "
+                         "advisor_credited_amt to the COMMITTED transaction + "
+                         "monthly_revenue CSVs from the two client reason "
+                         "filters. Column-append only — no row changes, "
+                         "existing columns byte-identical.")
     args = ap.parse_args()
+    if args.add_credited_columns:
+        add_credited_columns_csv()
+        return
     if args.retag_noncredited:
         retag_noncredited_csv()
         return

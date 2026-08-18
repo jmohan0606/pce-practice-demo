@@ -56,11 +56,20 @@ def build_monthly_revenue(transactions: Iterable[dict]) -> list[dict]:
                 "class_id": class_for_group(group_id),
                 "credited_amt": 0.0,
                 "non_credited_amt": 0.0,
+                "firm_credited_amt": 0.0,
+                "advisor_credited_amt": 0.0,
                 "txn_count": 0,
                 "_accounts": set(),
             }
         bucket["credited_amt"] += _to_float(txn.get("credited_amt"))
         bucket["non_credited_amt"] += _to_float(txn.get("non_credited_amt"))
+        # Round 5: the two client reason-filter columns. Rows from a
+        # pre-Round-5 source carry neither — fall back to credited_amt
+        # (advisor-level IS what credited_amt equals by definition).
+        bucket["firm_credited_amt"] += _to_float(
+            txn.get("firm_credited_amt", txn.get("credited_amt")))
+        bucket["advisor_credited_amt"] += _to_float(
+            txn.get("advisor_credited_amt", txn.get("credited_amt")))
         bucket["txn_count"] += 1
         bucket["_accounts"].add(str(txn.get("acct_key", "")))
 
@@ -70,6 +79,8 @@ def build_monthly_revenue(transactions: Iterable[dict]) -> list[dict]:
         accounts = bucket.pop("_accounts")
         bucket["credited_amt"] = round(bucket["credited_amt"], 2)
         bucket["non_credited_amt"] = round(bucket["non_credited_amt"], 2)
+        bucket["firm_credited_amt"] = round(bucket["firm_credited_amt"], 2)
+        bucket["advisor_credited_amt"] = round(bucket["advisor_credited_amt"], 2)
         bucket["distinct_accounts"] = len(accounts)
         rows.append(bucket)
     return rows

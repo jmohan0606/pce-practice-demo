@@ -85,6 +85,9 @@ from app.revenue.products import (  # noqa: E402
 )
 from app.shared.ids import normalize_account_key  # noqa: E402
 from app.shared.crm import stage_group_for, strip_invalid_advisor_suffix  # noqa: E402
+from app.shared.reason_codes import (  # noqa: E402
+    ADVISOR_REASON_FILTER, FIRM_REASON_FILTER, UNATTRIBUTED_SID,
+)
 
 # Round F2: the NNM parser is Subagent B's module — imported, never retyped.
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -417,11 +420,14 @@ VERTEX_COLUMNS = {
                                   "prm_advisor_sid", "prm_share_pct", "sec_advisor_sid", "sec_share_pct", "start_ts", "end_ts"],
     "phx_dm_pce_revenue_transaction": ["txn_id", "trade_ref_no", "split_seq_no", "advisor_sid", "acct_key", "product_id",
                                        "month_id", "trade_dt", "proc_dt", "days_to_process", "credited_amt", "non_credited_amt",
+                                       "firm_credited_amt", "advisor_credited_amt",
                                        "pre_split_amt", "split_pct", "reason_cd", "is_credited", "standard_rate_bps",
                                        "client_rate_bps", "discount_amt", "eff_disc_pct", "grid_reduction", "rpg",
                                        "concession_type", "file_key", "trade_description"],
     "phx_dm_pce_monthly_revenue": ["mr_id", "advisor_sid", "month_id", "product_id", "group_id", "class_id",
-                                   "credited_amt", "non_credited_amt", "txn_count", "distinct_accounts"],
+                                   "credited_amt", "non_credited_amt",
+                                   "firm_credited_amt", "advisor_credited_amt",
+                                   "txn_count", "distinct_accounts"],
     "phx_dm_pce_account_month": ["am_id", "acct_key", "advisor_sid", "month_id", "end_balance", "credited_amt",
                                  "txn_count", "is_zero_balance", "present_prior_month",
                                  "prior_end_balance", "prior_credited_amt"],
@@ -698,7 +704,12 @@ def transform_txn(r: dict) -> dict | None:
     month_id = intern(month_of(proc_dt))
     reason = r["reason_cd"].strip() or "__NONE__"
     amount = num(r["post_split_credited_amt"])
-    credited = reason == "__NONE__"
+    # Round 5 task 3: TWO client reason-code filters, precomputed as TWO
+    # columns (app/shared/reason_codes.py — never inlined). credited_amt is
+    # kept and EQUALS advisor_credited_amt (most of the app computes at
+    # advisor level); non_credited_amt is its complement.
+    firm_credited = FIRM_REASON_FILTER(reason)
+    credited = ADVISOR_REASON_FILTER(reason)
     acct_key = intern(normalize_account_key(r["account_no"]))
     dtp = (proc_dt.date() - trade_dt.date()).days if trade_dt else 0
     return {
@@ -710,6 +721,8 @@ def transform_txn(r: dict) -> dict | None:
         "days_to_process": str(dtp),
         "credited_amt": money(amount if credited else 0.0),
         "non_credited_amt": money(0.0 if credited else amount),
+        "firm_credited_amt": money(amount if firm_credited else 0.0),
+        "advisor_credited_amt": money(amount if credited else 0.0),
         "pre_split_amt": money(num(r["pre_split_credited_amt"])),
         "split_pct": r["split_pct"] or "0",
         "reason_cd": reason, "is_credited": bl(credited),
@@ -764,8 +777,9 @@ def run_validations(agg: dict) -> None:
 
     # 5 — reason-coded rows must carry zero credited_amt (true by construction
     # in transform_txn; counted anyway so a transform edit cannot silently break it)
-    print(f"\n 5. rows where reason_cd != '__NONE__' AND credited_amt != 0: "
-          f"{agg['coded_with_credit']} (must be 0)")
+    print(f"\n 5. rows whose reason code FAILS its filter yet carries a credited "
+          f"amount (advisor filter vs credited_amt/advisor_credited_amt; firm "
+          f"filter vs firm_credited_amt): {agg['coded_with_credit']} (must be 0)")
     if agg["coded_with_credit"]:
         failures.append(f"validation 5: {agg['coded_with_credit']} reason-coded rows with credited_amt")
 
@@ -1073,7 +1087,13 @@ def _build_staged(raw_dir: Path, out_dir: Path, staging: Path, sources: dict,
                     agg["unmapped_counts"][pid] += 1
                 if not t["reason_cd"].strip():
                     agg["empty_reason"] += 1
-                if t["reason_cd"] != "__NONE__" and cred != 0.0:
+                # Round 5: the invariant is filter-consistency, not
+                # coded-implies-zero — codes outside the exclusion lists DO
+                # credit (client filters, app/shared/reason_codes.py)
+                if not ADVISOR_REASON_FILTER(t["reason_cd"]) and cred != 0.0:
+                    agg["coded_with_credit"] += 1
+                if not FIRM_REASON_FILTER(t["reason_cd"]) \
+                        and float(t["firm_credited_amt"]) != 0.0:
                     agg["coded_with_credit"] += 1
                 if acct != normalize_account_key(acct):
                     agg["unnormalised_keys"] += 1

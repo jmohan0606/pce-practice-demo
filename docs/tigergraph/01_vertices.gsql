@@ -68,7 +68,9 @@ CREATE VERTEX phx_dm_pce_team_agreement (PRIMARY_ID agreement_key STRING, agreem
 CREATE VERTEX phx_dm_pce_revenue_transaction (PRIMARY_ID txn_id STRING, trade_ref_no STRING,
   split_seq_no STRING, advisor_sid STRING, acct_key STRING, product_id STRING,
   month_id STRING, trade_dt DATETIME, proc_dt DATETIME, days_to_process INT,
-  credited_amt DOUBLE, non_credited_amt DOUBLE, pre_split_amt DOUBLE, split_pct DOUBLE,
+  credited_amt DOUBLE, non_credited_amt DOUBLE,
+  firm_credited_amt DOUBLE, advisor_credited_amt DOUBLE,
+  pre_split_amt DOUBLE, split_pct DOUBLE,
   reason_cd STRING, is_credited BOOL, standard_rate_bps DOUBLE, client_rate_bps DOUBLE,
   discount_amt DOUBLE, eff_disc_pct DOUBLE, grid_reduction DOUBLE, rpg STRING,
   concession_type STRING, file_key STRING, trade_description STRING)
@@ -77,7 +79,9 @@ WITH primary_id_as_attribute="true";
 // V10
 CREATE VERTEX phx_dm_pce_monthly_revenue (PRIMARY_ID mr_id STRING, advisor_sid STRING,
   month_id STRING, product_id STRING, group_id STRING, class_id STRING,
-  credited_amt DOUBLE, non_credited_amt DOUBLE, txn_count INT, distinct_accounts INT)
+  credited_amt DOUBLE, non_credited_amt DOUBLE,
+  firm_credited_amt DOUBLE, advisor_credited_amt DOUBLE,
+  txn_count INT, distinct_accounts INT)
 WITH primary_id_as_attribute="true";
 
 // V11

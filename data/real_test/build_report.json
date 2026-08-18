@@ -140,10 +140,10 @@
     "revenue_transaction": 24,
     "monthly_revenue": 24,
     "small_entities": 24,
-    "account_eci_rel": 24,
-    "account_eci_map": 24,
-    "household": 24,
-    "opportunity": 24,
+    "account_eci_rel": 25,
+    "account_eci_map": 25,
+    "household": 25,
+    "opportunity": 25,
     "advisor_nnm": 25,
     "account_month": 25
   }
