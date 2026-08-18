@@ -31,6 +31,7 @@ import { CompareValue } from "@/components/CompareValue";
 import { Bold, FindingRow, LimitNotice } from "@/components/InsightPanel";
 import { Delta } from "@/components/Num";
 import { Pager, usePager } from "@/components/Pager";
+import Term from "@/components/Term";
 import { arrow, money, moneyAxis, percent } from "@/lib/format";
 import { isBooleanish, labelize, yesNo } from "@/lib/labels";
 
@@ -126,11 +127,16 @@ function MetricStrip({
   labels,
   drills,
   showAum = false,
+  firmBasis = false,
 }: {
   metrics: Record<string, number | null>;
   labels: { from: string; to: string };
   drills?: Record<string, (() => void) | undefined>;
   showAum?: boolean;
+  /** Round 5 task 14 — true only at the level-1 (product) strip, whose amount
+   * totals are firm-basis while the advisor rows beneath are advisor-basis:
+   * the amount tiles get the glossary firm-vs-advisor tooltip. */
+  firmBasis?: boolean;
 }) {
   const keys = Object.keys(metrics).filter(
     (k) => !k.startsWith("prior_") && (showAum || !/(^|_)aum$/.test(k)),
@@ -150,7 +156,13 @@ function MetricStrip({
         const deltaKind = /_amt$|^amt|aum|balance|revenue/.test(key) ? "money" : "count";
         return (
           <div key={key}>
-            <div className="k">{metricLabel(key, labels)}</div>
+            <div className="k">
+              {firmBasis && /_amt$/.test(key) ? (
+                <Term code="metric.firm_vs_advisor">{metricLabel(key, labels)}</Term>
+              ) : (
+                metricLabel(key, labels)
+              )}
+            </div>
             {drill && v !== null && v !== undefined ? (
               <button className="count-drill" onClick={drill}>
                 {metricValue(key, v)}
@@ -857,6 +869,7 @@ function InsightView({
         labels={monthLabels}
         drills={drills}
         showAum={managed}
+        firmBasis={level.kind === "product"}
       />
 
       {/* Round H 4.1: a scoped run that hit a limit says so in a sentence —

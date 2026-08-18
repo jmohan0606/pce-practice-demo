@@ -1,6 +1,7 @@
 "use client";
 
 import { useId } from "react";
+import Term from "@/components/Term";
 import { arrow, money, moneyAxis, niceCeil, percent } from "@/lib/format";
 
 /** Round A2B Task 2 — the transition bar chart.
@@ -38,6 +39,11 @@ export interface TransitionChartProps {
   selected: number; // index into transitions
   onSelect: (index: number) => void;
   monthName: (monthId: string) => string; // "202604" -> "Apr 2026"
+  /** Round 5 task 14 — glossary key for a tooltip on each bar's headline
+   * total. The DASHBOARD passes "metric.firm_vs_advisor" (firm-basis totals
+   * exceed the sum of advisor figures); the advisor page, whose totals are
+   * advisor-basis, omits it. Optional, so the shared contract is unchanged. */
+  totalTermCode?: string;
 }
 
 type ChartMonth = TransitionChartProps["months"][number];
@@ -82,6 +88,7 @@ export default function TransitionChart({
   selected,
   onSelect,
   monthName,
+  totalTermCode,
 }: TransitionChartProps) {
   const markerId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const config = VIEW_CONFIG[view];
@@ -129,7 +136,13 @@ export default function TransitionChart({
               const heightPct = (total / yMax) * 100;
               return (
                 <div className="mcol" key={m.month_id}>
-                  <div className="bval">{money(total)}</div>
+                  <div className="bval">
+                    {totalTermCode ? (
+                      <Term code={totalTermCode}>{money(total)}</Term>
+                    ) : (
+                      money(total)
+                    )}
+                  </div>
                   {/* Round 3 review B1 — no AUM on the bar chart, ever */}
                   <div className="bar" style={{ height: `${heightPct}%` }}>
                     {config.segments(m).map((s) => (

@@ -46,10 +46,13 @@ function ProductRow({
   return (
     <tr>
       <td>
-        {/* Review C2/C4 — bold product name, prefix joined with an en dash
-            ("TWHS – Structured Products", never "TWHSStructured Products") */}
-        {row.display_prefix ? <span className="pfx">{row.display_prefix} – </span> : null}
-        <span className="rowhead">{row.group_name}</span>
+        {/* Review C2/C4 + Round 5 task 11.2 — the prefix and the product name
+            are ONE label ("TWHS – Structured Products"): same weight, same
+            colour, so the prefix lives inside the same .rowhead span. */}
+        <span className="rowhead">
+          {row.display_prefix ? `${row.display_prefix} – ` : ""}
+          {row.group_name}
+        </span>
       </td>
       <td className="num grpline">{row.from_account_count.toLocaleString("en-US")}</td>
       <td className="num">{row.from_trade_count.toLocaleString("en-US")}</td>
@@ -188,7 +191,13 @@ export default function ProductChangeTable({
               ))
             : bodyRows(data.rows)}
           <tr className="tot">
-            <td>Total (all product types)</td>
+            <td>
+              {/* Round 5 task 14 — the firm total uses the wider firm-level
+                  reason-code filter, so it exceeds the sum of advisor-level
+                  figures; the explanation comes from the glossary, never a
+                  hardcoded string. */}
+              <Term code="metric.firm_vs_advisor">Total (all product types)</Term>
+            </td>
             <td className="num grpline">{total.from_account_count.toLocaleString("en-US")}</td>
             <td className="num">{total.from_trade_count.toLocaleString("en-US")}</td>
             <td className="num">

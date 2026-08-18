@@ -271,9 +271,11 @@ tbody tr.limit-hit:not(.sect):not(.tot):hover td{background:var(--der-bg)}
   border-radius:50%;border:1px solid var(--slate-2);color:var(--slate);font-size:9.5px;
   font-weight:700;margin-left:5px;cursor:help;vertical-align:middle;line-height:1;font-style:normal}
 .baum{font-size:12.5px;font-weight:600;color:var(--navy-hi);margin-bottom:7px}
+/* Round 5 task 11.1 — column headers must not read smaller than the product
+   names in the rows (13px table body): 13px, same as the section headers. */
 th.grp{text-align:center;border-left:1px solid rgba(255,255,255,.18);
-  background:var(--navy-hi);font-size:12px;letter-spacing:.04em}
-th.colhead{font-size:12px}
+  background:var(--navy-hi);font-size:13px;letter-spacing:.04em}
+th.colhead{font-size:13px}
 .grpline{border-left:1px solid var(--rule)}
 .sev{display:inline-flex;font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:3px;
   letter-spacing:.03em;text-transform:uppercase;white-space:nowrap}

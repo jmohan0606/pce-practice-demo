@@ -90,7 +90,9 @@ function SectionRows({
       {section.rows.map((row) => (
         <tr key={row.group_id}>
           <td>
-            {row.display_prefix ? <span className="pfx">{row.display_prefix} – </span> : null}
+            {/* Round 5 task 11.2 — prefix + name are ONE identically styled
+                label: "TWHS – Structured Products". */}
+            {row.display_prefix ? `${row.display_prefix} – ` : ""}
             {row.group_name}
           </td>
           <td className="num">{money(row.from_amt)}</td>

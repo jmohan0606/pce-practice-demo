@@ -218,6 +218,7 @@ export default function DashboardPage() {
             selected={selected}
             onSelect={setSelected}
             monthName={monthName}
+            totalTermCode="metric.firm_vs_advisor"
           />
         ) : (
           <EmptyState title="Loading" message="Fetching monthly revenue…" />
