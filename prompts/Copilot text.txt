@@ -54,10 +54,27 @@ Continue to completion. Report at 40, 60 and 87 chunks with completed count, ela
 Once all 87 transaction chunks are done, retry flows as-is for one month — the merge join may now complete within 900s. Report the result either way.
 
 ---------------------------round 5
-Do not apply a fix. Report two things first.
+Fix the rpg cast. rpg is an integer column, so COALESCE(d.rpg,'') cannot coerce an empty string into it. It must be COALESCE(d.rpg::text,'') AS rpg — the graph column is a STRING.
 
-1 · Which chunk timed out and at what limit — the exact chunk id, the statement timeout in force, and the full error text.
+This was fixed once before and regressed, so find where the executing SQL actually comes from:
 
-2 · EXPLAIN on that chunk's actual SQL, with its real parameters. Report the top three plan nodes, and say explicitly whether any node references fpic_prm_rr_tb or fpic_employee_tb.
+powershell
+Select-String -Path scripts\generate_extraction_sql.py -Pattern "COALESCE\(d\.rpg"
+Get-ChildItem docs\data\extraction\raw_revenue_transaction.sql -ErrorAction SilentlyContinue
+Get-ChildItem -Recurse -Filter "__pycache__" -Directory | Remove-Item -Recurse -Force
 
-Do not run the extraction again in this pass.
+Delete any stale generated .sql file and clear __pycache__. Then prove the fix is live in a fresh process before running any chunk:
+
+powershell
+uv run python -c "
+from scripts.generate_extraction_sql import templates
+import re
+s = templates()['raw_revenue_transaction.sql']
+print([l.strip() for l in s.splitlines() if 'rpg' in l][:3])
+"
+
+The rpg line must show ::text. Do not run a chunk until that output confirms it.
+
+While you are there, check every other COALESCE(col,'') in the transaction template against the column's actual type in information_schema.columns, and report any others that are non-text. A second type error would cost another failed chunk.
+
+Then run the extraction and report the first 5 chunks with wall time and row counts.
