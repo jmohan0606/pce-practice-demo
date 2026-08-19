@@ -7,6 +7,7 @@ Full repo-relative paths. The operator hand-moves exactly these files.
 - app/graph/queries/lookups.py
 - docs/ROUND_9_CHANGED_FILES.md
 - docs/ROUND_9_COMPLETE.md
+- docs/ROUNDS_7_TO_9_CHANGED_FILES.md
 - docs/spec/ROUND_9_SPEC.md
 - docs/tigergraph/queries/account_managed_flags.gsql
 - docs/tigergraph/queries/aum_managed.gsql
