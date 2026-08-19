@@ -92,6 +92,23 @@ Take the column list from each job's existing $"..." references — they already
 
 Prove it on load_month.gsql first — install it, run it with runLoadingJobWithFile, confirm 3 rows. Only then apply the same change to the other 18.
 
+---------------------------------------+1 issue fix
+The universal +1 is a header row loaded as data. I queried the graph and found vertices with v_id: "to_id" and month_id: "to_id" — the literal CSV header text became a vertex. This is present in every entity, which is why reconciliation reported +1 across all 49.
+
+USING HEADER="true" is not taking effect. When you added DEFINE HEADER h FOR FILENAME f = ... to fix the semantic check, the header declaration and the USING HEADER="true" clause together are no longer skipping line 1.
+
+Do this:
+
+1 · Fix one job and prove it. Take load_month.gsql, work out the correct combination — most likely dropping the now-redundant USING HEADER="true", since the explicit DEFINE HEADER already declares the columns. Delete the existing month vertices, reload, and confirm exactly 3, with no vertex whose id is a column name.
+
+2 · Apply the same change to the other 18 job files.
+
+3 · Delete the phantom rows already loaded — every vertex and edge whose primary id equals a column name. Report the count removed per entity. Do not reload the data — apart from one phantom row each, the entities are correct.
+
+4 · Re-run reconciliation. Every +1 should disappear. The four genuine shortfalls will remain — opportunity −11,096, account_eci_map −344, opportunity_by_advisor −120, map_to_household −23. Those are known and deferred; do not attempt to fix them.
+
+Report the count deleted per entity and the reconciliation output.
+
 Two identical failures = stop and report. Never estimate a number.
 
 Report using the exact template at the end, ending with a one-paragraph recommendation.
