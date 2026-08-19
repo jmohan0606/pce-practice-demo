@@ -141,3 +141,33 @@ The mock/catalog contract is authoritative. The GSQL must change to match the co
 A query that would need its computed logic changed to install is a finding, not a fix — report it rather than changing what it computes.
 
 Two identical failures = stop and report. Never estimate a number.
+
+-----------------------TigerGraph fix round 2
+
+phase 2 correct, give one consolidated prompt if do something before phase 2
+
+Before starting Phase 2, correct the scope.
+
+Your Phase 1 found 46 catalog names. The app actually registers 57 via @mock_query decorators in app/graph/queries/. Confirm that count yourself, then report the corrected totals.
+
+Five have no GSQL file at all:
+
+pce_dashboard_advisors, pce_dashboard_months, pce_dashboard_product_contribution, pce_dashboard_transitions, rules_evaluate_plan
+
+The first four drive the dashboard — the month selector, advisor list, transition list and product contribution table. The fifth drives rule evaluation. Without them the dashboard cannot render and rules cannot evaluate, so they are in scope and must be written from their Python implementations.
+
+Report the corrected numbers before writing anything: how many catalog names in total, how many have a file, how many need writing from scratch, how many fail to install, how many install but return the wrong columns.
+
+Then, for Phase 2, the rule that governs every query:
+
+The Python implementation is the specification. Each @mock_query("name") function defines both the business logic and the exact output columns. Translate it — do not reinterpret it.
+
+Four things must carry across exactly, or the figures will be wrong while looking right:
+
+Reason-code filter — FIRM_REASON_FILTER excludes 9X, XX; ADVISOR_REASON_FILTER also excludes 9R, 98, 99, 9H. Use whichever the Python function uses.
+Credited column — firm_credited_amt or advisor_credited_amt, matching the Python. Round 5 audited all of them and recorded the choice per query in docs/ROUND_5_COMPLETE.md.
+__UNATTRIBUTED__ — included in firm-scope aggregates, excluded from advisor rankings, peer comparisons and exception rates. Match the Python.
+Product resolution — the 26 groups with sub-code splits: ELIS→EQ/OP, LEND→SBL/MGN, PCS→SP/PBR.
+If a Python function does something GSQL cannot express, report it — do not approximate. An approximation produces a number that looks right and reconciles to nothing, which is the one outcome this project cannot accept.
+
+Fix in the 7 root-cause groups you identified, prove one query per group returns mode: pytigergraph with the correct columns before moving to the next, and stop after two identical failures on any query.
