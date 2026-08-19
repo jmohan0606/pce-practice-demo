@@ -113,14 +113,30 @@ export interface FirmExceptionRule {
   rule_code: string;
   rule_name: string;
   severity: string | null;
-  config: FirmExceptionConfig;
+  config: FirmExceptionConfig & {
+    /** Round 8 — absolute-threshold rules only */
+    threshold?: number | null;
+    threshold_op?: string | null;
+  };
   cohort: FirmExceptionCohort;
-  firm: FirmExceptionRollup;
+  firm: FirmExceptionRollup & {
+    /** Round 8 — absolute-threshold rules only */
+    observed_value?: number | null;
+    threshold?: number | null;
+    fired?: boolean;
+    is_monetary?: boolean;
+    error?: string | null;
+  };
+  /** "rate" (the cohort model) or "absolute_threshold" (firm-level) */
+  model?: string;
 }
 export interface FirmExceptionsResponse {
   month: string;
   rules: FirmExceptionRule[];
   rule_count: number;
+  /** Round 8 tasks 2/3 — which empty is which */
+  published_version?: string | null;
+  published_rule_count?: number;
 }
 
 export function getFirmExceptions(month: string): Promise<FirmExceptionsResponse> {

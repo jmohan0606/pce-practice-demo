@@ -149,9 +149,26 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     ensure_v0_seed()
     store = get_insight_store()
 
-    # 1 — every catalog query executes and returns the documented columns
+    # 1 — every catalog query executes and returns the documented columns.
+    # Round 8 re-pin: 46 agent-visible + 1 INTERNAL (rule_evaluation_rows, the
+    # evaluator's tiered row source — hidden from signatures, refused without
+    # allow_internal, so agents can never pull raw vertex rows into a prompt).
+    internal_names = {n for n, s in CATALOG.items() if s.get("internal")}
+    from app.graph.queries.catalog import catalog_signatures as _sigs
+    internal_ok = (internal_names == {"rule_evaluation_rows"}
+                   and not any(s["query_name"] in internal_names for s in _sigs()))
+    try:
+        run_catalog_query("rule_evaluation_rows", {"vertex": "phx_dm_pce_month"})
+        internal_ok = False  # must refuse without allow_internal
+    except Exception:  # noqa: BLE001 — the refusal is the pass
+        pass
+    internal_ok = internal_ok and bool(run_catalog_query(
+        "rule_evaluation_rows", {"vertex": "phx_dm_pce_month"},
+        allow_internal=True)["rows"])
     missing_cols, empty, errors = [], [], []
     for name, spec in CATALOG.items():
+        if name in internal_names:
+            continue  # raw-row internal source — exercised above
         try:
             out = run_catalog_query(name, SAMPLE_PARAMS[name])
         except Exception as exc:  # noqa: BLE001
@@ -165,9 +182,9 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
         if not wanted <= cols:
             missing_cols.append(f"{name}: missing {sorted(wanted - cols)}")
     check(1, "every catalog query executes and returns the documented columns",
-          not errors and not missing_cols and len(CATALOG) == 46,
-          f"{len(CATALOG)} queries (24 Round C + 4 Round E position + 5 Round G drill-down "
-          f"+ 5 Round A1 dashboard + 5 Round F2 CRM + 3 Round F2 NNM); "
+          not errors and not missing_cols and len(CATALOG) == 47 and internal_ok,
+          f"{len(CATALOG)} queries (46 agent-visible + 1 internal evaluator row "
+          f"source, hidden from signatures and refused without allow_internal); "
           f"errors={errors or 'none'}; column gaps={missing_cols or 'none'}; "
           f"legitimately empty on mock data: {empty or 'none'}")
 

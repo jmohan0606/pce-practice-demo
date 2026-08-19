@@ -1,5 +1,62 @@
 # Build Progress
 
+## Round 8 (docs/spec/ROUND_8_SPEC.md + 2 operator mid-round tasks) — empty states, HIGH_9R_MONTH, demo walkthrough, evaluator fix + store-read audit
+- [x] OPERATOR TASK (client-env bug, highest priority): the rule EVALUATOR read
+      the local foundation store — in real mode rules evaluated MOCK rows while
+      the dashboard showed TigerGraph. Fixed: all evaluator rows flow through
+      the new INTERNAL rule_evaluation_rows catalog entry (tiered client →
+      TigerGraph in real mode; hidden from agent listings, refused without
+      allow_internal — probe-proven; MinerTools untouched, already correct).
+      rules_evaluate_plan stays Python-interpreted. PROVEN: v0 over 9
+      scope×month combos byte-identical before/after; run_catalog_query=97,
+      evaluator direct store calls=0. C6-1 re-pinned 47 (46 visible + 1
+      internal).
+- [x] OPERATOR TASK (audit before fixing): docs/STORE_READ_AUDIT.md classifies
+      all 41 remaining direct reads per call site — 22 covered by existing
+      queries, 7 need additive extensions (3 queries), 9 need THREE small new
+      queries, 3 raw-coverable: a day, not a week. Guard
+      scripts/check_store_reads.py = ratchet on audited per-module baselines
+      (only shrinks; new reads fail naming file+line; probe-proven both ways).
+      Site fixes await the operator's go.
+- [x] Tasks 1–3 (empty states, observed in a browser on a scratch store):
+      /api/exceptions/firm serves published_version + published_rule_count;
+      dashboard distinguishes the three empties — Drivers "No published rules…"
+      + [Upload a document]; Exceptions "No exception rules are active…" +
+      [Go to Exceptions → /documents?tab=exceptions, new deep link]; "7
+      published rules, none enabled as exceptions."; state 4 is a plain result
+      line ("No exceptions this period — every enabled rule evaluated and none
+      matched"), never an empty state. Narrative renders in full in state 1
+      (verify 5). Found+fixed: money(0)'s em-dash convention excluded for the
+      absolute row ($0 observed is a real figure).
+- [x] Task 4: HIGH_9R_MONTH — SEVENTH v0 seed rule (applies_to PRACTICE,
+      HIGH, exception_enabled, no floor/sensitivity — absolute, correct at
+      firm level per spec); new "month" grain (app-level, schema frozen);
+      plan sums firm_credited_amt over reason_cd='9R' per month;
+      absolute-threshold branch in the exceptions engine (fired from the real
+      evaluation, observed value from the trigger-opened plan);
+      set_trigger_threshold store path + PATCH /{key}/trigger-threshold +
+      Exceptions-tab editor (keys on PRACTICE+numeric trigger, no rule_code) —
+      UI edit 50M→60M minted RSV_v18, restored to 50M as RSV_v19; 50000000
+      grep-clean outside the seed; mock 9R sums $0.00/month REPORTED, not
+      adjusted (client April: 1,915,772 rows); live store gained the rule as
+      operator-style publish RSV_v17 (fresh installs seed it in v0). Re-pins:
+      B3-13/B3-17 (7 rules), H-8 (HIGH_9R_MONTH honestly never fires on mock),
+      R1-3 (+1 exception default).
+- [x] Task 5: docs/DEMO_WRITE_A_RULE.md — produced by TYPING THE RULE INTO THE
+      RUNNING UI and pressing Preview (playwright over the real form), outputs
+      pasted verbatim: $100,000 compiles and matches 0 (9.5s — the preview's
+      catch, on stage); fallback $2,000 matches 3 with sample and params
+      (7.4s); the advisor-total phrasing's honest Unsupported is a stage
+      asset; scope = the three-altitude story; after-approval flow + timing +
+      measured cost. Enabler: ManualRuleForm Entity (grain) select, threaded
+      through preview.
+- [x] Verification: all 14 verify items with actual output in
+      docs/ROUND_8_COMPLETE.md; regression all green (a25 b19 c13 e8 h9 a1-17,
+      r1 12, r1b 8, r2a 16, r3 10, flags 8, manual 17, nnm 23, exports 43,
+      gate 9, parity 31V/44E, store-read ratchet, npm build). Session app-LLM
+      spend ≈ $1.10 of $6. Servers left running :8002/:3002; live store at
+      RSV_v19.
+
 ## Round 7 (docs/spec/ROUND_7_SPEC.md) — document upload, rule extraction, rule authoring
 - [x] Task 1 (45d1258): ONE category control — root cause: list API served the
       LEGACY V1 document_category column ("Comp Plan" → rendered OTHER); now

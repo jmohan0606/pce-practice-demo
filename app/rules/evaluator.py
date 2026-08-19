@@ -158,10 +158,33 @@ def _trigger_fires(trigger: dict, value: float) -> bool:
             "<": value < threshold, "<=": value <= threshold}[trigger["op"]]
 
 
-def _join_rows(store, plan: dict, rows: list[dict]) -> list[dict]:
+def _fetch_rows(vertex: str, month: str | None = None,
+                advisor_sid: str | None = None,
+                key: str | None = None) -> list[dict]:
+    """Round 8 (client-env bug fix) — the evaluator's ONE row source: the
+    internal ``rule_evaluation_rows`` catalog query, through the tiered graph
+    client. In mock mode the mock tier serves it (results identical to the old
+    direct store read — proven); in real mode it reaches TigerGraph like every
+    other query, so rules stop silently evaluating against mock rows while the
+    dashboard shows real figures. The evaluator itself stays Python-interpreted
+    (the recorded decision) — only WHERE the rows come from changed."""
+    from app.graph.queries.catalog import run_catalog_query
+
+    params: dict = {"vertex": vertex}
+    if month not in (None, ""):
+        params["month"] = str(month)
+    if advisor_sid not in (None, ""):
+        params["advisor_sid"] = str(advisor_sid)
+    if key not in (None, ""):
+        params["key"] = str(key)
+    return run_catalog_query("rule_evaluation_rows", params,
+                             allow_internal=True)["rows"]
+
+
+def _join_rows(plan: dict, rows: list[dict]) -> list[dict]:
     """Merge joined-vertex attributes onto each driving-vertex row (non-overriding)."""
     for join in plan.get("joins", []):
-        source = store.all_vertices(join["vertex"])
+        source = {r.get("__vertex_id"): r for r in _fetch_rows(join["vertex"])}
         via = join["via"]
         primary = None
         try:
@@ -196,7 +219,12 @@ def _join_rows(store, plan: dict, rows: list[dict]) -> list[dict]:
 
 def evaluate_plan(store, plan: dict, params: dict | None = None) -> dict:
     """Run one compiled plan. Returns
-    {matched: [{key, value, attribute?}], matched_count, evaluated_rows, empty_reason?}."""
+    {matched: [{key, value, attribute?}], matched_count, evaluated_rows, empty_reason?}.
+
+    Round 8: ``store`` is UNUSED (kept for the rules_evaluate_plan dispatch
+    signature) — every row read goes through the internal
+    ``rule_evaluation_rows`` catalog query via the tiered client, so real mode
+    evaluates against TigerGraph, never the local mock store."""
     params = dict(params or {})
     exclude_keys = {str(k) for k in params.pop("exclude_keys", []) or []}
 
@@ -211,29 +239,28 @@ def evaluate_plan(store, plan: dict, params: dict | None = None) -> dict:
         )
 
     vertex = plan["vertex"]
-    vertex_rows = store.all_vertices(vertex)
 
     # Baseline guard — a present_prior_month rule cannot fire in the baseline month.
     month = params.get("month")
     if month and "present_prior_month" in set(plan.get("population_fields") or
                                              collect_fields(plan["filters"])):
-        month_row = store.vertex("phx_dm_pce_month", str(month))
-        if month_row is not None and _to_bool(month_row.get("is_baseline")):
+        month_rows = _fetch_rows("phx_dm_pce_month", key=str(month))
+        if month_rows and _to_bool(month_rows[0].get("is_baseline")):
             return {"matched": [], "matched_count": 0, "evaluated_rows": 0,
                     "empty_reason": f"month {month} is the baseline month — no prior month "
                                     f"exists, so this rule returns an empty population"}
 
-    rows = [dict(attrs) for attrs in vertex_rows.values()]
-    if month and rows and "month_id" in rows[0]:
-        rows = [r for r in rows if str(r.get("month_id")) == str(month)]
+    # Automatic scoping rides the row-source query: month applies when the
+    # vertex carries month_id, advisor when it carries advisor_sid AND the
+    # plan's own filters do not reference it (from_/to_advisor_sid populations
+    # scope via the :advisor_sid param inside the filter — no auto scoping).
     advisor = params.get("advisor_sid")
-    if advisor and rows and "advisor_sid" in rows[0] \
-            and "advisor_sid" not in collect_fields(plan["filters"]):
-        rows = [r for r in rows if str(r.get("advisor_sid")) == str(advisor)]
-    # from_/to_advisor_sid populations (transfers) scope via the :advisor_sid param
-    # inside the filter itself — no automatic scoping there.
+    auto_advisor = (advisor if advisor
+                    and "advisor_sid" not in collect_fields(plan["filters"])
+                    else None)
+    rows = _fetch_rows(vertex, month=month, advisor_sid=auto_advisor)
 
-    rows = _join_rows(store, plan, rows)
+    rows = _join_rows(plan, rows)
     group_by = plan["group_by"]
     population = [
         row for row in rows

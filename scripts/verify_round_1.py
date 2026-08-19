@@ -88,13 +88,17 @@ def main() -> int:  # noqa: PLR0915 — one check per stanza, deliberately linea
         data = json.loads(r.stdout.strip().splitlines()[-1])
         enabled = sorted(c for c, e, _ in data["rows"] if e)
         drivers_off = [c for c, _, d in data["rows"] if not d]
+        # Round 8 re-pin: HIGH_9R_MONTH ships exception_enabled=true by its
+        # own seed definition (the firm-level absolute threshold), alongside
+        # the three Round-1 defaults.
         ok = (enabled == ["DISCOUNT_SHARING_MINIMUM_GRID_RATE",
-                          "DISCOUNT_SHARING_THRESHOLD_TRIGGER", "LOST_ACCOUNT"]
+                          "DISCOUNT_SHARING_THRESHOLD_TRIGGER",
+                          "HIGH_9R_MONTH", "LOST_ACCOUNT"]
               and not drivers_off)
         detail = (f"{data['version']}: exception_enabled={enabled}, "
                   f"driver_enabled on all {len(data['rows'])} rules")
-    check("R1-3 LIVE store: exactly the three spec rules exception_enabled=true, "
-          "everything driver-enabled", ok, detail)
+    check("R1-3 LIVE store: exactly the three Round-1 default rules + Round 8's "
+          "HIGH_9R_MONTH exception_enabled=true, everything driver-enabled", ok, detail)
 
     # R1-4 — check 3b: extractor PROPOSES with citation; null where not stated
     from app.agents.rule_extractor import extract_rules_for_document

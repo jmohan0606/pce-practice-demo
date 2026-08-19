@@ -29,6 +29,7 @@ The graph mirror above is unchanged (the live-TigerGraph path).
 """
 from __future__ import annotations
 
+import json
 import threading
 from datetime import datetime, timezone
 
@@ -558,6 +559,102 @@ class RuleStore:
                 approved_by=changed_by or "operator",
                 notes=f"{'reactivate' if active else 'deactivate'} "
                       f"{rule.get('rule_code')}: {reason}")
+            published = [r for r in self.version_rules(version["version_id"])
+                         if r["rule_code"] == rule.get("rule_code")]
+            return (published[0] if published else draft), version
+
+    def set_trigger_threshold(self, rule_key: str, value: float, reason: str,
+                              changed_by: str = "") -> tuple[dict, dict | None]:
+        """Round 8 task 4 — edit a rule's TRIGGER THRESHOLD (the numeric value
+        its compiled plan fires against, e.g. HIGH_9R_MONTH's $50M). Changes
+        what the query computes, so it MINTS A VERSION like any rule change:
+        the new plan re-validates deterministically (all five checks, execution
+        included — no LLM) and the draft publishes in one call (set_active
+        precedent). The statement/worked_example keep meaning: formatted
+        occurrences of the old value are rewritten to the new one. Draft-pool
+        rules update in place (nothing to mint yet)."""
+        from app.rules.compiler import validate_plan
+
+        reason = str(reason or "").strip()
+        if not reason:
+            raise RuleStoreError("a reason is required to change a trigger "
+                                 "threshold — it changes what the rule fires on")
+        try:
+            new_value = float(value)
+        except (TypeError, ValueError):
+            raise RuleStoreError(f"threshold must be a number (got {value!r})")
+        with self._lock:
+            rule = self.rules.get(rule_key)
+            if rule is None:
+                raise RuleStoreError(f"unknown rule_key {rule_key!r}")
+            plan = rule.get("plan")
+            trigger = (plan or {}).get("trigger") or {}
+            old_value = trigger.get("value")
+            if not isinstance(old_value, (int, float)) or isinstance(old_value, bool):
+                raise RuleStoreError(
+                    f"{rule_key} has no numeric trigger threshold to edit")
+            if float(old_value) == new_value:
+                raise RuleStoreError(
+                    f"{rule_key}'s threshold is already {old_value:,.2f}")
+
+            def _with_value(p: dict) -> dict:
+                out = json.loads(json.dumps(p))
+                if (out.get("trigger") or {}).get("value") == old_value:
+                    out["trigger"]["value"] = new_value
+                return out
+
+            new_plan = _with_value(plan)
+            new_by_scope = {s: _with_value(p)
+                            for s, p in (rule.get("plan_by_scope") or {}).items()} \
+                or None
+            outcome = validate_plan(rule.get("rule_code") or rule_key,
+                                    rule.get("grain") or "", new_plan)
+            if not outcome["ok"]:
+                raise RuleStoreError(
+                    f"threshold {new_value:,.2f} failed plan validation: "
+                    f"{outcome['error']}")
+
+            def _rewrite(text: str | None) -> str | None:
+                if not text:
+                    return text
+                out = text
+                for old_s, new_s in (
+                        (f"${old_value:,.2f}", f"${new_value:,.2f}"),
+                        (f"${old_value:,.0f}", f"${new_value:,.0f}"),
+                        (f"{old_value:,.0f}", f"{new_value:,.0f}"),
+                        (f"{old_value:g}", f"{new_value:g}")):
+                    if old_s in out:
+                        return out.replace(old_s, new_s)
+                return out
+
+            content = {
+                "plan": new_plan, "plan_by_scope": new_by_scope,
+                "statement": _rewrite(rule.get("statement")) or rule.get("statement"),
+                "worked_example": _rewrite(rule.get("worked_example")),
+                "compiled_evaluated_rows": outcome["execution"]["evaluated_rows"],
+                "compiled_matched_count": outcome["execution"]["matched_count"],
+                "threshold_changed_by": changed_by or "operator",
+                "threshold_changed_at": _now(),
+                "threshold_change_reason": reason,
+            }
+            if not rule["version_id"]:
+                return self._update_rule_fields(rule_key, **content), None
+            # version-bound: mint a draft carrying the NEW plan (edit() drops
+            # plans on content edits by design, so the draft is built here),
+            # then approve + publish in one call — the set_active pattern.
+            dropped = ("rule_key", "version_id", "status", "approved",
+                       "approved_by", "approved_at", "created_at", "published_as",
+                       "compile_attempts", "picked_attempt_no")
+            draft = {k: v for k, v in rule.items() if k not in dropped}
+            draft.update(content)
+            draft["status"] = "COMPILED"
+            draft["supersedes_rule_key"] = rule_key
+            draft = self.add_rule(draft, version_id=None)
+            self.approve(draft["rule_key"], approved_by=changed_by or "operator")
+            version = self.publish(
+                approved_by=changed_by or "operator",
+                notes=f"trigger threshold of {rule.get('rule_code')}: "
+                      f"{old_value:,.2f} → {new_value:,.2f}: {reason}")
             published = [r for r in self.version_rules(version["version_id"])
                          if r["rule_code"] == rule.get("rule_code")]
             return (published[0] if published else draft), version

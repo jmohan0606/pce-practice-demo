@@ -48,6 +48,7 @@ export default function PreviewExample({
   ruleName,
   appliesTo,
   severity,
+  grain,
   ruleKey,
   disabled,
 }: {
@@ -56,6 +57,8 @@ export default function PreviewExample({
   ruleName?: string;
   appliesTo?: string;
   severity?: string;
+  /** Round 8 — the form's Entity select rides the preview too. */
+  grain?: string;
   /** Extracted-rule mode: preview a stored draft before approval. */
   ruleKey?: string;
   disabled?: boolean;
@@ -81,6 +84,7 @@ export default function PreviewExample({
               rule_name: ruleName || "",
               applies_to: appliesTo || "ALL",
               severity: severity || undefined,
+              grain: grain || undefined,
             },
       );
       setResult(res);

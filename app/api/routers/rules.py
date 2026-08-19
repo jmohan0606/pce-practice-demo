@@ -836,3 +836,28 @@ def resolve_scope_challenge(rule_key: str, body: ScopeChallengeRequest) -> dict:
     except RuleStoreError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"rule": _serialize(rule), "challenge": resolved}
+
+
+# ------------------------------------------------------- Round 8 task 4: trigger threshold
+
+
+class TriggerThresholdRequest(BaseModel):
+    value: float
+    reason: str
+    approved_by: str = "operator"
+
+
+@router.patch("/{rule_key}/trigger-threshold")
+def set_trigger_threshold(rule_key: str, body: TriggerThresholdRequest) -> dict:
+    """Edit a rule's numeric trigger threshold (e.g. HIGH_9R_MONTH's $50M —
+    a starting value, not a constant). Changes what the query fires on, so a
+    version-bound rule mints AND publishes a new version in one call; the new
+    plan re-validates deterministically first (no LLM). A reason is required."""
+    try:
+        rule, version = get_rule_store().set_trigger_threshold(
+            rule_key, body.value, body.reason, changed_by=body.approved_by)
+    except RuleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"rule": _serialize(rule), "version": version,
+            "note": None if version else
+            "draft-pool rule — threshold updated in place, no version to mint"}

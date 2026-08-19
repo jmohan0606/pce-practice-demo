@@ -206,12 +206,14 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     # Round C (docs/rules) task 1.2: the whole seed's provenance is
     # TECH_TEAM_WRITTEN — the OPERATOR_SPECIFIED tag was renamed (spec 1.2:
     # "logic we supplied because no document states it").
+    # Round 8 task 4: HIGH_9R_MONTH joins as the SEVENTH v0 rule (a firm-level
+    # absolute-threshold exception; applies_to PRACTICE).
     codes = sorted(r["rule_code"] for r in v0_rules)
     expected_codes = sorted(["NEW_ACCOUNT", "ACCOUNT_TRANSFERRED_IN",
                              "ACCOUNT_TRANSFERRED_OUT", "NEW_BILLING", "LOST_ACCOUNT",
-                             "RETAINED_ACCOUNT"])
-    check("B3-13", "v0 seed present with exactly the 6 lifecycle rules, all PUBLISHED, "
-                   "all TECH_TEAM_WRITTEN (Round C docs/rules rename)",
+                             "RETAINED_ACCOUNT", "HIGH_9R_MONTH"])
+    check("B3-13", "v0 seed present with exactly the 7 seed rules (6 lifecycle + "
+                   "HIGH_9R_MONTH), all PUBLISHED, all TECH_TEAM_WRITTEN",
           v0["version_no"] == 0 and codes == expected_codes
           and all(r["status"] == "PUBLISHED" for r in v0_rules)
           and all(r["provenance"] == "TECH_TEAM_WRITTEN" for r in v0_rules),
@@ -301,7 +303,7 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     v0_query = client.get(f"/api/rules?version={v0['version_id']}").json()
     check("B3-17", "publishing mints a new version; prior is SUPERSEDED and still queryable",
           v1["version_no"] == v0["version_no"] + 1 and v1["status"] == "PUBLISHED"
-          and v0_after["status"] == "SUPERSEDED" and len(v0_query["rules"]) == 6,
+          and v0_after["status"] == "SUPERSEDED" and len(v0_query["rules"]) == 7,
           f"v{v1['version_no']} PUBLISHED with {len(pub['rules'])} rules; "
           f"v0 status={v0_after['status']}, still returns {len(v0_query['rules'])} rules")
 

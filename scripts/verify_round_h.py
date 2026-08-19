@@ -249,12 +249,17 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     probe_codes = [r["rule_code"] for r in probe_report["never_fired"]]
     probe_row = next((r for r in probe_report["never_fired"]
                       if r["rule_code"] == "H8_NEVER_FIRES"), {})
+    # Round 8 re-pin: HIGH_9R_MONTH legitimately never fires on MOCK data (the
+    # demo set carries no 9R rows by design — the client feed does, 1.9M rows
+    # in April alone). The report SHOULD list it — that is the report working.
     check(8, "never_fired lists any rule with zero matches across the period",
-          [r["rule_code"] for r in base_report["never_fired"]] == []
-          and probe_codes == ["H8_NEVER_FIRES"] and probe_row.get("scopes"),
+          [r["rule_code"] for r in base_report["never_fired"]] == ["HIGH_9R_MONTH"]
+          and sorted(probe_codes) == ["H8_NEVER_FIRES", "HIGH_9R_MONTH"]
+          and probe_row.get("scopes"),
           f"seed version never_fired={[r['rule_code'] for r in base_report['never_fired']]} "
-          f"(all 6 rules fire); probe version flags {probe_codes} with scopes "
-          f"{probe_row.get('scopes')}")
+          f"(the 6 lifecycle rules fire; HIGH_9R_MONTH honestly never fires on "
+          f"mock data — no 9R rows exist in the demo set); probe version flags "
+          f"{probe_codes} with scopes {probe_row.get('scopes')}")
 
     # 13 — logs rotate at midnight with a dated archive name; size safety net;
     # 30 days retained by default.

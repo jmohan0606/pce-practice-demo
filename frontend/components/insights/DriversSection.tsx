@@ -28,8 +28,9 @@
  *     paginated, shrinks to content, footer totals).
  */
 
-import { useMemo, useState } from "react";
-import type { Finding } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { type Finding, getRuleVersions } from "@/lib/api";
 import Chip from "@/components/Chip";
 import EmptyState from "@/components/EmptyState";
 import { EvidenceTable } from "@/components/EvidenceTable";
@@ -65,6 +66,19 @@ const NO_ATTRIBUTION = "No product attribution";
 export default function DriversSection({ fromMonth, toMonth, monthName }: DriversSectionProps) {
   const { run, notGenerated, error, loading } = useInsightRun(fromMonth, toMonth);
   const [pivot, setPivot] = useState<Pivot>("driver");
+  // Round 8 task 1 — with NO published rules this section cannot do its job
+  // (it explains movements USING rules); the state is said plainly instead of
+  // degrading silently. null = still checking (nothing is claimed either way).
+  const [noPublishedRules, setNoPublishedRules] = useState<boolean | null>(null);
+  useEffect(() => {
+    getRuleVersions()
+      .then((r) =>
+        setNoPublishedRules(
+          !(r.versions ?? []).some((v) => v.status === "PUBLISHED" && (v.rule_count ?? 0) > 0),
+        ),
+      )
+      .catch(() => setNoPublishedRules(null));
+  }, []);
 
   const complete = run && run.status === "COMPLETE" ? run : null;
   const ranked = useMemo(() => (complete ? rankFindings(complete.findings) : []), [complete]);
@@ -109,6 +123,21 @@ export default function DriversSection({ fromMonth, toMonth, monthName }: Driver
         </div>
       </div>
       <div className="card-b flush" style={{ padding: 0 }}>
+        {noPublishedRules ? (
+          /* Round 8 task 1 — the no-rules state, said plainly: any findings
+             below (and the AI Insights above) are data-derived, not
+             plan-derived. The app degrades, it does not fail. */
+          <div style={{ padding: "14px 18px", fontSize: "12.5px", borderBottom: "1px solid var(--rule-2)" }}>
+            <b>No published rules.</b> Revenue Drivers explains movements using rules extracted from
+            your plan documents. Nothing is published yet, so the AI Insights above are derived
+            entirely from the data rather than from plan provisions.
+            <div style={{ marginTop: 6 }}>
+              <Link className="btn sm" href="/documents" style={{ textDecoration: "none" }}>
+                Upload a document
+              </Link>
+            </div>
+          </div>
+        ) : null}
         {error ? (
           <div style={{ padding: 18 }}>
             <EmptyState title="Revenue Drivers failed to load" message={error} />

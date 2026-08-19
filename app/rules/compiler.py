@@ -28,7 +28,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-GRAINS = ("advisor", "account", "rpg", "household", "product", "transaction")
+# Round 8 task 4: "month" grain — a firm-level monthly aggregate (group by
+# month_id). The grain set is app-level, not graph schema; the schema stays
+# frozen at 31V/44E.
+GRAINS = ("advisor", "account", "rpg", "household", "product", "transaction",
+          "month")
 
 # Join-candidate vertices per grain (the plan vertex may be any catalog vertex;
 # extra fields resolve against these via a shared key).
@@ -50,6 +54,11 @@ GRAIN_VERTICES: dict[str, list[str]] = {
     "household": ["phx_dm_pce_household"],
     "product": ["phx_dm_pce_product"],
     "transaction": ["phx_dm_pce_revenue_transaction"],
+    "month": [
+        "phx_dm_pce_month",
+        "phx_dm_pce_revenue_transaction",
+        "phx_dm_pce_monthly_revenue",
+    ],
 }
 
 # The entity key a plan groups by, per grain (falls back to the vertex primary id).
@@ -60,6 +69,7 @@ GRAIN_KEYS = {
     "household": "eci_id",
     "product": "product_id",
     "transaction": "txn_id",
+    "month": "month_id",
 }
 
 # Keys two vertices can be joined on, in preference order.

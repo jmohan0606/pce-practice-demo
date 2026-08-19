@@ -37,6 +37,9 @@ export default function ManualRuleForm({ onCreated }: { onCreated?: () => void }
   const [driverLabel, setDriverLabel] = useState("");
   const [driverDefinition, setDriverDefinition] = useState("");
   const [generateQuery, setGenerateQuery] = useState(true);
+  // Round 8 — the grain (which entity a row of this rule describes) was
+  // API-only; the demo rule needs advisor grain, so the form exposes it.
+  const [grain, setGrain] = useState("account");
 
   const [advisors, setAdvisors] = useState<Advisor[]>([]);
   const [groups, setGroups] = useState<ProductGroup[]>([]);
@@ -92,6 +95,7 @@ export default function ManualRuleForm({ onCreated }: { onCreated?: () => void }
         driver_label: driverLabel.trim(),
         driver_definition: driverDefinition.trim(),
         generate_query: generateQuery,
+        grain,
       });
       setCreated(res.rule);
       onCreated?.();
@@ -158,6 +162,7 @@ export default function ManualRuleForm({ onCreated }: { onCreated?: () => void }
         ruleName={ruleName}
         appliesTo={appliesTo}
         severity={severity}
+        grain={grain}
         disabled={busy || !generateQuery}
       />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
@@ -166,6 +171,18 @@ export default function ManualRuleForm({ onCreated }: { onCreated?: () => void }
           <select style={fieldStyle} value={provenance} onChange={(e) => setProvenance(e.target.value)}>
             <option value="MANUALLY_WRITTEN_PRACTICE">MANUALLY WRITTEN-PRACTICE</option>
             <option value="MANUALLY_WRITTEN_TECH">MANUALLY WRITTEN-TECH</option>
+          </select>
+        </div>
+        <div>
+          <label className="fld">Entity (what one row of this rule describes)</label>
+          <select style={fieldStyle} value={grain} onChange={(e) => setGrain(e.target.value)}>
+            <option value="account">Account (default)</option>
+            <option value="advisor">Advisor</option>
+            <option value="transaction">Transaction</option>
+            <option value="product">Product</option>
+            <option value="household">Household</option>
+            <option value="rpg">Related product group</option>
+            <option value="month">Month (firm-level)</option>
           </select>
         </div>
         <div>

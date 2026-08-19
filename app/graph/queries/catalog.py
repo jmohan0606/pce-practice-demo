@@ -1099,6 +1099,40 @@ def peer_comparison(store: FoundationGraphStore, params: dict) -> list[dict]:
 
 # --------------------------------------------------------------------------- metadata
 
+@mock_query("rule_evaluation_rows")
+def rule_evaluation_rows(store: FoundationGraphStore, params: dict) -> list[dict]:
+    """Round 8 (client-env bug fix) — the RULE EVALUATOR's row source. The
+    evaluator used to read the foundation store directly, so in real mode every
+    rule evaluated against MOCK rows while the dashboard showed real figures.
+    This query is the same raw-row read routed through the tiered client, so it
+    reaches TigerGraph in real mode like every other query. INTERNAL: hidden
+    from agent tool listings and refused for agent callers — raw vertex rows at
+    client scale must never land in a prompt.
+
+    Filtering mirrors the evaluator's original logic EXACTLY (month/advisor
+    apply only when the attribute exists on the rows) so mock-mode results are
+    byte-identical to the direct-read implementation. Each row carries
+    __vertex_id (the store key) for the evaluator's join index."""
+    vertex = str(params["vertex"])
+    from app.rules.compiler import load_schema_catalog
+
+    if vertex not in load_schema_catalog()["vertices"]:
+        raise CatalogError(f"unknown vertex {vertex!r}")
+    key = params.get("key")
+    if key not in (None, ""):
+        row = store.vertex(vertex, str(key))
+        return [{**dict(row), "__vertex_id": str(key)}] if row is not None else []
+    rows = [{**dict(attrs), "__vertex_id": str(vid)}
+            for vid, attrs in store.all_vertices(vertex).items()]
+    month = params.get("month")
+    if month not in (None, "") and rows and "month_id" in rows[0]:
+        rows = [r for r in rows if str(r.get("month_id")) == str(month)]
+    advisor = params.get("advisor_sid")
+    if advisor not in (None, "") and rows and "advisor_sid" in rows[0]:
+        rows = [r for r in rows if str(r.get("advisor_sid")) == str(advisor)]
+    return rows
+
+
 @mock_query("month_meta")
 def month_meta(store: FoundationGraphStore, params: dict) -> list[dict]:
     row = _require_month(store, params["month_id"])
@@ -1273,6 +1307,18 @@ CATALOG: dict[str, dict] = {
         "params": [MONTH],
         "returns": ["trading_days", "is_baseline", "is_partial"],
     },
+    "rule_evaluation_rows": {
+        "description": "INTERNAL — raw vertex rows for the rule evaluator, "
+                       "optionally scoped to a month/advisor/key. Routed "
+                       "through the tiered client so evaluation reaches "
+                       "TigerGraph in real mode. Never agent-callable.",
+        "params": [_p("vertex", "schema vertex name"),
+                   _p("month", "YYYYMM", required=False),
+                   _p("advisor_sid", "advisor_sid", required=False),
+                   _p("key", "vertex primary id", required=False)],
+        "returns": ["(every attribute of the vertex)", "__vertex_id"],
+        "internal": True,
+    },
     "account_master": {
         "description": "One account's master facts (class, platform, managed, opened-in-scope, household).",
         "params": [_p("acct_key", "string")],
@@ -1405,10 +1451,11 @@ for _name in _SHAPE_SPECS:
 
 
 def catalog_signatures() -> list[dict]:
-    """The catalog as the Miner's get_schema tool serves it."""
+    """The catalog as the Miner's get_schema tool serves it. Internal entries
+    (the evaluator's raw-row source) are NOT listed — agents never see them."""
     return [{"query_name": name, "description": spec["description"],
              "params": spec["params"], "returns": spec["returns"]}
-            for name, spec in CATALOG.items()]
+            for name, spec in CATALOG.items() if not spec.get("internal")]
 
 
 # Round 3 task 1 — envelope parameters handled by run_catalog_query itself,
@@ -1441,7 +1488,8 @@ def validate_params(query_name: str, params: dict) -> dict:
 
 
 def run_catalog_query(query_name: str, params: dict | None = None, *,
-                      default_mode: str = "rows") -> dict:
+                      default_mode: str = "rows",
+                      allow_internal: bool = False) -> dict:
     """Validate → tiered graph client → {"rows": [...], "row_count": n}.
 
     Round 3 task 1 — shape-capable queries (app/graph/queries/shapes.py) accept
@@ -1464,6 +1512,13 @@ def run_catalog_query(query_name: str, params: dict | None = None, *,
     from app.graph.queries.shapes import compute_shape, shape_capable
 
     params = dict(params or {})
+    # Round 8: internal entries (raw-row sources for the evaluator) are only
+    # runnable by code that says so — agent tool layers can never reach them,
+    # even by guessing the name.
+    if CATALOG.get(query_name, {}).get("internal") and not allow_internal:
+        raise CatalogError(
+            f"{query_name} is an internal query — not callable through the "
+            f"agent tool surface")
     envelope = {name: params.pop(name, None) for name in _ENVELOPE_PARAMS}
     if any(v not in (None, "") for v in envelope.values()) \
             and not shape_capable(query_name):

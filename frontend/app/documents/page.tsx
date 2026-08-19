@@ -88,6 +88,13 @@ function statusChip(status?: string): { variant: ChipVariant; label: string } {
 
 export default function DocumentsPage() {
   const [tab, setTab] = useState<TabId>("documents");
+  // Round 8 — ?tab=exceptions|rules|write deep link (the dashboard's empty
+  // states link straight to the Exceptions tab). Read once on mount;
+  // window.location avoids the useSearchParams Suspense requirement.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("tab");
+    if (wanted && TABS.some((t) => t.id === wanted)) setTab(wanted as TabId);
+  }, []);
   const [documents, setDocuments] = useState<DocRow[] | null>(null);
   const [documentsError, setDocumentsError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);

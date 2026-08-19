@@ -84,6 +84,9 @@ export interface ManualRuleRequest {
   /** true → the Rule Compiler generates a plan (reviewable before approval);
    * false → natural_language_only guidance, injected into the Miner context. */
   generate_query: boolean;
+  /** Round 8 — the entity the rule applies to (advisor|account|...); the API
+   * always accepted it, the form now exposes it. Default account. */
+  grain?: string;
 }
 /** POST /api/rules/manual — creates a draft-pool rule. When generate_query is
  * true the compiler runs and the response carries the compiled (or honestly
@@ -318,5 +321,23 @@ export function resolveScopeChallenge(
   return req("POST", `/api/rules/${encodeURIComponent(ruleKey)}/scope-challenge`, {
     accept,
     resolved_by: resolvedBy,
+  });
+}
+
+// ---------- Round 8 task 4 — trigger threshold (absolute firm-level rules) ----------
+
+/** Edit a rule's numeric trigger threshold (e.g. HIGH_9R_MONTH's $50M — a
+ * starting value, not a constant). Changes what the query fires on, so a
+ * version-bound rule mints AND publishes a new version; a reason is required. */
+export function setTriggerThreshold(
+  ruleKey: string,
+  value: number,
+  reason: string,
+  approvedBy: string = "operator",
+): Promise<{ rule: RuleDetail; version: RuleVersion | null; note?: string | null }> {
+  return req("PATCH", `/api/rules/${encodeURIComponent(ruleKey)}/trigger-threshold`, {
+    value,
+    reason,
+    approved_by: approvedBy,
   });
 }

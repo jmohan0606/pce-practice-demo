@@ -166,16 +166,99 @@ def _matched_by_advisor(rule: dict, month: str, sids: list[str],
     return out
 
 
+def _absolute_firm_exception(rule: dict, month: str, version_id: str) -> dict:
+    """Round 8 task 4 — a PRACTICE-applies rule is an ABSOLUTE firm-level
+    threshold, not a cohort rate: there is no peer cohort at firm level, so the
+    rate model does not apply. The rule evaluates ONCE at practice scope;
+    fired comes from that evaluation, and the OBSERVED value comes from the
+    same plan with its trigger opened (so the row shows the actual figure even
+    when the threshold did not fire — the operator sees whether the threshold
+    discriminates)."""
+    from app.graph.client import get_graph_client
+    from app.rules.compiler import translate_plan
+    from app.rules.service import evaluate_rule_set
+
+    plan = rule.get("plan") or {}
+    trigger = plan.get("trigger") or {}
+    threshold = trigger.get("value")
+    fired = False
+    matched_value = None
+    error = None
+    try:
+        outcome = evaluate_rule_set(version_id, month=month, scope="practice")
+        result = next((r for r in outcome["results"]
+                       if r.get("rule_key") == rule.get("rule_key")), None)
+        if result is not None and result.get("evaluated"):
+            fired = bool(result.get("matched"))
+            if fired:
+                matched_value = round(sum(_f(e.get("value"))
+                                          for e in result["matched"]), 2)
+    except Exception as exc:  # noqa: BLE001 — stated, never hidden
+        error = f"{type(exc).__name__}: {exc}"
+    observed = matched_value
+    if observed is None and error is None:
+        # trigger did not fire — observe the actual value by opening the trigger
+        try:
+            open_plan = dict(plan)
+            open_plan["trigger"] = {"op": ">=", "value": -1e18}
+            compiled = translate_plan(rule.get("rule_code") or "", "month", open_plan)
+            rows = get_graph_client().run_query(
+                "rules_evaluate_plan",
+                {"plan": compiled.plan, "params": {"month": month}})
+            entries = (rows.get("results") or [{}])[0].get("matched") or []
+            observed = round(sum(_f(e.get("value")) for e in entries), 2) \
+                if entries else 0.0
+        except Exception as exc:  # noqa: BLE001
+            error = f"observation failed: {type(exc).__name__}: {exc}"
+    monetary = _rule_is_monetary(rule)
+    return {
+        "rule_key": rule.get("rule_key"), "rule_code": rule.get("rule_code"),
+        "rule_name": rule.get("rule_name") or rule.get("rule_code"),
+        "severity": rule.get("severity"),
+        "model": "absolute_threshold",
+        "config": {
+            "exception_denominator": None,
+            "denominator_label": "absolute firm-level threshold — no cohort",
+            "denominator_kind": "absolute",
+            "product_scope": rule.get("product_scope") or None,
+            "product_scope_applied": "firm level — no narrowing",
+            "exception_floor": None, "exception_floor_unit": None,
+            "exception_sensitivity": None, "sensitivity_applied": None,
+            "sensitivity_default_used": False,
+            "threshold": threshold,
+            "threshold_op": trigger.get("op"),
+        },
+        "cohort": {"median_pct": None, "stdev_pct": None,
+                   "flag_threshold_pct": None, "in_scope_advisors": 0},
+        "advisors": [],
+        "firm": {
+            "affected": 1 if fired else 0,
+            "denominator": 1, "rate_pct": None,
+            "advisors_in_scope": 0, "advisors_flagged": 0,
+            "advisors_with_exceptions": 0,
+            "impact_amt": observed if (fired and monetary) else None,
+            "observed_value": observed,
+            "threshold": threshold, "fired": fired,
+            "is_monetary": monetary,
+            "error": error,
+        },
+        "month": month,
+    }
+
+
 def compute_rule_exceptions(rule: dict, month: str, *,
                             sids: list[str] | None = None,
                             accounts_by_advisor: dict[str, list[dict]] | None = None,
                             prior_accounts: dict[str, list[dict]] | None = None,
                             version_id: str | None = None) -> dict:
     """The full rate model for ONE rule: per-advisor rows, cohort statistics
-    and the firm rollup."""
+    and the firm rollup. A PRACTICE-applies rule takes the absolute-threshold
+    branch instead — there is no peer cohort at firm level (Round 8 task 4)."""
     from app.rules.store import get_rule_store
 
     version_id = version_id or get_rule_store().latest_version("PUBLISHED")["version_id"]
+    if rule.get("applies_to") == "PRACTICE":
+        return _absolute_firm_exception(rule, month, version_id)
     sids = sids or _cohort_sids()
     accounts_by_advisor = accounts_by_advisor or _advisor_accounts(month)
     kind, denominator_label = _denominator_kind(rule)
@@ -292,7 +375,22 @@ def _rule_is_monetary(rule: dict) -> bool:
 
 def compute_firm_exceptions(month: str, version_id: str | None = None) -> dict:
     """One row per exception-enabled rule — the firm altitude. The row count
-    is the number of RULES, so it stays readable at any scale."""
+    is the number of RULES, so it stays readable at any scale.
+
+    Round 8 tasks 2/3: the response also states the SERVED VERSION and its
+    published-rule count, so the UI can distinguish three different empties —
+    no published rules at all, rules published but none exception-enabled,
+    and exceptions enabled that simply matched nothing this period (the third
+    is a result, not a problem)."""
+    from app.rules.store import get_rule_store
+
+    store = get_rule_store()
+    version = (store.version(version_id) if version_id
+               else store.latest_version("PUBLISHED"))
+    published_rules = ([r for r in store.version_rules(version["version_id"])
+                        if r.get("status") in ("PUBLISHED", "SUPERSEDED")
+                        and r.get("active") is not False]
+                       if version is not None else [])
     rules = exception_rules(version_id)
     sids = _cohort_sids()
     accounts = _advisor_accounts(month)
@@ -305,8 +403,11 @@ def compute_firm_exceptions(month: str, version_id: str | None = None) -> dict:
                                        prior_accounts=prior_accounts,
                                        version_id=version_id)
         rows.append({k: full[k] for k in ("rule_key", "rule_code", "rule_name",
-                                          "severity", "config", "cohort", "firm")})
-    return {"month": month, "rules": rows, "rule_count": len(rows)}
+                                          "severity", "config", "cohort", "firm")
+                     if k in full} | {"model": full.get("model") or "rate"})
+    return {"month": month, "rules": rows, "rule_count": len(rows),
+            "published_version": version["version_id"] if version else None,
+            "published_rule_count": len(published_rules)}
 
 
 def compute_advisor_exceptions(advisor_sid: str, month: str,
@@ -327,10 +428,15 @@ def compute_advisor_exceptions(advisor_sid: str, month: str,
                                        version_id=version_id)
         mine = next((r for r in full["advisors"]
                      if r["advisor_sid"] == advisor_sid), None)
+        if full.get("model") == "absolute_threshold":
+            mine = {"advisor_sid": advisor_sid, "in_scope": False,
+                    "note": "firm-level absolute threshold — not evaluated "
+                            "per advisor"}
         out.append({
             "rule_key": full["rule_key"], "rule_code": full["rule_code"],
             "rule_name": full["rule_name"], "severity": full["severity"],
             "config": full["config"], "cohort": full["cohort"],
+            "model": full.get("model") or "rate",
             "position": mine or {"advisor_sid": advisor_sid,
                                  "in_scope": False,
                                  "note": "no in-scope denominator this month"},

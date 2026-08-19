@@ -25,6 +25,7 @@ import {
   type ExceptionConfigChanges,
   RulesApiError,
   setExceptionConfig,
+  setTriggerThreshold,
 } from "@/lib/rulesApi";
 import EmptyState from "@/components/EmptyState";
 import { Pager, usePager } from "@/components/Pager";
@@ -99,6 +100,10 @@ export default function ExceptionsTab() {
   // rule_code of the rule whose materiality form is open (stable across mints)
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditDraft | null>(null);
+  // Round 8 task 4 — the trigger-threshold editor (absolute firm-level rules)
+  const [thresholdCode, setThresholdCode] = useState<string | null>(null);
+  const [thresholdValue, setThresholdValue] = useState("");
+  const [thresholdReason, setThresholdReason] = useState("");
 
   const reload = useCallback(() => {
     getRulesDetailed("latest")
@@ -140,6 +145,41 @@ export default function ExceptionsTab() {
       setEditingCode(null);
       setDraft(null);
       reload(); // rule_keys change per mint — always refetch
+    } catch (e) {
+      setSaveError(`${rule.rule_code}: ${errText(e)}`);
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  // Round 8 task 4 — a PRACTICE-applies rule with a numeric trigger is an
+  // ABSOLUTE firm-level threshold (no cohort, no rate); its threshold is
+  // edited here and the edit mints a version like any rule change. Nothing is
+  // keyed on a rule_code — any qualifying rule gets the editor.
+  const triggerValue = (rule: ExceptionRule): number | null => {
+    const t = (rule.plan as { trigger?: { value?: unknown } } | null)?.trigger?.value;
+    return typeof t === "number" ? t : null;
+  };
+
+  const saveThreshold = async (rule: ExceptionRule) => {
+    const value = Number(thresholdValue);
+    if (thresholdValue.trim() === "" || Number.isNaN(value)) {
+      setSaveError(`${rule.rule_code}: the threshold must be a number.`);
+      return;
+    }
+    setBusyKey(keyOf(rule));
+    setSaveError(null);
+    try {
+      const res = await setTriggerThreshold(keyOf(rule), value, thresholdReason.trim());
+      setNotice(
+        res.version
+          ? `${rule.rule_code}: trigger threshold changed — v${res.version.version_no} minted and published.`
+          : res.note || `${rule.rule_code}: trigger threshold changed.`,
+      );
+      setThresholdCode(null);
+      setThresholdValue("");
+      setThresholdReason("");
+      reload();
     } catch (e) {
       setSaveError(`${rule.rule_code}: ${errText(e)}`);
     } finally {
@@ -347,6 +387,56 @@ export default function ExceptionsTab() {
               </div>
             ) : (
               <>
+                {rule.applies_to === "PRACTICE" && triggerValue(rule) !== null ? (
+                  <div className="eg" style={{ marginTop: 6 }}>
+                    <b>Trigger threshold:</b>{" "}
+                    {triggerValue(rule)!.toLocaleString("en-US")}{" "}
+                    <span style={{ color: "var(--slate)" }}>
+                      — an absolute firm-level threshold (no peer cohort at firm
+                      level, so no rate, floor or sensitivity applies). A starting
+                      value, not a constant.
+                    </span>{" "}
+                    {thresholdCode === rule.rule_code ? (
+                      <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
+                        <input
+                          className="filter"
+                          style={{ width: 140 }}
+                          inputMode="decimal"
+                          aria-label="New trigger threshold"
+                          value={thresholdValue}
+                          onChange={(e) => setThresholdValue(e.target.value)}
+                        />
+                        <input
+                          className="filter"
+                          style={{ width: 260 }}
+                          placeholder="Reason (recorded on the minted version)"
+                          value={thresholdReason}
+                          onChange={(e) => setThresholdReason(e.target.value)}
+                        />
+                        <button className="btn primary" disabled={busy} onClick={() => saveThreshold(rule)}>
+                          {busy ? "Saving…" : "Save — mints a version"}
+                        </button>
+                        <button className="btn" disabled={busy} onClick={() => setThresholdCode(null)}>
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        className="btn"
+                        style={{ padding: "2px 8px" }}
+                        disabled={busy}
+                        onClick={() => {
+                          setSaveError(null);
+                          setThresholdCode(rule.rule_code);
+                          setThresholdValue(String(triggerValue(rule)));
+                          setThresholdReason("");
+                        }}
+                      >
+                        Edit threshold
+                      </button>
+                    )}
+                  </div>
+                ) : null}
                 <div className="eg" style={{ marginTop: 6 }}>
                   <b>Materiality:</b> denominator {stated(rule.exception_denominator)} · floor{" "}
                   {stated(rule.exception_floor, rule.exception_floor != null && rule.exception_floor_unit ? ` ${rule.exception_floor_unit}` : "")}{" "}

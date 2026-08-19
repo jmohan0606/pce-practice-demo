@@ -277,6 +277,62 @@ V0_RULES: list[dict] = [
             "unsupported": None,
         },
     },
+    {
+        # Round 8 task 4 — the SEVENTH v0 rule: a FIRM-LEVEL absolute-threshold
+        # exception. The rate model compares advisors against their peers; at
+        # firm level there is no peer cohort — there is one firm — so this rule
+        # states a threshold directly (an absolute, not a rate: correct, not an
+        # inconsistency). 9R is excluded from the ADVISOR reason filter but
+        # included FIRM-wide, so a firm-level 9R exception is coherent and an
+        # advisor-level one would not be. The $50M is a STARTING VALUE, not a
+        # constant: it is editable on Rules → Exceptions (trigger-threshold
+        # edit, version-minting) and lives nowhere outside this definition.
+        "rule_code": "HIGH_9R_MONTH",
+        "provenance": "TECH_TEAM_WRITTEN",
+        "applies_to": "PRACTICE",
+        "severity": "HIGH",
+        "severity_reason": "A month with more than $50M of 9R-coded revenue is "
+                           "a material firm-level crediting signal worth review",
+        "rule_name": "High 9R Revenue in Month",
+        "statement": "Total revenue carrying reason code 9R in a month exceeds "
+                     "$50,000,000.",
+        "worked_example": "A month whose transactions coded 9R sum to "
+                          "$62,000,000 of firm-credited revenue exceeds the "
+                          "$50,000,000 threshold and fires; a month at "
+                          "$48,000,000 does not.",
+        "kind": "TRIGGER",
+        "grain": "month",
+        "driver_tag": "9R Revenue",
+        "driver_code": "REVENUE_9R",
+        "driver_label": "9R Revenue",
+        "driver_definition": "Firm-level revenue carrying reason code 9R in a "
+                             "month — excluded from advisor crediting but "
+                             "included firm-wide.",
+        "evaluation_order": 40,
+        # exception configuration: an ABSOLUTE threshold — no cohort to floor
+        # against (floor none) and no cohort rate (sensitivity not applicable)
+        "exception_enabled": True,
+        "driver_enabled": True,
+        "exception_denominator": None,
+        "exception_floor": None,
+        "exception_floor_unit": None,
+        "exception_sensitivity": None,
+        "plan": {
+            "vertex": "phx_dm_pce_revenue_transaction",
+            # 9R rows pass the FIRM reason filter, so firm_credited_amt carries
+            # their full amount — "total revenue carrying reason code 9R" on
+            # the firm basis.
+            "filters": [{"field": "reason_cd", "op": "=", "value": "9R"}],
+            "compute": {"agg": "sum", "expr": "firm_credited_amt"},
+            "trigger": {"op": ">", "value": 50000000},
+            "attribute": None,
+            "params": [],
+            "explanation": "Sums firm-credited revenue on transactions carrying "
+                           "reason code 9R per month and flags any month whose "
+                           "total exceeds the threshold.",
+            "unsupported": None,
+        },
+    },
 ]
 
 
@@ -315,7 +371,9 @@ def ensure_v0_seed() -> dict:
                     # states it (renamed from OPERATOR_SPECIFIED; rehydrated
                     # stores migrate in RuleStore._normalize_round_c_fields).
                     "provenance": rule.get("provenance", "TECH_TEAM_WRITTEN"),
-                    "applies_to": "ALL",
+                    # Round 8: applies_to is per-rule now (HIGH_9R_MONTH is
+                    # PRACTICE); the six lifecycle rules stay ALL.
+                    "applies_to": rule.get("applies_to", "ALL"),
                     "applies_to_key": None,
                     "active": True,
                     "status": "PUBLISHED",

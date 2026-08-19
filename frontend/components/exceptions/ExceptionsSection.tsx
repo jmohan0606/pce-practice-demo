@@ -94,6 +94,49 @@ function FirmRuleRow({ rule, month }: { rule: FirmExceptionRule; month: string }
   };
 
   const firm = rule.firm;
+
+  // Round 8 task 4 — an absolute firm-level threshold (PRACTICE rule): there
+  // is no peer cohort at firm level, so no rate/median/drill-in — the row
+  // states the observed value against the threshold, fired or not.
+  if (rule.model === "absolute_threshold") {
+    // $0 observed is a REAL figure here (it tells the operator whether the
+    // threshold discriminates) — never folded into the em-dash convention.
+    const fmtAbs = (v: number | null | undefined) =>
+      v == null
+        ? "—"
+        : firm.is_monetary
+          ? v === 0
+            ? "$0"
+            : money(v)
+          : v.toLocaleString("en-US");
+    return (
+      <div style={{ borderBottom: "1px solid var(--rule-2)", padding: "10px 18px" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          {rule.severity ? <SevChip level={rule.severity as Severity} /> : null}
+          <span className="rowhead">{rule.rule_name}</span>
+          <span style={{ fontSize: "12.5px" }}>
+            {firm.error ? (
+              <span style={{ color: "var(--slate)" }}>evaluation failed — {firm.error}</span>
+            ) : (
+              <>
+                {fmtAbs(firm.observed_value)} observed vs the {fmtAbs(firm.threshold)} threshold —{" "}
+                {firm.fired ? (
+                  <b className="dn">fired</b>
+                ) : (
+                  <span>did not fire</span>
+                )}
+              </>
+            )}
+          </span>
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--slate)", marginTop: 2 }}>
+          Absolute firm-level threshold — no peer cohort at firm level, so no rate or advisor
+          breakdown applies. The threshold is editable on Rules → Exceptions.
+        </div>
+      </div>
+    );
+  }
+
   const isMoney = rule.config.denominator_kind === "revenue";
   const headline = [
     `${isMoney ? money(firm.affected) : firm.affected.toLocaleString("en-US")} of ${
@@ -219,12 +262,52 @@ function FirmView({ month, monthLabel }: { month: string; monthLabel: string }) 
         <p style={{ color: "var(--slate)", fontSize: "12.5px", margin: 0, padding: "0 18px 12px" }}>
           Loading…
         </p>
+      ) : data.published_version == null ? (
+        /* Round 8 task 2 — NO published rules: the AI cannot substitute here.
+           An exception needs the policy, which needs a rule, which needs a
+           document. */
+        <div style={{ padding: "0 18px 14px", fontSize: "12.5px" }}>
+          <b>No exception rules are active.</b> An exception measures an advisor against a policy
+          your plan documents define — so it needs a published rule. Publish a rule and enable it
+          as an exception on the Rules → Exceptions tab.
+          <div style={{ marginTop: 6 }}>
+            <Link className="btn sm" href="/documents?tab=exceptions" style={{ textDecoration: "none" }}>
+              Go to Exceptions
+            </Link>
+          </div>
+        </div>
       ) : !data.rules.length ? (
-        <p style={{ color: "var(--slate)", fontSize: "12.5px", margin: 0, padding: "0 18px 12px" }}>
-          No exception-enabled rules in the published rule set.
-        </p>
+        /* Round 8 task 3 — rules exist but none is exception-enabled: looks
+           like working software producing nothing, so it says so. */
+        <div style={{ padding: "0 18px 14px", fontSize: "12.5px" }}>
+          <b>
+            {data.published_rule_count ?? 0} published rule
+            {(data.published_rule_count ?? 0) === 1 ? "" : "s"}, none enabled as exceptions.
+          </b>{" "}
+          Enable a rule as an exception to surface advisors who fall outside it.
+          <div style={{ marginTop: 6 }}>
+            <Link className="btn sm" href="/documents?tab=exceptions" style={{ textDecoration: "none" }}>
+              Go to Exceptions
+            </Link>
+          </div>
+        </div>
       ) : (
-        data.rules.map((rule) => <FirmRuleRow key={rule.rule_key} rule={rule} month={month} />)
+        <>
+          {/* Round 8 verify 4 — exceptions enabled that matched nothing is a
+              RESULT, not a problem, and never dressed up as an empty state */}
+          {data.rules.every(
+            (r) =>
+              (r.model === "absolute_threshold" && !r.firm.fired) ||
+              (r.model !== "absolute_threshold" && r.firm.advisors_with_exceptions === 0),
+          ) ? (
+            <p style={{ color: "var(--slate)", fontSize: "12.5px", margin: 0, padding: "0 18px 8px" }}>
+              No exceptions this period — every enabled rule evaluated and none matched.
+            </p>
+          ) : null}
+          {data.rules.map((rule) => (
+            <FirmRuleRow key={rule.rule_key} rule={rule} month={month} />
+          ))}
+        </>
       )}
     </div>
   );
