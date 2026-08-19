@@ -99,13 +99,14 @@ def _compile_for_scope(rule: dict, scope: str | None):
 
 
 def _run_plan(plan: dict, params: dict) -> dict:
-    import app.graph.queries.rules_evaluate  # noqa: F401 — registers the mock impl
-    from app.graph.client import get_graph_client
+    # Round 10 task 4 — through run_catalog_query: rules_evaluate_plan is an
+    # internal LOCAL-COMPUTE entry (Python-interpreted by design; its row
+    # reads reach TigerGraph through rule_evaluation_rows).
+    from app.graph.queries.catalog import run_catalog_query
 
-    result = get_graph_client().run_query(
-        "rules_evaluate_plan", {"plan": plan, "params": params}
-    )
-    rows = result.get("results") or [{}]
+    rows = run_catalog_query(
+        "rules_evaluate_plan", {"plan": plan, "params": params},
+        allow_internal=True)["rows"] or [{}]
     return rows[0]
 
 

@@ -42,6 +42,36 @@ V_TEAM = "phx_dm_pce_team_agreement"
 
 FEE_THRESHOLD_DEFAULT = 10.0
 
+# Round 10 task 2 — THE single source for the vertex types rule_evaluation_rows
+# supports: the validator (run_catalog_query pre-dispatch + the mock impl) and
+# the GSQL twin's drift check (scripts/check_rule_rows_contract.py parses the
+# twin's branches and asserts equality with this tuple) all read THIS tuple.
+# The set = the compiler's GRAIN_VERTICES union + the lookup vertices the
+# Round 9 conversions use. An unsupported vertex_type RAISES naming the type
+# and this list — it never returns an empty result (in real mode the twin's
+# WHERE guards would all miss and a silent zero would wear a plausible
+# explanation).
+RULE_EVALUATION_VERTICES: tuple[str, ...] = (
+    "phx_dm_pce_account",
+    "phx_dm_pce_account_month",
+    "phx_dm_pce_account_transfer",
+    "phx_dm_pce_advisor",
+    "phx_dm_pce_advisor_flow_month",
+    # Round 10 task 2 — added because rules GENUINELY target it today:
+    # NNM_AWARD_THRESHOLD is in the latest PUBLISHED version and active
+    # (plus the NNM_AWARD_* drafts) — verified in ROUND_10_COMPLETE.md.
+    "phx_dm_pce_advisor_nnm",
+    "phx_dm_pce_household",
+    "phx_dm_pce_month",
+    "phx_dm_pce_monthly_revenue",
+    "phx_dm_pce_opportunity",
+    "phx_dm_pce_product",
+    "phx_dm_pce_product_group",
+    "phx_dm_pce_revenue_transaction",
+    "phx_dm_pce_rpg",
+    "phx_dm_pce_team_agreement",
+)
+
 
 class CatalogError(ValueError):
     """Bad query name or parameters — raised BEFORE any rows are fetched."""
@@ -1112,13 +1142,16 @@ def rule_evaluation_rows(store: FoundationGraphStore, params: dict) -> list[dict
     from agent tool listings and refused for agent callers — raw vertex rows at
     client scale must never land in a prompt.
 
-    Round 9 task 4 — the contract between the tiers is SAME ROWS OUT, NOT SAME
-    METHOD. The Python (mock) tier filters after materialising because the
-    local store is in memory and tiny; the GSQL twin
-    (docs/tigergraph/queries/rule_evaluation_rows.gsql) pushes the month /
-    advisor_sid / key filters into the query so a 12M-row vertex is never
-    materialised server-side and shipped. Both must return the same rows for
-    the same params; how much work each does to get there is tier-local.
+    Round 9 task 4 / Round 10 task 6a — the contract between the tiers is
+    SAME ROWS OUT, NOT SAME METHOD. The Python (mock) tier filters after
+    materialising because the local store is in memory and tiny; the GSQL twin
+    (docs/tigergraph/queries/rule_evaluation_rows.gsql) applies the month /
+    advisor_sid / key_id / reason_cd filters in its WHERE clauses, so only the
+    filtered rows are RETURNED (the engine still scans the vertex type — GSQL
+    has no secondary indexes — and a plan predicate the twin has no parameter
+    for is still applied Python-side after the ROWS ship; the pushdown covers
+    what the twin parameterises, no more). Both tiers must return the same
+    rows for the same params; how much work each does is tier-local.
     Filter semantics: month/advisor apply only when the attribute exists on
     the vertex. Each row carries __vertex_id (the primary key) for the
     evaluator's join index.
@@ -1126,30 +1159,31 @@ def rule_evaluation_rows(store: FoundationGraphStore, params: dict) -> list[dict
     ``columns`` (optional, comma-separated) projects the returned rows to just
     those attributes (+ __vertex_id) — the evaluator passes the fields its
     plan actually references, so full 27-column rows never ride the wire.
-    Filtering happens BEFORE projection, so projecting month_id out never
-    changes which rows return.
+    Round 10: the projection is applied in run_catalog_query (ONE
+    implementation for every tier — GSQL cannot project attributes by a
+    runtime name, so the twin returns its branch's full projection and this
+    layer narrows it). Filtering happens BEFORE projection, so projecting
+    month_id out never changes which rows return.
+
+    ``reason_cd`` (optional) is a pushed-down plan predicate (Round 10 task
+    6a): applied where the vertex carries the attribute, exactly like month /
+    advisor_sid, so evaluating a reason-coded rule never ships every
+    transaction row of the month.
 
     Param names are the GSQL twin's names verbatim (vertex_type / key_id —
-    ``vertex`` and ``key`` risk keyword collisions in GSQL)."""
+    ``vertex`` and ``key`` risk keyword collisions in GSQL). vertex_type is
+    validated against RULE_EVALUATION_VERTICES in run_catalog_query BEFORE
+    dispatch (all tiers); the same check here covers direct-impl calls."""
     vertex = str(params["vertex_type"])
-    from app.rules.compiler import load_schema_catalog
-
-    if vertex not in load_schema_catalog()["vertices"]:
-        raise CatalogError(f"unknown vertex {vertex!r}")
-
-    def _project(rows: list[dict]) -> list[dict]:
-        wanted = str(params.get("columns") or "").strip()
-        if not wanted:
-            return rows
-        keep = {c.strip() for c in wanted.split(",") if c.strip()}
-        keep.add("__vertex_id")
-        return [{k: v for k, v in r.items() if k in keep} for r in rows]
+    if vertex not in RULE_EVALUATION_VERTICES:
+        raise CatalogError(
+            f"vertex_type {vertex!r} is not supported by rule_evaluation_rows "
+            f"— supported: {', '.join(RULE_EVALUATION_VERTICES)}")
 
     key = params.get("key_id")
     if key not in (None, ""):
         row = store.vertex(vertex, str(key))
-        return _project([{**dict(row), "__vertex_id": str(key)}]
-                        if row is not None else [])
+        return [{**dict(row), "__vertex_id": str(key)}] if row is not None else []
     rows = [{**dict(attrs), "__vertex_id": str(vid)}
             for vid, attrs in store.all_vertices(vertex).items()]
     month = params.get("month")
@@ -1158,7 +1192,10 @@ def rule_evaluation_rows(store: FoundationGraphStore, params: dict) -> list[dict
     advisor = params.get("advisor_sid")
     if advisor not in (None, "") and rows and "advisor_sid" in rows[0]:
         rows = [r for r in rows if str(r.get("advisor_sid")) == str(advisor)]
-    return _project(rows)
+    reason = params.get("reason_cd")
+    if reason not in (None, "") and rows and "reason_cd" in rows[0]:
+        rows = [r for r in rows if str(r.get("reason_cd")) == str(reason)]
+    return rows
 
 
 @mock_query("month_meta")
@@ -1385,15 +1422,79 @@ CATALOG: dict[str, dict] = {
                        "optionally scoped to a month/advisor/key. Routed "
                        "through the tiered client so evaluation reaches "
                        "TigerGraph in real mode. Never agent-callable.",
-        "params": [_p("vertex_type", "schema vertex name"),
+        "params": [_p("vertex_type", "supported vertex type — see "
+                                     "RULE_EVALUATION_VERTICES"),
                    _p("month", "YYYYMM", required=False),
                    _p("advisor_sid", "advisor_sid", required=False),
                    _p("key_id", "vertex primary id", required=False),
+                   _p("reason_cd", "pushed-down equality predicate "
+                                   "(applied where the attribute exists)",
+                      required=False),
                    _p("columns", "comma-separated attribute projection",
                       required=False)],
         "returns": ["(the projected attributes of the vertex — every "
                     "attribute when columns is unset)", "__vertex_id"],
         "internal": True,
+    },
+    # Round 10 task 4 — LOCAL-COMPUTE entries: Python computations served by
+    # the registered mock-tier implementation BY DESIGN in every mode (their
+    # row reads go through guarded queries internally — rules_evaluate_plan's
+    # evaluator reads rule_evaluation_rows; the pce_dashboard impls read
+    # through lookups). Routing them through run_catalog_query puts the six
+    # former get_graph_client().run_query bypass sites behind validation and
+    # the envelope; the tier-4 refusal is deliberately skipped for these (the
+    # local tier is CORRECT for them — recorded in DECISIONS.md).
+    "rules_evaluate_plan": {
+        "description": "INTERNAL LOCAL-COMPUTE — run one compiled rule plan "
+                       "(Python-interpreted; rows come through "
+                       "rule_evaluation_rows, which reaches TigerGraph in "
+                       "real mode). Never agent-callable; no GSQL twin by "
+                       "design (DECISIONS.md).",
+        "params": [_p("plan", "compiled plan object"),
+                   _p("params", "evaluation params object", required=False)],
+        "returns": ["matched", "matched_count", "evaluated_rows",
+                    "empty_reason?", "empty_kind?"],
+        "internal": True,
+        "local_compute": True,
+    },
+    "pce_dashboard_months": {
+        "description": "INTERNAL LOCAL-COMPUTE — the dashboard's per-month "
+                       "totals (recurring split, txn counts, month meta), "
+                       "shaped in Python over tiered row reads.",
+        "params": [_p("advisor", "advisor_sid | 'all'", required=False,
+                      default="all")],
+        "returns": ["months"],
+        "internal": True,
+        "local_compute": True,
+    },
+    "pce_dashboard_advisors": {
+        "description": "INTERNAL LOCAL-COMPUTE — the selectable advisor "
+                       "directory with cohort count.",
+        "params": [],
+        "returns": ["advisors", "cohort_count"],
+        "internal": True,
+        "local_compute": True,
+    },
+    "pce_dashboard_transitions": {
+        "description": "INTERNAL LOCAL-COMPUTE — month-to-month transition "
+                       "totals derived from the months payload.",
+        "params": [_p("advisor", "advisor_sid | 'all'", required=False,
+                      default="all")],
+        "returns": ["transitions"],
+        "internal": True,
+        "local_compute": True,
+    },
+    "pce_dashboard_product_contribution": {
+        "description": "INTERNAL LOCAL-COMPUTE — product-group contribution "
+                       "sections for a transition.",
+        "params": [_p("from", "YYYYMM"), _p("to", "YYYYMM"),
+                   _p("advisor", "advisor_sid | 'all'", required=False,
+                      default="all"),
+                   _p("class", "all|RECURRING|NON_RECURRING", required=False,
+                      default="all")],
+        "returns": ["from_month_id", "to_month_id", "sections", "total"],
+        "internal": True,
+        "local_compute": True,
     },
     "account_managed_flags": {
         "description": "Every account's is_managed flag — the bulk map behind "
@@ -1583,6 +1684,51 @@ def validate_params(query_name: str, params: dict) -> dict:
     return params
 
 
+def _normalize_rule_evaluation_rows(rows: list, params: dict) -> list[dict]:
+    """Round 10 task 1 — the ONE place rule_evaluation_rows results become the
+    contract shape: FLAT dicts with __vertex_id at the top level, projected to
+    ``columns``.
+
+    The mock tier already returns flat rows. The REAL tier returns TigerGraph
+    PRINT payloads: one object per PRINT statement, keyed by the printed set
+    name (``rows_<type>``), each entry wrapping the projected attributes in
+    ``{v_id, v_type, attributes:{...}}``. This function unwraps that shape and
+    ENFORCES the projection contract: every unwrapped row must already carry
+    ``__vertex_id`` (the twin prints ``r.<pid> AS __vertex_id`` in every
+    branch). It deliberately does NOT synthesise __vertex_id from v_id — a
+    bare ``PRINT rows_x;`` (no bracketed projection) must FAIL here loudly,
+    never be silently patched up, so the contract test can actually fail
+    (scripts/check_rule_rows_contract.py)."""
+    # real-tier shape: print-objects keyed by the set names
+    if rows and all(isinstance(r, dict)
+                    and r and all(str(k).startswith("rows_") for k in r)
+                    for r in rows):
+        unwrapped: list[dict] = []
+        for print_obj in rows:
+            for entries in print_obj.values():
+                for entry in entries or []:
+                    flat = entry.get("attributes") \
+                        if isinstance(entry, dict) and isinstance(entry.get("attributes"), dict) \
+                        else entry
+                    unwrapped.append(dict(flat))
+        rows = unwrapped
+    bad = [r for r in rows if "__vertex_id" not in r]
+    if bad:
+        raise RuntimeError(
+            f"rule_evaluation_rows returned {len(bad)} row(s) WITHOUT "
+            f"__vertex_id — the installed GSQL twin must print bracketed "
+            f"projections including '__vertex_id' in every branch (a bare "
+            f"PRINT of a vertex set violates the contract and would silently "
+            f"break the evaluator's join index); row keys seen: "
+            f"{sorted(bad[0])[:8]}")
+    wanted = str(params.get("columns") or "").strip()
+    if not wanted:
+        return rows
+    keep = {c.strip() for c in wanted.split(",") if c.strip()}
+    keep.add("__vertex_id")
+    return [{k: v for k, v in r.items() if k in keep} for r in rows]
+
+
 def run_catalog_query(query_name: str, params: dict | None = None, *,
                       default_mode: str = "rows",
                       allow_internal: bool = False) -> dict:
@@ -1635,8 +1781,36 @@ def run_catalog_query(query_name: str, params: dict | None = None, *,
             f"{query_name}: mode/group_by/limit apply only to shape-capable "
             f"queries — this one returns a bounded result already")
     checked = validate_params(query_name, params)
-    result = get_graph_client().run_query(query_name, checked)
     graph_mode = get_settings().graph_client_mode.lower()
+    # Round 10 task 2 — validate the vertex type BEFORE any tier is asked:
+    # an unsupported type must raise naming the type and the supported list,
+    # never fall into 14 missed WHERE guards returning a silent zero.
+    if query_name == "rule_evaluation_rows":
+        vertex = str(checked.get("vertex_type"))
+        if vertex not in RULE_EVALUATION_VERTICES:
+            raise CatalogError(
+                f"vertex_type {vertex!r} is not supported by "
+                f"rule_evaluation_rows — supported: "
+                f"{', '.join(RULE_EVALUATION_VERTICES)}")
+    spec = CATALOG.get(query_name) or {}
+    if spec.get("local_compute"):
+        # Round 10 task 4 — a LOCAL-COMPUTE query is a Python computation
+        # served by its registered implementation in EVERY mode; its row
+        # reads go through guarded tiered queries internally. No installed
+        # GSQL query exists by design, so the tiered chain is never asked and
+        # the tier-4 refusal does not apply (DECISIONS.md, Round 10).
+        from app.graph.client import MOCK_QUERY_IMPLS
+        from app.graph.foundation_store import get_foundation_store
+
+        impl = MOCK_QUERY_IMPLS.get(query_name)
+        if impl is None:
+            raise CatalogError(
+                f"{query_name} has no registered local-compute implementation")
+        rows = impl(get_foundation_store(), checked) or []
+        return {"rows": rows, "row_count": len(rows),
+                "served_by_tier": 4, "graph_mode": graph_mode,
+                "local_compute": True}
+    result = get_graph_client().run_query(query_name, checked)
     served_by_tier = result.get("served_by_tier")
     if served_by_tier is None and result.get("mode") == "mock":
         # mock/local mode serves through MockGraphClient directly (no tiered
@@ -1655,6 +1829,11 @@ def run_catalog_query(query_name: str, params: dict | None = None, *,
         )
     provenance = {"served_by_tier": served_by_tier, "graph_mode": graph_mode}
     rows = result.get("results") or []
+    if query_name == "rule_evaluation_rows":
+        # Round 10 task 1 — unwrap the real tier's PRINT payload, enforce the
+        # __vertex_id contract, apply the dynamic ``columns`` projection (one
+        # implementation for every tier).
+        rows = _normalize_rule_evaluation_rows(rows, checked)
     if not shape_capable(query_name):
         return {"rows": rows, "row_count": len(rows), **provenance}
     mode = str(envelope.get("mode") or default_mode).lower()
@@ -1679,6 +1858,12 @@ def run_catalog_query(query_name: str, params: dict | None = None, *,
 # the extension modules.
 from app.graph.queries import crm_catalog as _crm_catalog  # noqa: E402
 from app.graph.queries import nnm_catalog as _nnm_catalog  # noqa: E402
+
+# Round 10 task 4 — the LOCAL-COMPUTE entries' implementations must be
+# registered whenever the catalog is importable (their run_catalog_query
+# dispatch reads MOCK_QUERY_IMPLS directly).
+from app.graph.queries import pce_dashboard as _pce_dashboard  # noqa: E402, F401
+from app.graph.queries import rules_evaluate as _rules_evaluate  # noqa: E402, F401
 
 CATALOG.update(_crm_catalog.EXTRA_CATALOG)
 CATALOG.update(_nnm_catalog.EXTRA_CATALOG)

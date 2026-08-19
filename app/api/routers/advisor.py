@@ -167,12 +167,11 @@ def advisor_summary(sid: str,
     # Net cash flows remain above as NCF, which is what the flow table
     # actually measures.
 
-    # trades per month for this advisor (the months query's txn_count)
-    from app.graph.client import get_graph_client
-
-    month_rows = (get_graph_client()
-                  .run_query("pce_dashboard_months", {"advisor": sid})
-                  .get("results") or [{}])[0].get("months", [])
+    # trades per month for this advisor (the months query's txn_count) —
+    # through the guarded path (Round 10 task 4)
+    month_rows = (run_catalog_query("pce_dashboard_months", {"advisor": sid},
+                                    allow_internal=True)["rows"]
+                  or [{}])[0].get("months", [])
     trades = {m["month_id"]: m.get("txn_count", 0) for m in month_rows}
 
     return {

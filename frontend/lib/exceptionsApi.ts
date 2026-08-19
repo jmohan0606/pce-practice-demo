@@ -126,8 +126,14 @@ export interface FirmExceptionRule {
     fired?: boolean;
     is_monetary?: boolean;
     error?: string | null;
+    /** Round 10 — model "unsupported": the remedy, stated by the engine */
+    note?: string | null;
   };
-  /** "rate" (the cohort model) or "absolute_threshold" (firm-level) */
+  /**
+   * "rate" (the cohort model), "absolute_threshold" (firm-level), or
+   * "unsupported" (Round 10 — a PRACTICE rule without a numeric trigger:
+   * not evaluable by either model; firm.note states the remedy)
+   */
   model?: string;
 }
 export interface FirmExceptionsResponse {

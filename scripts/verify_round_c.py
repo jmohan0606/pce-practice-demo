@@ -157,9 +157,16 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     # Round 8 re-pin: 46 agent-visible + 1 INTERNAL (rule_evaluation_rows, the
     # evaluator's tiered row source — hidden from signatures, refused without
     # allow_internal, so agents can never pull raw vertex rows into a prompt).
+    # Round 10 re-pin: + rules_evaluate_plan and the four pce_dashboard_*
+    # entries — internal LOCAL-COMPUTE queries (Python computations over
+    # guarded tiered row reads; routed through run_catalog_query so the six
+    # former bypass sites sit behind validation and the envelope).
     internal_names = {n for n, s in CATALOG.items() if s.get("internal")}
     from app.graph.queries.catalog import catalog_signatures as _sigs
-    internal_ok = (internal_names == {"rule_evaluation_rows"}
+    internal_ok = (internal_names == {
+        "rule_evaluation_rows", "rules_evaluate_plan",
+        "pce_dashboard_months", "pce_dashboard_advisors",
+        "pce_dashboard_transitions", "pce_dashboard_product_contribution"}
                    and not any(s["query_name"] in internal_names for s in _sigs()))
     # Round 9 task 10b — the refusal must be THE refusal, not any exception
     # (a typo'd vertex name also raises CatalogError): assert on the message.
@@ -196,10 +203,11 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
         if not wanted <= cols:
             missing_cols.append(f"{name}: missing {sorted(wanted - cols)}")
     check(1, "every catalog query executes and returns the documented columns",
-          not errors and not missing_cols and len(CATALOG) == 50 and internal_ok,
-          f"{len(CATALOG)} queries (49 agent-visible + 1 internal evaluator row "
-          f"source, hidden from signatures, refused-with-the-internal-message "
-          f"without allow_internal, __vertex_id column contract asserted); "
+          not errors and not missing_cols and len(CATALOG) == 55 and internal_ok,
+          f"{len(CATALOG)} queries (49 agent-visible + 6 internal: the "
+          f"evaluator row source + 5 local-compute entries, hidden from "
+          f"signatures, refused-with-the-internal-message without "
+          f"allow_internal, __vertex_id column contract asserted); "
           f"errors={errors or 'none'}; column gaps={missing_cols or 'none'}; "
           f"legitimately empty on mock data: {empty or 'none'}")
 

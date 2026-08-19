@@ -158,10 +158,34 @@ def _trigger_fires(trigger: dict, value: float) -> bool:
             "<": value < threshold, "<=": value <= threshold}[trigger["op"]]
 
 
+# Plan predicates the row-source query can apply server-side (Round 10 task
+# 6a). Each name here must be a declared rule_evaluation_rows parameter with a
+# matching WHERE clause in the GSQL twin — the twin cannot reference an
+# attribute by a runtime name, so pushdown is per-parameter, not generic.
+PUSHDOWN_FIELDS = ("reason_cd",)
+
+
+def _pushdown_filters(filters: dict | None) -> dict[str, str]:
+    """Top-level AND'ed simple equality predicates (literal value) on
+    PUSHDOWN_FIELDS. Conjunctive, so the Python filter re-applying them is a
+    no-op — same rows out, less shipped."""
+    node = filters or {}
+    items = node.get("items") if node.get("type") == "and" else [node]
+    out: dict[str, str] = {}
+    for item in items or []:
+        if (isinstance(item, dict) and item.get("type") == "cond"
+                and item.get("op") == "=" and item.get("field") in PUSHDOWN_FIELDS):
+            value = item.get("value") or {}
+            if value.get("type") in ("string", "number"):
+                out[str(item["field"])] = str(value["value"])
+    return out
+
+
 def _fetch_rows(vertex: str, month: str | None = None,
                 advisor_sid: str | None = None,
                 key: str | None = None,
-                columns: set[str] | None = None) -> list[dict]:
+                columns: set[str] | None = None,
+                pushdown: dict[str, str] | None = None) -> list[dict]:
     """Round 8 (client-env bug fix) — the evaluator's ONE row source: the
     internal ``rule_evaluation_rows`` catalog query, through the tiered graph
     client. In mock mode the mock tier serves it (results identical to the old
@@ -185,6 +209,8 @@ def _fetch_rows(vertex: str, month: str | None = None,
         params["key_id"] = str(key)
     if columns:
         params["columns"] = ",".join(sorted(columns))
+    for field, value in (pushdown or {}).items():
+        params.setdefault(field, value)
     return run_catalog_query("rule_evaluation_rows", params,
                              allow_internal=True)["rows"]
 
@@ -291,8 +317,9 @@ def evaluate_plan(store, plan: dict, params: dict | None = None) -> dict:
                     and "advisor_sid" not in collect_fields(plan["filters"])
                     else None)
     columns = _plan_columns(plan)
+    pushdown = _pushdown_filters(plan.get("filters"))
     rows = _fetch_rows(vertex, month=month, advisor_sid=auto_advisor,
-                       columns=columns)
+                       columns=columns, pushdown=pushdown)
 
     rows = _join_rows(plan, rows, columns=columns)
     group_by = plan["group_by"]
@@ -351,10 +378,14 @@ def evaluate_plan(store, plan: dict, params: dict | None = None) -> dict:
     # preview) show them.
     if not matched:
         if not population:
+            pushed = ("".join(f" (after the pushed-down filter "
+                              f"{f} = {v!r})" for f, v in pushdown.items())
+                      if pushdown else "")
             result["empty_kind"] = "no_population"
             result["empty_reason"] = (
                 f"no rows matched the population filter — {len(rows)} row(s) "
-                f"were in scope for {vertex}, none passed the filters")
+                f"were in scope for {vertex}{pushed}, none passed the "
+                f"filters")
         else:
             groups_n = len({str(r.get(group_by)) for r in population}) \
                 if plan.get("aggregate") else len(population)

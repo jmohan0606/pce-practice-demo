@@ -1,5 +1,60 @@
 # Build Progress
 
+## Round 10 (docs/spec/ROUND_10_SPEC.md) — the real-tier output contract
+- [x] Task 1 (blocking): rule_evaluation_rows.gsql REWRITTEN in the
+      convention's projection form (every branch prints bracketed AS aliases
+      incl. <pid> AS __vertex_id; bare vertex-set PRINT gone) + a STRICT
+      normalisation step scoped to this ONE query in run_catalog_query
+      (unwraps TigerGraph's per-PRINT wrappers, REFUSES rows without
+      __vertex_id — never synthesised from v_id — and applies the dynamic
+      columns projection for every tier; the mock impl's private _project
+      deleted). Proven on a simulated tier-2 payload built from the twin's
+      own parsed text: flat rows ['__vertex_id','month_name'], matched rows
+      IDENTICAL mock vs simulated-real.
+- [x] Task 2: vertex_type validated pre-dispatch against
+      RULE_EVALUATION_VERTICES (ONE source: constant + mock impl + the
+      contract test's drift check over the twin's parsed branches);
+      unsupported type RAISES naming type + list. Rules-actually-target
+      census: advisor_nnm ADDED as the 15th branch (NNM_AWARD_THRESHOLD is
+      published+active in RSV_v19); the other 16 types stay raising. Found:
+      Round 9's twin key-filtered team_agreement on agreement_id (pid is
+      agreement_key) — fixed by generation.
+- [x] Task 3: model "unsupported" renders as its own state showing firm.note
+      and SUPPRESSES the "every enabled rule evaluated and none matched"
+      banner — OBSERVED in headless chromium (interception precedent), both
+      asserted on page text.
+- [x] Task 4: all SIX bypass sites route through run_catalog_query — the four
+      rules_evaluate_plan sites + dashboard _run + advisor:173 — via new
+      INTERNAL LOCAL-COMPUTE catalog entries (rules_evaluate_plan +
+      4 pce_dashboard_*; local tier correct by design, per-entry guard
+      exemption, DECISIONS.md); the pce_dashboard impls' own row reads
+      rewired through rule_evaluation_rows/lookups so real mode computes over
+      TigerGraph rows; dashboard _run's 502 now states an empty envelope is a
+      transport/contract failure, never a data zero (a zero arrives INSIDE
+      the shaped row); no new GSQL needed for the dashboard queries.
+- [x] Task 5: scripts/check_rule_rows_contract.py — the contract asserted
+      against a NON-MOCK fixture (the TigerGraph PRINT wrapper shape built
+      from the twin's parsed projections, through a fake tier-2 client behind
+      the real caller path). PROVEN it can fail: one branch reverted to bare
+      PRINT → RR-2 FAILS naming the branch AND RR-4 shows evaluation REFUSING
+      the payload (never matched=[]); restored → 5/5.
+- [x] Task 6: (a) docstring no longer overstates pushdown (engine still scans;
+      only filtered rows RETURN) + reason_cd plan-predicate pushed down
+      (catalog param, mock filter, twin WHERE, evaluator PUSHDOWN_FIELDS) —
+      HIGH_9R_MONTH ships 0 rows on mock (was 753/month); (b) the carried
+      review note regenerates naming the CURRENT threshold; (c)
+      ROUND_9_COMPLETE quotes both actual trigger_not_met forms (row(s) /
+      group(s)); (d) verify-2's month stated: 202605.
+- [x] Verification: all 15 verify items with actual output in
+      docs/ROUND_10_COMPLETE.md; identity 13/14 byte-identical (the one diff
+      = the intended pushdown diagnostic string, quoted); full regression
+      green (a25 b19 c13 [C6-1 re-pinned 55 = 49 visible + 6 internal] e8 h9
+      a1-17, r1 12, r1b 8, r2a 16, r3 10, flags 8, manual 17, nnm 23,
+      exports 43, gate 9, parity 31V/44E, store guard STRICT, contract 5/5,
+      npm build 10 routes). Session app-LLM spend $0.00 of $8. Servers
+      restarted :8002/:3002; live store RSV_v19. INSTALL VERDICT: all four
+      .gsql files now safe — rule_evaluation_rows in its ROUND 10 form.
+
 ## Round 9 (docs/spec/ROUND_9_SPEC.md) — real-mode read guard, review defects, all store reads converted
 - [x] PART A (the blocking defect): run_catalog_query REFUSES tier-4 (local
       mock fallback) results outside mock/local modes, naming the query — the

@@ -1,71 +1,75 @@
 /*
- * rule_evaluation_rows — INTERNAL catalog query (Round 8 fix / Round 9 task 3).
+ * rule_evaluation_rows — INTERNAL catalog query (Round 8 fix / Round 9 task 3 /
+ *          Round 10 task 1 PROJECTION REWRITE).
  * Purpose: The RULE EVALUATOR's raw row source, routed through the tiered
  *          client so rule evaluation reads TigerGraph in real mode instead of
  *          the local mock store. Never agent-callable (catalog marks it
  *          internal); the app refuses it without allow_internal.
- * Params:  vertex_type — one of the supported vertex type names below
+ * Params:  vertex_type — one of the supported vertex type names below (the
+ *                        app validates against the SAME list before dispatch:
+ *                        RULE_EVALUATION_VERTICES in
+ *                        app/graph/queries/catalog.py — an unsupported type
+ *                        raises there and never reaches this query)
  *          month       — "" or YYYYMM; applied where the type carries month_id
  *          advisor_sid — "" or an advisor SID; applied where the type carries
  *                        advisor_sid
  *          key_id      — "" or a primary id; narrows to that one vertex
+ *          reason_cd   — "" or a reason code; pushed-down plan predicate,
+ *                        applied where the type carries reason_cd
  *          columns     — accepted for signature parity with the catalog entry;
- *                        the app layer applies the projection (GSQL cannot
- *                        select attributes by a runtime name), so this query
- *                        returns full rows and the caller keeps only the
- *                        columns it asked for
- * Outputs: one result set per supported vertex type (rows_<short name>); only
- *          the set matching vertex_type is non-empty. Each printed vertex's
- *          v_id is the row's __vertex_id; attributes ride the standard PRINT
- *          vertex payload.
- * Filtering happens SERVER-SIDE (Round 9 task 4): the contract with the
- * Python mock tier is SAME ROWS OUT, NOT SAME METHOD — the mock tier filters
- * an in-memory store after materialising; this query filters in the engine so
- * a 12M-row vertex type is never shipped.
- * Supported vertex types = the compiler's GRAIN_VERTICES union plus the
- * lookup vertices the app's converted read sites use (Round 9 task 9):
- * account_month, account, account_transfer, revenue_transaction, advisor,
- * month, monthly_revenue, advisor_flow_month, opportunity, rpg, household,
- * product, product_group, team_agreement. Any other vertex_type returns
- * empty sets.
- * Created: Round 9 (2026-08-19). NEEDS LIVE INSTALL — rule evaluation in real
- *          mode fails loudly (by design) until this query is installed.
+ *                        the app layer (run_catalog_query) applies the dynamic
+ *                        projection — GSQL cannot select attributes by a
+ *                        runtime name, so each branch prints its FULL bracketed
+ *                        projection and the app narrows it
+ * Output CONTRACT (Round 10 task 1): every branch prints a BRACKETED
+ *          projection with AS aliases — one alias per attribute plus the
+ *          primary id AS __vertex_id — never a bare vertex-set PRINT (a bare
+ *          PRINT returns {v_id, v_type, attributes:{...}} wrappers with no
+ *          __vertex_id, which the caller REFUSES:
+ *          app/graph/queries/catalog.py::_normalize_rule_evaluation_rows
+ *          raises on any row without __vertex_id, and
+ *          scripts/check_rule_rows_contract.py fails the build if a branch
+ *          reverts to bare PRINT). One result set per supported type
+ *          (rows_<short name>); only the set matching vertex_type is
+ *          non-empty.
+ * Filtering happens SERVER-SIDE in each branch's WHERE clause — same rows out
+ *          as the mock tier, not same method. Honest scale note (Round 10
+ *          task 6a): the engine still scans the vertex type (no secondary
+ *          indexes); the win is that only FILTERED rows are returned, and
+ *          predicates the twin has no parameter for are applied app-side
+ *          after the rows ship.
+ * Created: Round 9 (2026-08-19); rewritten in projection form Round 10
+ *          (2026-08-19). NEEDS LIVE INSTALL — rule evaluation in real mode
+ *          fails loudly (by design) until this query is installed.
  * Compatibility target: TigerGraph 4.2.x (patch_4.2.2_jpmc_57231), classic
  *          GSQL SYNTAX V1 — written against reference/v2 (EXAMPLE_query.gsql
- *          WHERE-guard pattern; GQ-013/GQ-009 as installed-form references).
- *          No v2 constructs, no reverse_-prefixed edge names (no edges are
- *          traversed at all), no MapAccum, no ternaries.
+ *          WHERE-guard pattern; the bracketed-projection PRINT form every
+ *          installed GQ-0xx query uses). No v2 constructs, no
+ *          reverse_-prefixed edge names (no edges are traversed), no
+ *          MapAccum, no ternaries.
  */
 USE GRAPH phx_dm_pce_practice_demo
 
 CREATE QUERY rule_evaluation_rows(STRING vertex_type, STRING month,
-    STRING advisor_sid, STRING key_id, STRING columns)
+    STRING advisor_sid, STRING key_id, STRING reason_cd, STRING columns)
     FOR GRAPH phx_dm_pce_practice_demo SYNTAX V1 {
+  account_seed = {phx_dm_pce_account.*};
+  rows_account = SELECT r FROM account_seed:r
+      WHERE vertex_type == "phx_dm_pce_account"
+        AND (key_id == "" OR r.acct_key == key_id);
 
-  am_seed = {phx_dm_pce_account_month.*};
-  rows_account_month = SELECT r FROM am_seed:r
+  account_month_seed = {phx_dm_pce_account_month.*};
+  rows_account_month = SELECT r FROM account_month_seed:r
       WHERE vertex_type == "phx_dm_pce_account_month"
         AND (month == "" OR r.month_id == month)
         AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
         AND (key_id == "" OR r.am_id == key_id);
 
-  acct_seed = {phx_dm_pce_account.*};
-  rows_account = SELECT r FROM acct_seed:r
-      WHERE vertex_type == "phx_dm_pce_account"
-        AND (key_id == "" OR r.acct_key == key_id);
-
-  transfer_seed = {phx_dm_pce_account_transfer.*};
-  rows_account_transfer = SELECT r FROM transfer_seed:r
+  account_transfer_seed = {phx_dm_pce_account_transfer.*};
+  rows_account_transfer = SELECT r FROM account_transfer_seed:r
       WHERE vertex_type == "phx_dm_pce_account_transfer"
         AND (month == "" OR r.month_id == month)
         AND (key_id == "" OR r.transfer_id == key_id);
-
-  txn_seed = {phx_dm_pce_revenue_transaction.*};
-  rows_revenue_transaction = SELECT r FROM txn_seed:r
-      WHERE vertex_type == "phx_dm_pce_revenue_transaction"
-        AND (month == "" OR r.month_id == month)
-        AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
-        AND (key_id == "" OR r.txn_id == key_id);
 
   advisor_seed = {phx_dm_pce_advisor.*};
   rows_advisor = SELECT r FROM advisor_seed:r
@@ -73,71 +77,274 @@ CREATE QUERY rule_evaluation_rows(STRING vertex_type, STRING month,
         AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
         AND (key_id == "" OR r.advisor_sid == key_id);
 
-  month_seed = {phx_dm_pce_month.*};
-  rows_month = SELECT r FROM month_seed:r
-      WHERE vertex_type == "phx_dm_pce_month"
-        AND (month == "" OR r.month_id == month)
-        AND (key_id == "" OR r.month_id == key_id);
-
-  mr_seed = {phx_dm_pce_monthly_revenue.*};
-  rows_monthly_revenue = SELECT r FROM mr_seed:r
-      WHERE vertex_type == "phx_dm_pce_monthly_revenue"
-        AND (month == "" OR r.month_id == month)
-        AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
-        AND (key_id == "" OR r.mr_id == key_id);
-
-  flow_seed = {phx_dm_pce_advisor_flow_month.*};
-  rows_advisor_flow_month = SELECT r FROM flow_seed:r
+  advisor_flow_month_seed = {phx_dm_pce_advisor_flow_month.*};
+  rows_advisor_flow_month = SELECT r FROM advisor_flow_month_seed:r
       WHERE vertex_type == "phx_dm_pce_advisor_flow_month"
         AND (month == "" OR r.month_id == month)
         AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
         AND (key_id == "" OR r.afm_id == key_id);
 
-  opp_seed = {phx_dm_pce_opportunity.*};
-  rows_opportunity = SELECT r FROM opp_seed:r
-      WHERE vertex_type == "phx_dm_pce_opportunity"
+  advisor_nnm_seed = {phx_dm_pce_advisor_nnm.*};
+  rows_advisor_nnm = SELECT r FROM advisor_nnm_seed:r
+      WHERE vertex_type == "phx_dm_pce_advisor_nnm"
+        AND (month == "" OR r.month_id == month)
         AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
-        AND (key_id == "" OR r.opportunity_id == key_id);
-
-  rpg_seed = {phx_dm_pce_rpg.*};
-  rows_rpg = SELECT r FROM rpg_seed:r
-      WHERE vertex_type == "phx_dm_pce_rpg"
-        AND (key_id == "" OR r.rpg_id == key_id);
+        AND (key_id == "" OR r.nnm_id == key_id);
 
   household_seed = {phx_dm_pce_household.*};
   rows_household = SELECT r FROM household_seed:r
       WHERE vertex_type == "phx_dm_pce_household"
         AND (key_id == "" OR r.eci_id == key_id);
 
+  month_seed = {phx_dm_pce_month.*};
+  rows_month = SELECT r FROM month_seed:r
+      WHERE vertex_type == "phx_dm_pce_month"
+        AND (month == "" OR r.month_id == month)
+        AND (key_id == "" OR r.month_id == key_id);
+
+  monthly_revenue_seed = {phx_dm_pce_monthly_revenue.*};
+  rows_monthly_revenue = SELECT r FROM monthly_revenue_seed:r
+      WHERE vertex_type == "phx_dm_pce_monthly_revenue"
+        AND (month == "" OR r.month_id == month)
+        AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
+        AND (key_id == "" OR r.mr_id == key_id);
+
+  opportunity_seed = {phx_dm_pce_opportunity.*};
+  rows_opportunity = SELECT r FROM opportunity_seed:r
+      WHERE vertex_type == "phx_dm_pce_opportunity"
+        AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
+        AND (key_id == "" OR r.opportunity_id == key_id);
+
   product_seed = {phx_dm_pce_product.*};
   rows_product = SELECT r FROM product_seed:r
       WHERE vertex_type == "phx_dm_pce_product"
         AND (key_id == "" OR r.product_id == key_id);
 
-  group_seed = {phx_dm_pce_product_group.*};
-  rows_product_group = SELECT r FROM group_seed:r
+  product_group_seed = {phx_dm_pce_product_group.*};
+  rows_product_group = SELECT r FROM product_group_seed:r
       WHERE vertex_type == "phx_dm_pce_product_group"
         AND (key_id == "" OR r.group_id == key_id);
 
-  team_seed = {phx_dm_pce_team_agreement.*};
-  rows_team_agreement = SELECT r FROM team_seed:r
-      WHERE vertex_type == "phx_dm_pce_team_agreement"
-        AND (key_id == "" OR r.agreement_id == key_id);
+  revenue_transaction_seed = {phx_dm_pce_revenue_transaction.*};
+  rows_revenue_transaction = SELECT r FROM revenue_transaction_seed:r
+      WHERE vertex_type == "phx_dm_pce_revenue_transaction"
+        AND (month == "" OR r.month_id == month)
+        AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
+        AND (reason_cd == "" OR r.reason_cd == reason_cd)
+        AND (key_id == "" OR r.txn_id == key_id);
 
-  PRINT rows_account_month;
-  PRINT rows_account;
-  PRINT rows_account_transfer;
-  PRINT rows_revenue_transaction;
-  PRINT rows_advisor;
-  PRINT rows_month;
-  PRINT rows_monthly_revenue;
-  PRINT rows_advisor_flow_month;
-  PRINT rows_opportunity;
-  PRINT rows_rpg;
-  PRINT rows_household;
-  PRINT rows_product;
-  PRINT rows_product_group;
-  PRINT rows_team_agreement;
+  rpg_seed = {phx_dm_pce_rpg.*};
+  rows_rpg = SELECT r FROM rpg_seed:r
+      WHERE vertex_type == "phx_dm_pce_rpg"
+        AND (key_id == "" OR r.rpg_id == key_id);
+
+  team_agreement_seed = {phx_dm_pce_team_agreement.*};
+  rows_team_agreement = SELECT r FROM team_agreement_seed:r
+      WHERE vertex_type == "phx_dm_pce_team_agreement"
+        AND (key_id == "" OR r.agreement_key == key_id);
+
+  PRINT rows_account[
+      rows_account.acct_key AS acct_key,
+      rows_account.account_no_raw AS account_no_raw,
+      rows_account.account_class_cd AS account_class_cd,
+      rows_account.account_class_nm AS account_class_nm,
+      rows_account.account_lob_cd AS account_lob_cd,
+      rows_account.account_purpose_cd AS account_purpose_cd,
+      rows_account.managed_platform_cd AS managed_platform_cd,
+      rows_account.service_channel_cd AS service_channel_cd,
+      rows_account.account_open_dt AS account_open_dt,
+      rows_account.is_managed AS is_managed,
+      rows_account.opened_in_scope AS opened_in_scope,
+      rows_account.primary_eci_id AS primary_eci_id,
+      rows_account.acct_key AS __vertex_id];
+  PRINT rows_account_month[
+      rows_account_month.am_id AS am_id,
+      rows_account_month.acct_key AS acct_key,
+      rows_account_month.advisor_sid AS advisor_sid,
+      rows_account_month.month_id AS month_id,
+      rows_account_month.end_balance AS end_balance,
+      rows_account_month.credited_amt AS credited_amt,
+      rows_account_month.txn_count AS txn_count,
+      rows_account_month.is_zero_balance AS is_zero_balance,
+      rows_account_month.present_prior_month AS present_prior_month,
+      rows_account_month.prior_end_balance AS prior_end_balance,
+      rows_account_month.prior_credited_amt AS prior_credited_amt,
+      rows_account_month.am_id AS __vertex_id];
+  PRINT rows_account_transfer[
+      rows_account_transfer.transfer_id AS transfer_id,
+      rows_account_transfer.acct_key AS acct_key,
+      rows_account_transfer.from_advisor_sid AS from_advisor_sid,
+      rows_account_transfer.to_advisor_sid AS to_advisor_sid,
+      rows_account_transfer.from_rr AS from_rr,
+      rows_account_transfer.to_rr AS to_rr,
+      rows_account_transfer.transfer_ts AS transfer_ts,
+      rows_account_transfer.month_id AS month_id,
+      rows_account_transfer.is_intra_team AS is_intra_team,
+      rows_account_transfer.occd_cd AS occd_cd,
+      rows_account_transfer.transfer_id AS __vertex_id];
+  PRINT rows_advisor[
+      rows_advisor.advisor_sid AS advisor_sid,
+      rows_advisor.rep_code AS rep_code,
+      rows_advisor.advisor_name AS advisor_name,
+      rows_advisor.branch_cd AS branch_cd,
+      rows_advisor.employee_id AS employee_id,
+      rows_advisor.in_cohort AS in_cohort,
+      rows_advisor.job_code AS job_code,
+      rows_advisor.job_display_name AS job_display_name,
+      rows_advisor.em_status_cd AS em_status_cd,
+      rows_advisor.is_departed AS is_departed,
+      rows_advisor.work_state AS work_state,
+      rows_advisor.work_city AS work_city,
+      rows_advisor.advisor_plan AS advisor_plan,
+      rows_advisor.is_synthetic AS is_synthetic,
+      rows_advisor.advisor_sid AS __vertex_id];
+  PRINT rows_advisor_flow_month[
+      rows_advisor_flow_month.afm_id AS afm_id,
+      rows_advisor_flow_month.advisor_sid AS advisor_sid,
+      rows_advisor_flow_month.month_id AS month_id,
+      rows_advisor_flow_month.flow_product_cd AS flow_product_cd,
+      rows_advisor_flow_month.flow_product_desc AS flow_product_desc,
+      rows_advisor_flow_month.comp_group_type AS comp_group_type,
+      rows_advisor_flow_month.total_inflows AS total_inflows,
+      rows_advisor_flow_month.total_outflows AS total_outflows,
+      rows_advisor_flow_month.total_net_flows AS total_net_flows,
+      rows_advisor_flow_month.credited_flows AS credited_flows,
+      rows_advisor_flow_month.departed_advisor_sid AS departed_advisor_sid,
+      rows_advisor_flow_month.departed_advisor_excl_am AS departed_advisor_excl_am,
+      rows_advisor_flow_month.lob_trfr_excl_am AS lob_trfr_excl_am,
+      rows_advisor_flow_month.oi_pa_referral_cap_adj_am AS oi_pa_referral_cap_adj_am,
+      rows_advisor_flow_month.large_flow_cap_adj_am AS large_flow_cap_adj_am,
+      rows_advisor_flow_month.forced_closure_excl_am AS forced_closure_excl_am,
+      rows_advisor_flow_month.afm_id AS __vertex_id];
+  PRINT rows_advisor_nnm[
+      rows_advisor_nnm.nnm_id AS nnm_id,
+      rows_advisor_nnm.advisor_sid AS advisor_sid,
+      rows_advisor_nnm.month_id AS month_id,
+      rows_advisor_nnm.category AS category,
+      rows_advisor_nnm.category_source AS category_source,
+      rows_advisor_nnm.mtd_nnm AS mtd_nnm,
+      rows_advisor_nnm.ytd_nnm AS ytd_nnm,
+      rows_advisor_nnm.entry_dt AS entry_dt,
+      rows_advisor_nnm.as_of_dt AS as_of_dt,
+      rows_advisor_nnm.nnm_id AS __vertex_id];
+  PRINT rows_household[
+      rows_household.eci_id AS eci_id,
+      rows_household.account_count AS account_count,
+      rows_household.eci_id AS __vertex_id];
+  PRINT rows_month[
+      rows_month.month_id AS month_id,
+      rows_month.month_name AS month_name,
+      rows_month.start_dt AS start_dt,
+      rows_month.end_dt AS end_dt,
+      rows_month.trading_days AS trading_days,
+      rows_month.is_baseline AS is_baseline,
+      rows_month.is_partial AS is_partial,
+      rows_month.month_id AS __vertex_id];
+  PRINT rows_monthly_revenue[
+      rows_monthly_revenue.mr_id AS mr_id,
+      rows_monthly_revenue.advisor_sid AS advisor_sid,
+      rows_monthly_revenue.month_id AS month_id,
+      rows_monthly_revenue.product_id AS product_id,
+      rows_monthly_revenue.group_id AS group_id,
+      rows_monthly_revenue.class_id AS class_id,
+      rows_monthly_revenue.credited_amt AS credited_amt,
+      rows_monthly_revenue.non_credited_amt AS non_credited_amt,
+      rows_monthly_revenue.firm_credited_amt AS firm_credited_amt,
+      rows_monthly_revenue.advisor_credited_amt AS advisor_credited_amt,
+      rows_monthly_revenue.txn_count AS txn_count,
+      rows_monthly_revenue.distinct_accounts AS distinct_accounts,
+      rows_monthly_revenue.mr_id AS __vertex_id];
+  PRINT rows_opportunity[
+      rows_opportunity.opportunity_id AS opportunity_id,
+      rows_opportunity.eci_id AS eci_id,
+      rows_opportunity.advisor_sid AS advisor_sid,
+      rows_opportunity.advisor_sid_raw AS advisor_sid_raw,
+      rows_opportunity.advisor_valid AS advisor_valid,
+      rows_opportunity.account_record_type AS account_record_type,
+      rows_opportunity.product_service_type AS product_service_type,
+      rows_opportunity.stage_name AS stage_name,
+      rows_opportunity.stage_group AS stage_group,
+      rows_opportunity.amount AS amount,
+      rows_opportunity.actual_assets AS actual_assets,
+      rows_opportunity.anticipated_investment_dt AS anticipated_investment_dt,
+      rows_opportunity.created_dt AS created_dt,
+      rows_opportunity.last_modified_dt AS last_modified_dt,
+      rows_opportunity.date_of_last_contact AS date_of_last_contact,
+      rows_opportunity.days_to_close AS days_to_close,
+      rows_opportunity.is_stalled AS is_stalled,
+      rows_opportunity.comments AS comments,
+      rows_opportunity.ai_read AS ai_read,
+      rows_opportunity.ai_read_confidence AS ai_read_confidence,
+      rows_opportunity.ai_read_evidence AS ai_read_evidence,
+      rows_opportunity.ai_read_model AS ai_read_model,
+      rows_opportunity.data_source AS data_source,
+      rows_opportunity.opportunity_id AS __vertex_id];
+  PRINT rows_product[
+      rows_product.product_id AS product_id,
+      rows_product.product_cd AS product_cd,
+      rows_product.product_sub_cd AS product_sub_cd,
+      rows_product.product_name AS product_name,
+      rows_product.sor AS sor,
+      rows_product.file_key AS file_key,
+      rows_product.group_id AS group_id,
+      rows_product.grid_type AS grid_type,
+      rows_product.l1_pay_type_cd AS l1_pay_type_cd,
+      rows_product.l2_pay_type_cd AS l2_pay_type_cd,
+      rows_product.product_id AS __vertex_id];
+  PRINT rows_product_group[
+      rows_product_group.group_id AS group_id,
+      rows_product_group.group_name AS group_name,
+      rows_product_group.display_prefix AS display_prefix,
+      rows_product_group.class_id AS class_id,
+      rows_product_group.sort_order AS sort_order,
+      rows_product_group.is_aggregated AS is_aggregated,
+      rows_product_group.group_id AS __vertex_id];
+  PRINT rows_revenue_transaction[
+      rows_revenue_transaction.txn_id AS txn_id,
+      rows_revenue_transaction.trade_ref_no AS trade_ref_no,
+      rows_revenue_transaction.split_seq_no AS split_seq_no,
+      rows_revenue_transaction.advisor_sid AS advisor_sid,
+      rows_revenue_transaction.acct_key AS acct_key,
+      rows_revenue_transaction.product_id AS product_id,
+      rows_revenue_transaction.month_id AS month_id,
+      rows_revenue_transaction.trade_dt AS trade_dt,
+      rows_revenue_transaction.proc_dt AS proc_dt,
+      rows_revenue_transaction.days_to_process AS days_to_process,
+      rows_revenue_transaction.credited_amt AS credited_amt,
+      rows_revenue_transaction.non_credited_amt AS non_credited_amt,
+      rows_revenue_transaction.firm_credited_amt AS firm_credited_amt,
+      rows_revenue_transaction.advisor_credited_amt AS advisor_credited_amt,
+      rows_revenue_transaction.pre_split_amt AS pre_split_amt,
+      rows_revenue_transaction.split_pct AS split_pct,
+      rows_revenue_transaction.reason_cd AS reason_cd,
+      rows_revenue_transaction.is_credited AS is_credited,
+      rows_revenue_transaction.standard_rate_bps AS standard_rate_bps,
+      rows_revenue_transaction.client_rate_bps AS client_rate_bps,
+      rows_revenue_transaction.discount_amt AS discount_amt,
+      rows_revenue_transaction.eff_disc_pct AS eff_disc_pct,
+      rows_revenue_transaction.grid_reduction AS grid_reduction,
+      rows_revenue_transaction.rpg AS rpg,
+      rows_revenue_transaction.concession_type AS concession_type,
+      rows_revenue_transaction.file_key AS file_key,
+      rows_revenue_transaction.trade_description AS trade_description,
+      rows_revenue_transaction.txn_id AS __vertex_id];
+  PRINT rows_rpg[
+      rows_rpg.rpg_id AS rpg_id,
+      rows_rpg.account_count AS account_count,
+      rows_rpg.rpg_id AS __vertex_id];
+  PRINT rows_team_agreement[
+      rows_team_agreement.agreement_key AS agreement_key,
+      rows_team_agreement.agreement_id AS agreement_id,
+      rows_team_agreement.team_rep_cd AS team_rep_cd,
+      rows_team_agreement.agreement_type AS agreement_type,
+      rows_team_agreement.status_cd AS status_cd,
+      rows_team_agreement.prm_advisor_sid AS prm_advisor_sid,
+      rows_team_agreement.prm_share_pct AS prm_share_pct,
+      rows_team_agreement.sec_advisor_sid AS sec_advisor_sid,
+      rows_team_agreement.sec_share_pct AS sec_share_pct,
+      rows_team_agreement.start_ts AS start_ts,
+      rows_team_agreement.end_ts AS end_ts,
+      rows_team_agreement.agreement_key AS __vertex_id];
 }
 
 INSTALL QUERY rule_evaluation_rows

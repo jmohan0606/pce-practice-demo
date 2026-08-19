@@ -525,13 +525,14 @@ def _test_params() -> dict:
 def execute_check(compiled: CompiledRule) -> dict | CompileError:
     """Check 5 — the real gate: the plan runs against mock data and returns a
     row count. Returns {evaluated_rows, matched_count} or a CompileError."""
-    import app.graph.queries.rules_evaluate  # noqa: F401 — registers the mock impl
-    from app.graph.client import get_graph_client
+    from app.graph.queries.catalog import run_catalog_query  # local: no cycle at module load
 
     try:
-        result = get_graph_client().run_query(
-            "rules_evaluate_plan", {"plan": compiled.plan, "params": _test_params()})
-        row = (result.get("results") or [{}])[0]
+        result = run_catalog_query(
+            "rules_evaluate_plan",
+            {"plan": compiled.plan, "params": _test_params()},
+            allow_internal=True)
+        row = (result.get("rows") or [{}])[0]
     except Exception as exc:  # noqa: BLE001 — a plan that raises is not valid
         return CompileError(compiled.rule_code, "execution",
                             f"plan raised against mock data: {type(exc).__name__}: {exc}")

@@ -95,6 +95,27 @@ function FirmRuleRow({ rule, month }: { rule: FirmExceptionRule; month: string }
 
   const firm = rule.firm;
 
+  // Round 10 task 3 — a rule NEITHER model can evaluate (a PRACTICE rule
+  // without a numeric trigger): its own state, showing the engine's remedy
+  // note. Never folded into the rate row or the "none matched" banner — a
+  // rule that could not be evaluated is not a rule that found nothing.
+  if (rule.model === "unsupported") {
+    return (
+      <div style={{ borderBottom: "1px solid var(--rule-2)", padding: "10px 18px" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          {rule.severity ? <SevChip level={rule.severity as Severity} /> : null}
+          <span className="rowhead">{rule.rule_name}</span>
+          <span style={{ fontSize: "12.5px" }}>
+            <b style={{ color: "var(--dn, #b3261e)" }}>not evaluable</b> — no exception model applies
+          </span>
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--slate)", marginTop: 2 }}>
+          {firm.note || "This rule fits neither the cohort rate model nor the absolute firm-level threshold model."}
+        </div>
+      </div>
+    );
+  }
+
   // Round 8 task 4 — an absolute firm-level threshold (PRACTICE rule): there
   // is no peer cohort at firm level, so no rate/median/drill-in — the row
   // states the observed value against the threshold, fired or not.
@@ -294,11 +315,17 @@ function FirmView({ month, monthLabel }: { month: string; monthLabel: string }) 
       ) : (
         <>
           {/* Round 8 verify 4 — exceptions enabled that matched nothing is a
-              RESULT, not a problem, and never dressed up as an empty state */}
+              RESULT, not a problem, and never dressed up as an empty state.
+              Round 10 task 3 — an "unsupported" rule was NOT evaluated, so it
+              can never contribute to (or hide inside) "every enabled rule
+              evaluated and none matched": its presence suppresses the banner
+              and its own row states the remedy. */}
           {data.rules.every(
             (r) =>
               (r.model === "absolute_threshold" && !r.firm.fired) ||
-              (r.model !== "absolute_threshold" && r.firm.advisors_with_exceptions === 0),
+              (r.model !== "absolute_threshold" &&
+                r.model !== "unsupported" &&
+                r.firm.advisors_with_exceptions === 0),
           ) ? (
             <p style={{ color: "var(--slate)", fontSize: "12.5px", margin: 0, padding: "0 18px 8px" }}>
               No exceptions this period — every enabled rule evaluated and none matched.

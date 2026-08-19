@@ -180,8 +180,7 @@ def _absolute_firm_exception(rule: dict, month: str, version_id: str) -> dict:
     value, and ``fired`` is that observation compared against the same plan's
     own trigger — never a second evaluation reading the store again, which
     could disagree with the rule this function was handed."""
-    import app.graph.queries.rules_evaluate  # noqa: F401 — registers rules_evaluate_plan
-    from app.graph.client import get_graph_client
+    from app.graph.queries.catalog import run_catalog_query
     from app.rules.compiler import translate_plan
 
     plan = rule.get("plan") or {}
@@ -195,10 +194,11 @@ def _absolute_firm_exception(rule: dict, month: str, version_id: str) -> dict:
         open_plan = dict(plan)
         open_plan["trigger"] = {"op": ">=", "value": -1e18}
         compiled = translate_plan(rule.get("rule_code") or "", "month", open_plan)
-        rows = get_graph_client().run_query(
+        rows = run_catalog_query(
             "rules_evaluate_plan",
-            {"plan": compiled.plan, "params": {"month": month}})
-        entries = (rows.get("results") or [{}])[0].get("matched") or []
+            {"plan": compiled.plan, "params": {"month": month}},
+            allow_internal=True)
+        entries = (rows.get("rows") or [{}])[0].get("matched") or []
         fired_entries = [e for e in entries
                          if _trigger_fires(op, _f(e.get("value")), _f(threshold))]
         fired = bool(fired_entries)

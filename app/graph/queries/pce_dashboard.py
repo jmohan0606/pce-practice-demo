@@ -1,8 +1,13 @@
-"""Mock-tier implementations of the B1 dashboard queries.
+"""LOCAL-COMPUTE implementations of the B1 dashboard queries.
 
-Each function traverses the FoundationGraphStore exactly the way the installed
-GSQL equivalents traverse TigerGraph, and returns the fully shaped payload as
-``results[0]`` — routers unwrap and never compute figures themselves.
+Each function shapes the payload in Python and returns it as ``results[0]`` —
+routers unwrap and never compute figures themselves. Since Round 10 (task 4)
+the ROW READS go through the tiered ``rule_evaluation_rows`` catalog query
+(lookups), so in real mode these payloads are computed over TigerGraph rows,
+exactly like rule evaluation — the ``store`` argument each impl receives is
+the dispatch signature and is deliberately unused. The queries themselves are
+catalogued as internal local_compute entries (no GSQL twin by design — the
+shaping is Python; the row source has the twin).
 
 All figures come from ``phx_dm_pce_monthly_revenue`` (advisor × month × product
 grain). ``advisor='all'`` sums across cohort advisors only (``in_cohort=true``).
@@ -36,11 +41,18 @@ def _num(value: Any) -> float:
         return 0.0
 
 
+def _advisor_dir(columns: str) -> dict[str, dict]:
+    """Every advisor row through the tiered path, keyed by SID."""
+    from app.graph.queries import lookups
+
+    return lookups.advisor_rows(columns=columns)
+
+
 def _advisor_scope(store: FoundationGraphStore, advisor: str) -> set[str]:
     """The advisor SIDs a request aggregates over. 'all' = FIRM scope
     (Round 5): the cohort PLUS the synthetic '__UNATTRIBUTED__' advisor when
     present — firm-wide dashboard totals include unattributed transactions."""
-    advisors = store.all_vertices(V_ADVISOR)
+    advisors = _advisor_dir("in_cohort")
     if advisor in ("", "all", None):
         scope = {sid for sid, attrs in advisors.items() if attrs.get("in_cohort") is True}
         if UNATTRIBUTED_SID in advisors:
@@ -67,15 +79,21 @@ def _amt(row: dict[str, Any], firm: bool) -> float:
 
 
 def _mr_rows(store: FoundationGraphStore, scope: set[str]) -> list[dict[str, Any]]:
-    return [
-        attrs
-        for attrs in store.all_vertices(V_MONTHLY_REVENUE).values()
-        if str(attrs.get("advisor_sid")) in scope
-    ]
+    from app.graph.queries import lookups
+
+    rows = lookups.fetch_vertex_rows(
+        V_MONTHLY_REVENUE,
+        columns="advisor_sid,month_id,class_id,group_id,credited_amt,"
+                "firm_credited_amt,txn_count")
+    return [r for r in rows if str(r.get("advisor_sid")) in scope]
 
 
 def _months_sorted(store: FoundationGraphStore) -> list[tuple[str, dict[str, Any]]]:
-    return sorted(store.all_vertices(V_MONTH).items(), key=lambda kv: kv[0])
+    from app.graph.queries import lookups
+
+    return sorted(((r["__vertex_id"], r)
+                   for r in lookups.fetch_vertex_rows(V_MONTH)),
+                  key=lambda kv: kv[0])
 
 
 def _month_totals(store: FoundationGraphStore, scope: set[str],
@@ -123,7 +141,7 @@ def dashboard_advisors(store: FoundationGraphStore, params: dict) -> list[dict]:
             "advisor_name": attrs.get("advisor_name") or "",
             "in_cohort": attrs.get("in_cohort") is True,
         }
-        for sid, attrs in sorted(store.all_vertices(V_ADVISOR).items())
+        for sid, attrs in sorted(_advisor_dir("advisor_name,in_cohort").items())
         # Round 5: the synthetic unattributed advisor is a ROW in firm
         # aggregates, never a selectable advisor — you cannot rank or open
         # an advisor that does not exist.

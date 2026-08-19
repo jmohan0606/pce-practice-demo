@@ -44,9 +44,11 @@ that the 'month_meta' GSQL query is installed; the read is refused rather
 than served from the local store.
 ```
 
-**Verify 2** — mock mode unchanged:
-`run_catalog_query('month_meta', …)` → `{'rows': [{'trading_days': 31, …}],
-'row_count': 1, 'served_by_tier': 4, 'graph_mode': 'mock'}`
+**Verify 2** — mock mode unchanged (Round 10 correction: the probe month was
+**202605** — May, 31 days — not 202604):
+`run_catalog_query('month_meta', {'month_id': '202605'})` →
+`{'rows': [{'trading_days': 31, …}], 'row_count': 1, 'served_by_tier': 4,
+'graph_mode': 'mock'}`
 
 **Task 2 / verify 3** — every envelope now carries `served_by_tier` and
 `graph_mode` (additive; the key is `graph_mode` because `mode` was already
@@ -210,8 +212,13 @@ shows only the 4 additions in docs/tigergraph/).
   at $100,000:  0 of 0 evaluated — no rows matched the population filter —
                 10 row(s) were in scope for phx_dm_pce_account_month, none
                 passed the filters
-  trigger case: 0 of 3 — 3 row(s) matched the population filter (3 row(s)
+  trigger case (non-aggregate, account grain):
+                0 of 3 — 3 row(s) matched the population filter (3 row(s)
                 evaluated) but none met the trigger (> 1000000000.0)
+  trigger case (aggregate, month grain — Round 10 correction: an aggregate
+  plan counts GROUPS, and the output says so):
+                38 row(s) matched the population filter (1 group(s)
+                evaluated) but none met the trigger (> 1000000000000.0)
   ```
 
   The preview UI already renders `empty_reason` when present, so the stage

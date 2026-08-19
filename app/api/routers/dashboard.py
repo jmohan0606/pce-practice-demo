@@ -22,15 +22,28 @@ _VALID_CLASSES = {"all", "RECURRING", "NON_RECURRING"}
 
 
 def _run(query_name: str, params: dict) -> dict:
-    """Run a catalog query and unwrap its single shaped result row."""
+    """Run a dashboard query through run_catalog_query (Round 10 task 4 — the
+    guarded path; the pce_dashboard_* entries are internal local_compute) and
+    unwrap the single shaped result row.
+
+    An empty ``rows`` list here is a TRANSPORT/CONTRACT failure, never a data
+    zero: every dashboard impl returns exactly one shaped row even over an
+    empty dataset (e.g. {"months": []}), so a legitimate zero arrives INSIDE
+    that row — the 502 says so explicitly."""
+    from app.graph.queries.catalog import run_catalog_query
+
     try:
-        result = get_graph_client().run_query(query_name, params)
+        result = run_catalog_query(query_name, params, allow_internal=True)
     except ValueError as exc:  # bad request parameters surfaced by the query
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    results = result.get("results") or []
-    if not results:
-        raise HTTPException(status_code=502, detail=f"graph query '{query_name}' returned no results")
-    return results[0]
+    rows = result.get("rows") or []
+    if not rows:
+        raise HTTPException(
+            status_code=502,
+            detail=f"graph query '{query_name}' returned no result envelope — "
+                   f"a transport/contract failure, NOT an empty dataset (an "
+                   f"empty dataset arrives as a shaped row, e.g. months: [])")
+    return rows[0]
 
 
 @router.get("/advisors")

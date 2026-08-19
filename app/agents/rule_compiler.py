@@ -481,14 +481,15 @@ def preview_compile(rule: dict, llm: Callable[[str, dict], str] | None = None,
             continue
         # run the plan for real to show WHAT COMES BACK — matched rows, not
         # just a count. Same path evaluation uses; nothing is persisted.
-        from app.graph.client import get_graph_client
+        from app.graph.queries.catalog import run_catalog_query
 
         params = _test_params()
         try:
-            result = get_graph_client().run_query(
+            result = run_catalog_query(
                 "rules_evaluate_plan",
-                {"plan": outcome["compiled"].plan, "params": params})
-            row = (result.get("results") or [{}])[0]
+                {"plan": outcome["compiled"].plan, "params": params},
+                allow_internal=True)
+            row = (result.get("rows") or [{}])[0]
         except Exception as exc:  # noqa: BLE001 — honest preview failure
             return {"outcome": "FAILED",
                     "reason": f"plan compiled but raised when run: "

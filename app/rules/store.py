@@ -652,8 +652,17 @@ class RuleStore:
             # window around the OLD threshold, so the example is cleared and
             # marked for review instead of silently becoming false.
             old_example = rule.get("worked_example")
-            # an already-cleared example keeps its review note until rewritten
-            example_note = rule.get("worked_example_review_note")
+            # an already-cleared example keeps a review note until rewritten —
+            # REGENERATED each edit so it names the CURRENT threshold (Round
+            # 10 task 6b: a note pointing at a superseded threshold misleads
+            # the reviewer it exists for).
+            example_note = None
+            if rule.get("worked_example_review_note"):
+                example_note = (
+                    f"worked example was cleared on an earlier threshold "
+                    f"change and has not been rewritten; the current "
+                    f"threshold is ${new_value:,.2f} — write an example "
+                    f"against it and review")
             if old_example and _figures(old_example) <= {float(old_value)}:
                 new_example = _rewrite(old_example)
                 example_note = None
