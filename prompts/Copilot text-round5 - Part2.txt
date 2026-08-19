@@ -131,3 +131,13 @@ After installing, verify two things and report both:
 
 Every query name the app's catalog uses has a matching installed query. List any catalog name with no installed query, and any installed query the catalog never calls.
 Run three catalog queries in real mode and compare their returned column names against what the mock path returns for the same query. Report any difference.
+-------------------------------------Tigergraph query fix
+Read docs/COPILOT_FIX_QUERIES.md in full.
+
+Report Phase 1 before changing anything. I need to know whether the 21 failures are 3 root causes repeated or 21 separate problems — that decides whether this is hours or days, and I will not accept a guess.
+
+The mock/catalog contract is authoritative. The GSQL must change to match the column names the app expects, never the reverse. Every UI component and the reporter's numeric verification depend on those exact names.
+
+A query that would need its computed logic changed to install is a finding, not a fix — report it rather than changing what it computes.
+
+Two identical failures = stop and report. Never estimate a number.
