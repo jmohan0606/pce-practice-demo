@@ -1,0 +1,57 @@
+powershell
+# window A — backend
+$env:GRAPH_CLIENT_MODE="mock"
+$env:DATA_DIR="data"
+python -m uvicorn app.api.main:app --port 8003
+
+# window B — frontend
+$env:NEXT_PUBLIC_API_BASE="http://localhost:8003"
+npm run dev -- --port 3003
+
+# window C — the load, untouched, still running
+curl -s localhost:8003/api/health
+------------------------------------------
+cmd
+REM window A — backend
+cd /d C:\Users\R757680\ds\workspace\pce-practice-demo-main
+set GRAPH_CLIENT_MODE=mock
+set DATA_DIR=data
+.venv\Scripts\python.exe -m uvicorn app.api.main:app --port 8003
+cmd
+REM window B — frontend
+cd /d C:\Users\R757680\ds\workspace\pce-practice-demo-main\frontend
+set NEXT_PUBLIC_API_BASE=http://localhost:8003
+npm run dev -- --port 3003
+
+No trailing spaces after the values — set DATA_DIR=data  would include the space and break the path. That's the classic Command Prompt trap.
+
+Verify the backend took it:
+
+cmd
+curl -s http://localhost:8003/api/health
+
+Deleting documents
+-----------------
+cmd
+curl -s http://localhost:8003/api/documents
+
+That lists them with their IDs, and you can delete directly:
+
+cmd
+curl -X DELETE http://localhost:8003/api/documents/<document_id>
+
+Check and delete chromadb
+-----------------------------------
+Check first, one command after deleting a document:
+
+cmd
+.venv\Scripts\python.exe -c "import chromadb,os; c=chromadb.PersistentClient(path=os.getenv('CHROMA_PATH','./chroma')); [print(x.name, x.count()) for x in c.list_collections()]"
+
+Run it before and after a delete. If the count drops, cleanup works and you needn't touch Chroma.
+
+If it doesn't drop, deleting the whole store is the blunt fix:
+
+cmd
+rmdir /s /q chroma
+
+

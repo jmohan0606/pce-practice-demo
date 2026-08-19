@@ -1,0 +1,207 @@
+Re-extract the account-scoped families. The reused extracts are stale: April transactions reference 2,803,758 accounts but only 2,022,076 were extracted — 943,439 missing in April alone, which is why the build dropped 4.87M txn_for_account edges.
+
+The cause: those files came from the old trade_dt extraction with the 5,746 cohort. Under proc_dt with 5,455 advisors, scoped_acct resolves to a different account set.
+
+1 · Move the stale files aside:
+
+powershell
+Move-Item data\real\_raw\raw_account_b*.csv       data\real\_raw_old_trade_dt\
+Move-Item data\real\_raw\raw_acct_eci_rel_b*.csv  data\real\_raw_old_trade_dt\
+Move-Item data\real\_raw\raw_acct_eci_map_b*.csv  data\real\_raw_old_trade_dt\
+Move-Item data\real\_raw\raw_balance_*.csv        data\real\_raw_old_trade_dt\
+
+2 · Remove their checkpoint entries — the 12 bucket chunks and 3 balance chunks — keeping everything else, especially raw_adv_flows and all raw_txn_*.
+
+3 · Dry-run first. Only those 15 chunks should be pending. If any raw_txn_* shows pending, stop and report — the checkpoint edit went wrong and you'd re-extract 84 chunks unnecessarily.
+
+4 · Extract, then rebuild with --max-memory-mb 8192.
+
+Report the new txn_for_account and am_for_account dropped counts. They should fall to near zero.
+-----------------------------------------------------------------------------------------------------------------------
+Start the graph load. The build is complete and verified: 40,047,855 vertex rows and 104,273,975 edge rows across 49 files.
+
+powershell
+uv run python scripts\load_real_data.py --data-dir data\real --max-parallel 3
+
+Expect about 3 hours. Two phases, enforced: all 18 vertex entities, then all 31 edge entities. A phase-2 entity refusing to start while phase 1 is incomplete is correct behaviour, not an error — rerun to finish phase 1 first.
+
+If interrupted, rerun the identical command. Checkpoints skip completed entities. Never pass --fresh — it discards all completed work.
+
+Report at the end of phase 1 (elapsed time and rows loaded), then at the end of phase 2. Do not stop to ask in between.
+
+When the load finishes, run reconciliation and paste the complete output:
+
+powershell
+uv run python scripts\reconcile_load.py --raw data\real\_raw --data-dir data\real
+
+Two identical failures = stop and report. Never a third attempt. Never estimate a number.
+--------------------------------------------------------------------------------------
+Read docs/COPILOT_FIX_CONNECTIVITY_AND_LOAD.md in full before running anything.
+
+The load failed completely — all 18 vertex entities were served by the local fallback store instead of TigerGraph. The root cause is already identified in Part A: the wrong environment variable family is set. app/graph/tiered_client.py reads TG_HOST first and only falls back to TIGERGRAPH_HOST, and the TG_* family is the only one that carries ports and credentials. Do not re-diagnose; verify and fix.
+
+Do not tune memory. The 24.6 GB was rows buffering for a destination that never accepted them — a symptom, not the cause.
+
+Do not start the full load until A3 and A4 pass: the client class must be the TigerGraph client, and loading month alone must show 3 rows in GSQL. A 144M-row load on an unproven connection is what the last attempt cost.
+
+Also fix the blank advisor_sid on row 1 of phx_dm_pce_advisor.csv (Part C) — it should be the literal __UNATTRIBUTED__. Fix the value; never delete the row.
+
+Run the load from a standalone PowerShell window, not the IntelliJ terminal — the IDE hung on this output volume once already.
+---------------------------------------------------------------------------------------
+Read docs/COPILOT_DIAGNOSE_LOAD_SPEED.md in full and work through all six sections.
+
+This is analysis only. Do not change any code. Do not stop or restart the load — it can keep running while you investigate.
+
+The problem: measure_ingest_rate.py measured 7,706 rows/sec, but the real load is running at roughly 133 rows/sec — 58× slower. At that rate 144M rows would take 300 hours instead of 3.
+
+Three things are already ruled out and must not be re-checked: batch_size is 5000 in the manifest, _flush_writes() makes one bulk adapter call per flush rather than one per row, and connectivity is genuinely real (tier 2 pytigergraph, no fallback).
+
+Section 5 is the most important — determine exactly how measure_ingest_rate.py differed from the real load path, especially whether it bypassed IngestionService and its per-row hash checkpointing. If it did, the measurement was honest but unrepresentative.
+
+Report using the exact template at the end of the document, and finish with one sentence naming the bottleneck.
+
+-----------------------------loading job assessment
+Read docs/COPILOT_ASSESS_LOADING_JOBS.md in full and work through all five sections.
+
+Feasibility analysis only. Do not change the ingestion design. Do not stop the running load unless a test requires it — say so first if it does.
+
+The key constraint: we cannot place files on the TigerGraph server by hand. Everything must be code-driven, including getting the CSVs to where the server can read them. Section 2 decides whether this is viable at all.
+
+Section 4 must be measured, not estimated. If the speedup is under 5×, the checkpoint fix in section 5 is the better answer.
+
+---------------------------loading job building
+Read docs/COPILOT_BUILD_BULK_LOADER.md in full, then execute it.
+
+This is built on your own measurements — runLoadingJobWithFile proven working, 56,018 rows/sec against 2,058 on the current path. Do not re-investigate any of it, and do not retry the two transfer paths that already refused.
+
+The loading jobs already exist and are verified current — I checked all 18 vertex jobs against their CSV headers and the edge job against the manifest. Every one matches. Do not generate, rewrite or edit any job file. Install them and build the runner.
+
+Start at step 0: stop the running load and report what it got in.
+
+Report step 1b before running anything: whether the single edge job can be driven per edge type via fileTag.
+
+Step 3's progress file matters as much as the loader — I need to read live progress from a second window during the run.
+
+Rejected rows stop the phase. A loading job that rejects rows still reports success, and silently rejected rows produce a graph that looks loaded and computes wrong figures.
+-----------------------------loading job building fix
+Fix the header declaration. On this TigerGraph version, DEFINE FILENAME f; with USING HEADER="true" and $"column" references fails the semantic check. Change each job to declare its header explicitly:
+
+DEFINE HEADER h FOR FILENAME f = "col1","col2",...;
+
+Take the column list from each job's existing $"..." references — they already match the CSV headers exactly, verified. Keep named references. Do not switch to positional $0.
+
+Prove it on load_month.gsql first — install it, run it with runLoadingJobWithFile, confirm 3 rows. Only then apply the same change to the other 18.
+
+---------------------------------------+1 issue fix
+The universal +1 is a header row loaded as data. I queried the graph and found vertices with v_id: "to_id" and month_id: "to_id" — the literal CSV header text became a vertex. This is present in every entity, which is why reconciliation reported +1 across all 49.
+
+USING HEADER="true" is not taking effect. When you added DEFINE HEADER h FOR FILENAME f = ... to fix the semantic check, the header declaration and the USING HEADER="true" clause together are no longer skipping line 1.
+
+Do this:
+
+1 · Fix one job and prove it. Take load_month.gsql, work out the correct combination — most likely dropping the now-redundant USING HEADER="true", since the explicit DEFINE HEADER already declares the columns. Delete the existing month vertices, reload, and confirm exactly 3, with no vertex whose id is a column name.
+
+2 · Apply the same change to the other 18 job files.
+
+3 · Delete the phantom rows already loaded — every vertex and edge whose primary id equals a column name. Report the count removed per entity. Do not reload the data — apart from one phantom row each, the entities are correct.
+
+4 · Re-run reconciliation. Every +1 should disappear. The four genuine shortfalls will remain — opportunity −11,096, account_eci_map −344, opportunity_by_advisor −120, map_to_household −23. Those are known and deferred; do not attempt to fix them.
+
+Report the count deleted per entity and the reconciliation output.
+
+Two identical failures = stop and report. Never estimate a number.
+
+Report using the exact template at the end, ending with a one-paragraph recommendation.
+
+Never estimate a number — every figure comes from a command that ran. If a file or symbol is not where expected, report it rather than searching elsewhere.
+
+Two identical failures = stop and report. Never a third attempt. Never estimate a number.
+
+-----------------------------------Tigergraph gsql issue
+Install the 52 GSQL queries in docs/tigergraph/queries/. They exist but are not installed, which is why run_query falls through to tier 4 and the app shows mock data despite GRAPH_CLIENT_MODE=real.
+
+gsql CLI is unavailable — use the same pyTigerGraph/GSQL-over-REST path that worked for the loading jobs.
+
+Create each query, then INSTALL QUERY — creation alone is not enough; installation compiles them and is the step that makes runInstalledQuery work.
+Report installed / failed counts, and for any failure the exact error and the query name. Do not edit a query to make it install — a query needing edits means it and the schema have diverged, and that is a finding.
+Prove one end to end: run_query('product_transition_table', {'from_month':'202604','to_month':'202605'}) returning mode: pytigergraph with real rows, not mode: foundation.
+
+Installing 52 queries may take a while — INSTALL QUERY ALL in one call is usually far faster than one at a time. Report which you used and the elapsed time.
+After installing, verify two things and report both:
+
+Every query name the app's catalog uses has a matching installed query. List any catalog name with no installed query, and any installed query the catalog never calls.
+Run three catalog queries in real mode and compare their returned column names against what the mock path returns for the same query. Report any difference.
+-------------------------------------Tigergraph query fix
+Read docs/COPILOT_FIX_QUERIES.md in full.
+
+Report Phase 1 before changing anything. I need to know whether the 21 failures are 3 root causes repeated or 21 separate problems — that decides whether this is hours or days, and I will not accept a guess.
+
+The mock/catalog contract is authoritative. The GSQL must change to match the column names the app expects, never the reverse. Every UI component and the reporter's numeric verification depend on those exact names.
+
+A query that would need its computed logic changed to install is a finding, not a fix — report it rather than changing what it computes.
+
+Two identical failures = stop and report. Never estimate a number.
+
+-----------------------TigerGraph fix round 2
+
+phase 2 correct, give one consolidated prompt if do something before phase 2
+
+Before starting Phase 2, correct the scope.
+
+Your Phase 1 found 46 catalog names. The app actually registers 57 via @mock_query decorators in app/graph/queries/. Confirm that count yourself, then report the corrected totals.
+
+Five have no GSQL file at all:
+
+pce_dashboard_advisors, pce_dashboard_months, pce_dashboard_product_contribution, pce_dashboard_transitions, rules_evaluate_plan
+
+The first four drive the dashboard — the month selector, advisor list, transition list and product contribution table. The fifth drives rule evaluation. Without them the dashboard cannot render and rules cannot evaluate, so they are in scope and must be written from their Python implementations.
+
+Report the corrected numbers before writing anything: how many catalog names in total, how many have a file, how many need writing from scratch, how many fail to install, how many install but return the wrong columns.
+
+Then, for Phase 2, the rule that governs every query:
+
+The Python implementation is the specification. Each @mock_query("name") function defines both the business logic and the exact output columns. Translate it — do not reinterpret it.
+
+Four things must carry across exactly, or the figures will be wrong while looking right:
+
+Reason-code filter — FIRM_REASON_FILTER excludes 9X, XX; ADVISOR_REASON_FILTER also excludes 9R, 98, 99, 9H. Use whichever the Python function uses.
+Credited column — firm_credited_amt or advisor_credited_amt, matching the Python. Round 5 audited all of them and recorded the choice per query in docs/ROUND_5_COMPLETE.md.
+__UNATTRIBUTED__ — included in firm-scope aggregates, excluded from advisor rankings, peer comparisons and exception rates. Match the Python.
+Product resolution — the 26 groups with sub-code splits: ELIS→EQ/OP, LEND→SBL/MGN, PCS→SP/PBR.
+If a Python function does something GSQL cannot express, report it — do not approximate. An approximation produces a number that looks right and reconciles to nothing, which is the one outcome this project cannot accept.
+
+Fix in the 7 root-cause groups you identified, prove one query per group returns mode: pytigergraph with the correct columns before moving to the next, and stop after two identical failures on any query.
+
+------------------------tigergraph fix phase 2
+Numbers confirmed. Proceed to Phase 2.
+
+Work in this order — the dashboard is what matters most:
+
+Group 1 first: the 5 with no file. pce_dashboard_months, pce_dashboard_transitions, pce_dashboard_advisors, pce_dashboard_product_contribution, rules_evaluate_plan. Without these the dashboard cannot render at all, so they gate everything else.
+
+Then the two big root causes — the 10 with mixed v1/v2 syntax and the 4 with invalid reverse_* edge types. That's 14 of the 21 failures in two mechanical passes. For the edge types, read the actual reverse edge name from the WITH REVERSE_EDGE="..." clause in docs/tigergraph/02_edges.gsql — it is not reverse_ prefixed.
+
+Then the 5 remaining one-off failures.
+
+Then the 29 column mismatches, which are PRINT-clause rewrites rather than logic changes.
+
+After each group, install it and prove one query returns mode: pytigergraph with the exact mock column names and rows greater than zero. Do not move to the next group until that passes.
+
+Report after each group: how many fixed, how many still failing, and the proof output. Stop after two identical failures on any single query.
+
+The Python @mock_query implementation remains the specification — translate, never reinterpret. If GSQL cannot express what a Python function does, report it rather than approximating.
+
+---------------------TigerGraph fix part 3
+On rules_evaluate_plan — your finding is correct and it is not a translation problem.
+
+It takes a plan dict and interprets it at runtime via app/rules/evaluator.evaluate_plan. GSQL queries are compiled with fixed logic and cannot accept an arbitrary plan. Do not attempt to translate it, and do not approximate it.
+
+Record it in DECISIONS.md as: the rule evaluator interprets plans in Python and reads data through the other installed catalog queries; rules_evaluate_plan is not a GSQL query and never will be.
+
+Then verify one thing — that evaluate_plan actually reaches its data through other catalog queries rather than the local store directly. If it reads the foundation store, rule evaluation will silently use mock data in real mode, and that is a real bug to report.
+
+On pce_dashboard_transitions — it is the mixed v1/v2 syntax cause, which is your largest group. Fold it into group 2 and fix it with the other 10.
+
+Then continue in order: group 2 (10 mixed-syntax), group 3 (4 invalid edge types — read the real reverse edge name from the WITH REVERSE_EDGE="..." clause in docs/tigergraph/02_edges.gsql), then the 5 one-offs, then the 29 column mismatches.
+
+Prove one query per group returns mode: pytigergraph with the exact mock column names before moving on. Report after each group.

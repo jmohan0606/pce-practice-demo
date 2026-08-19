@@ -52,3 +52,107 @@ Do not retry flows while transactions are still running.
 Continue to completion. Report at 40, 60 and 87 chunks with completed count, elapsed time and any failure. Do not stop to ask between milestones. Refresh the token and rerun the same command whenever it expires.
 
 Once all 87 transaction chunks are done, retry flows as-is for one month — the merge join may now complete within 900s. Report the result either way.
+
+---------------------------round 5
+Fix the rpg cast. rpg is an integer column, so COALESCE(d.rpg,'') cannot coerce an empty string into it. It must be COALESCE(d.rpg::text,'') AS rpg — the graph column is a STRING.
+
+This was fixed once before and regressed, so find where the executing SQL actually comes from:
+
+powershell
+Select-String -Path scripts\generate_extraction_sql.py -Pattern "COALESCE\(d\.rpg"
+Get-ChildItem docs\data\extraction\raw_revenue_transaction.sql -ErrorAction SilentlyContinue
+Get-ChildItem -Recurse -Filter "__pycache__" -Directory | Remove-Item -Recurse -Force
+
+Delete any stale generated .sql file and clear __pycache__. Then prove the fix is live in a fresh process before running any chunk:
+
+powershell
+uv run python -c "
+from scripts.generate_extraction_sql import templates
+import re
+s = templates()['raw_revenue_transaction.sql']
+print([l.strip() for l in s.splitlines() if 'rpg' in l][:3])
+"
+
+The rpg line must show ::text. Do not run a chunk until that output confirms it.
+
+While you are there, check every other COALESCE(col,'') in the transaction template against the column's actual type in information_schema.columns, and report any others that are non-text. A second type error would cost another failed chunk.
+Then run the extraction and report the first 5 chunks with wall time and row counts.
+
+----------------------------------
+Go-ahead given. Proceed from step 9 of the runbook — build, load, reconcile, smoke test.
+
+The V-2 flows failure is resolved and not a data problem: the two per-month flow files exist and were accepted; only the bookkeeping key was stale.
+
+Two things to report as you go:
+
+Step 9 — the dropped-edge counts. Small drops are expected; large ones on account_in_household or txn_for_account mean the reused account extracts are stale, in which case stop and report. A substantial nnm_in_month drop is expected and correct.
+Step 11 — the full reconciliation output.
+
+Load takes about 3 hours. Never --fresh; rerun the identical command if interrupted. Report at the end of each step, not in between.
+---------------------------
+uv run python -c "
+import csv, glob
+csv.field_size_limit(10**9)
+acc=set()
+for f in glob.glob('data/real/_raw/raw_account_b*.csv'):
+    for r in csv.DictReader(open(f,newline='',encoding='utf-8-sig')):
+        acc.add(r['account_no'].lstrip('0').strip())
+txn=set()
+for f in glob.glob('data/real/_raw/raw_txn_202604_b*.csv'):
+    for r in csv.DictReader(open(f,newline='',encoding='utf-8-sig')):
+        txn.add(r['account_no'].lstrip('0').strip())
+print('accounts in extract:', len(acc))
+print('accounts in Apr txns:', len(txn))
+print('missing:', len(txn-acc))
+"
+
+---------------------------------
+uv run python -c "
+import csv, glob
+csv.field_size_limit(10**9)
+f=a=0.0
+for p in glob.glob('data/real/vertices/phx_dm_pce_revenue_transaction.csv'):
+    for r in csv.DictReader(open(p,newline='',encoding='utf-8-sig')):
+        if r['month_id']=='202604':
+            f+=float(r.get('firm_credited_amt') or 0)
+            a+=float(r.get('credited_amt') or 0)
+print(f'April firm:    \${f:,.2f}')
+print(f'April advisor: \${a:,.2f}')
+"
+-----------------------------------
+uv run python -c "
+import csv, glob
+csv.field_size_limit(10**9)
+tot=0.0; n=0
+for f in glob.glob('data/real/_raw/raw_txn_202604_b*.csv'):
+    for r in csv.DictReader(open(f,newline='',encoding='utf-8-sig')):
+        rc=(r.get('reason_cd') or '').strip()
+        if rc not in ('9X','XX'):
+            tot+=float(r.get('post_split_credited_amt') or 0); n+=1
+print(f'raw April firm-filter: \${tot:,.2f} over {n:,} rows')
+"
+--------------------------------------
+WITH cohort_adv AS (
+  SELECT DISTINCT r.standard_id AS advisor_sid
+  FROM   pcr.fpic_prm_rr_tb r
+  INNER JOIN pcr.fpic_employee_tb e ON r.standard_id = e.em_standard_id
+  WHERE  r.prm_ofc_no = '731'
+    AND  r.cwm_comply_posn_cd IN ('D','I','')
+    AND  r.dist_channel_typ NOT IN ('JPMPAP','JPMPAD','JPMIDTL','JPMIDFA','JPMPAPTL')
+    AND  e.job_cd IN ('HK0058','HK0059','HK0176','HK0183','HK0184','HK0185',
+                      'HK0186','HK0187','HK0188','HK0280','HK0286','HK0289')
+    AND  e.em_status_cd IN ('A','L','T')
+)
+SELECT sum(d.post_split_credited_amt) AS excluded_by_cohort
+FROM   pcr.fpic_daily_trade_details_tb_prod d
+WHERE  d.proc_dt >= DATE '2026-04-01' AND d.proc_dt < DATE '2026-05-01'
+  AND  (d.reason_cd IS NULL OR trim(d.reason_cd) NOT IN ('9X','XX'))
+  AND  d.advisor_sid IS NOT NULL
+  AND  d.advisor_sid NOT IN (SELECT advisor_sid FROM cohort_adv);
+---------------------------
+uv run python -c "
+import json
+m=json.load(open('data/real/manifest.json'))
+for f in m['files']:
+    if 'opportunity' in f['target']: print(f['target'], f['expected_rows'])
+"

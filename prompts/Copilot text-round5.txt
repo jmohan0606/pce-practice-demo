@@ -1,0 +1,16 @@
+Read docs/COPILOT_RUNBOOK_ROUND5.md in full before running anything. It is the complete procedure for re-extracting transactions and loading the graph.
+
+Read CONNECTION_DETAILS.md in the repo root for all connection details. It is the only source — do not infer a host, port or database name from anywhere else. Run the PCL login in its section 1 first, and again after every token expiry.
+
+Do not write new extraction or load logic. The scripts exist and are tested — run them exactly as documented.
+
+Four rules that matter most:
+
+Two identical failures = stop and report. Never a third attempt.
+Extraction is sequential. Do not parallelise it — the checkpoint fingerprint and non-atomic writes make it unsafe, and the reasons are in step 5.
+Never pass --restart or --fresh. Both discard completed work.
+All paths are repo-relative. Never search the C: drive. Report a missing path rather than looking elsewhere.
+
+Stop at step 8, the review gate. Send me the complete validation output and wait for an explicit go-ahead before building or loading.
+
+Report only at the points the runbook names — 28, 56 and 84 chunks — not when something seems interesting. Never estimate a number; every figure comes from a command that ran.
