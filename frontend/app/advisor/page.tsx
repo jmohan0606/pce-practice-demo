@@ -60,6 +60,13 @@ function AdvisorPageInner() {
   const [advisors, setAdvisors] = useState<AdvisorListRow[]>([]);
   const [sid, setSid] = useState<string>(urlSid);
   const [search, setSearch] = useState("");
+  // Round 7 task 10 — the cascading filter (client req of 17 Aug):
+  // Job Code / Display Name → Work State → Work City → Advisor.
+  // "" = all; "__BLANK__" selects advisors whose value is blank (a blank stays
+  // blank — never invented, and never a reason to hide an advisor).
+  const [jobFilter, setJobFilter] = useState("");
+  const [stateFilter, setStateFilter] = useState("");
+  const [cityFilter, setCityFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -86,17 +93,49 @@ function AdvisorPageInner() {
     [router],
   );
 
-  // 6.1 — search filters by name, SID, or rep code
+  const matchesLevel = (value: string | undefined, filter: string) =>
+    !filter || (filter === "__BLANK__" ? !(value || "") : (value || "") === filter);
+
+  // Each cascade level's options derive from the advisors the EARLIER levels
+  // leave — each level narrows the next. A blank value gets an explicit
+  // "(blank)" option so those advisors stay reachable, never hidden.
+  const jobOptions = useMemo(() => {
+    const byCode = new Map<string, string>();
+    for (const a of advisors) byCode.set(a.job_code || "", a.job_display_name || "");
+    return [...byCode.entries()].sort((x, y) => (x[1] || x[0]).localeCompare(y[1] || y[0]));
+  }, [advisors]);
+  const afterJob = useMemo(
+    () => advisors.filter((a) => matchesLevel(a.job_code, jobFilter)),
+    [advisors, jobFilter],
+  );
+  const stateOptions = useMemo(
+    () => [...new Set(afterJob.map((a) => a.work_state || ""))].sort(),
+    [afterJob],
+  );
+  const afterState = useMemo(
+    () => afterJob.filter((a) => matchesLevel(a.work_state, stateFilter)),
+    [afterJob, stateFilter],
+  );
+  const cityOptions = useMemo(
+    () => [...new Set(afterState.map((a) => a.work_city || ""))].sort(),
+    [afterState],
+  );
+  const afterCity = useMemo(
+    () => afterState.filter((a) => matchesLevel(a.work_city, cityFilter)),
+    [afterState, cityFilter],
+  );
+
+  // 6.1 — search filters by name, SID, or rep code (on top of the cascade)
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return advisors;
-    return advisors.filter(
+    if (!q) return afterCity;
+    return afterCity.filter(
       (a) =>
         a.advisor_name.toLowerCase().includes(q) ||
         a.advisor_sid.toLowerCase().includes(q) ||
         a.rep_code.toLowerCase().includes(q),
     );
-  }, [advisors, search]);
+  }, [afterCity, search]);
 
   const advisor = advisors.find((a) => a.advisor_sid === sid) ?? null;
 
@@ -106,6 +145,57 @@ function AdvisorPageInner() {
         title="iPerform Advisor AI Insights"
         meta="One advisor's transitions, drivers, peer position and coaching — every figure a stored query result"
       >
+        {/* Round 7 task 10 — Job Code / Display Name → Work State → Work City →
+            Advisor. Each level narrows the next; changing a level resets the
+            levels below it. Display names come from the client's mapping
+            (job_display_name); an unmapped code shows as the raw code. */}
+        <select
+          value={jobFilter}
+          onChange={(e) => {
+            setJobFilter(e.target.value);
+            setStateFilter("");
+            setCityFilter("");
+          }}
+          aria-label="Job code / display name"
+        >
+          <option value="">All job codes</option>
+          {jobOptions.map(([code, name]) => (
+            <option key={code || "__BLANK__"} value={code || "__BLANK__"}>
+              {code === ""
+                ? "(blank job code)"
+                : name && name !== code
+                  ? `${name} (${code})`
+                  : code}
+            </option>
+          ))}
+        </select>
+        <select
+          value={stateFilter}
+          onChange={(e) => {
+            setStateFilter(e.target.value);
+            setCityFilter("");
+          }}
+          aria-label="Work state"
+        >
+          <option value="">All states</option>
+          {stateOptions.map((s) => (
+            <option key={s || "__BLANK__"} value={s || "__BLANK__"}>
+              {s === "" ? "(blank state)" : s}
+            </option>
+          ))}
+        </select>
+        <select
+          value={cityFilter}
+          onChange={(e) => setCityFilter(e.target.value)}
+          aria-label="Work city"
+        >
+          <option value="">All cities</option>
+          {cityOptions.map((c) => (
+            <option key={c || "__BLANK__"} value={c || "__BLANK__"}>
+              {c === "" ? "(blank city)" : c}
+            </option>
+          ))}
+        </select>
         <input
           className="filter"
           type="text"

@@ -153,6 +153,8 @@ def summary() -> dict:
     per_advisor: dict[str, list[dict]] = {}
     extraction_turns: list[dict] = []
     audit_turns: list[dict] = []
+    compile_turns: list[dict] = []
+    compile_run_count = 0
     completed_costs: list[float] = []
     completed_walls: list[int] = []
     for run_id, turns in turn_logs.items():
@@ -166,6 +168,11 @@ def summary() -> dict:
             extraction_turns.extend(turns)
         elif run_id.startswith("conflict_audit|"):
             audit_turns.extend(turns)
+        elif run_id.startswith(("rule_compile|", "rule_preview|")):
+            # Round 7 task 9 — measured compile costs feed the Preview
+            # button's honest estimate
+            compile_turns.extend(turns)
+            compile_run_count += 1
     history = len(completed_costs)
     avg_cost = (sum(completed_costs) / history) if history else None
     avg_wall_ms = (sum(completed_walls) / history) if history else None
@@ -181,6 +188,13 @@ def summary() -> dict:
                         for sid, turns in sorted(per_advisor.items())],
         "document_extraction": _totals(extraction_turns),
         "conflict_audit": _totals(audit_turns),
+        "rule_compile": {
+            **_totals(compile_turns),
+            "run_count": compile_run_count,
+            "avg_cost_usd": (round(_totals(compile_turns)["est_cost_usd"]
+                                   / compile_run_count, 4)
+                             if compile_run_count else None),
+        },
         "full_refresh": {
             "run_count": refresh_runs,
             "est_cost_usd": (round(avg_cost * refresh_runs, 4)

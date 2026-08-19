@@ -58,11 +58,20 @@ def _num(v) -> float:
 
 @router.get("/list")
 def advisor_list() -> dict:
+    # Round 7 task 10 — the cascading filter's data (client req of 17 Aug):
+    # job code + the client-mapping display name (job_display_name — NOT
+    # em_pay_title_txt, which is blank for four codes), work state, work city.
+    # A blank stays blank — never invented, never a reason to hide an advisor.
     advisors = [
         {"advisor_sid": sid,
          "advisor_name": str(a.get("advisor_name") or ""),
          "rep_code": str(a.get("rep_code") or ""),
-         "in_cohort": a.get("in_cohort") is True}
+         "in_cohort": a.get("in_cohort") is True,
+         "job_code": str(a.get("job_code") or ""),
+         "job_display_name": str(a.get("job_display_name") or ""),
+         "work_state": str(a.get("work_state") or ""),
+         "work_city": str(a.get("work_city") or ""),
+         "is_synthetic": a.get("is_synthetic") is True}
         for sid, a in sorted(_store().all_vertices("phx_dm_pce_advisor").items())
     ]
     return {"advisors": advisors,

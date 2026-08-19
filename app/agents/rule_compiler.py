@@ -187,6 +187,51 @@ def _resolve_llm(rule_key: str) -> Callable[[str, dict], str]:
     return wrap_llm(client, f"rule_compile|{rule_key}", "rule_compiler")
 
 
+# Round 7 task 6 — advisor attributes: a plan filtering on one of these is
+# advisor-scoped whatever the extractor said. `advisor_sid` counts only with a
+# concrete value — a filter whose value is the ":advisor_sid" evaluation
+# parameter selects "the advisor being evaluated" (scope plumbing on nearly
+# every advisor-evaluable plan), not a fixed subpopulation.
+_ADVISOR_SCOPE_FIELDS = ("job_code", "advisor_plan", "em_status_cd", "advisor_sid")
+
+
+def detect_scope_contradiction(rule: dict, plan: dict,
+                               plan_by_scope: dict | None = None) -> dict | None:
+    """If the compiled plan filters on an advisor attribute and the rule's
+    applies_to is not ADVISOR, return the challenge record — the ORIGINAL and
+    the PROPOSED scope, never applied here. A scope silently changed is a rule
+    that evaluates against a different population, which changes every figure
+    it produces; a human confirms, exactly as with severity and materiality."""
+    fields: set[str] = set()
+    plans = [plan] + [p for p in (plan_by_scope or {}).values() if isinstance(p, dict)]
+    for p in plans:
+        for f in p.get("filters") or []:
+            if not isinstance(f, dict):
+                continue
+            name = str(f.get("field") or "")
+            if name not in _ADVISOR_SCOPE_FIELDS:
+                continue
+            if name == "advisor_sid" and f.get("value") == ":advisor_sid":
+                continue  # the evaluation parameter, not a subpopulation
+            fields.add(name)
+    original = str(rule.get("applies_to") or "ALL")
+    if not fields or original == "ADVISOR":
+        return None
+    from datetime import datetime, timezone
+
+    return {
+        "original_applies_to": original,
+        "proposed_applies_to": "ADVISOR",
+        "fields": sorted(fields),
+        "reason": (f"the compiled plan filters on advisor attribute(s) "
+                   f"{', '.join(sorted(fields))} — the rule evaluates an "
+                   f"advisor subpopulation, so it is advisor-scoped whatever "
+                   f"the extractor proposed ({original})"),
+        "proposed_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "status": "PROPOSED",
+    }
+
+
 def compile_rule_with_agent(rule_key: str,
                             llm: Callable[[str, dict], str] | None = None,
                             note: str = "", recompile: bool = False) -> dict:
@@ -328,7 +373,17 @@ def _compile_rule_with_agent(rule_key: str,
                 plan_by_scope=plan_by_scope if isinstance(plan_by_scope, dict) else None,
                 driver_definition=(str(driver_definition).strip()
                                    if driver_definition else None))
-            store.annotate(rule_key, picked_attempt_no=attempt["attempt_no"])
+            # Round 7 task 6 — the compiler CHALLENGES a wrong scope, never
+            # silently overwrites it: the proposal is recorded on the rule for
+            # a human to confirm; a clean compile clears any stale challenge.
+            challenge = detect_scope_contradiction(
+                store.get(rule_key) or rule, decoded,
+                plan_by_scope if isinstance(plan_by_scope, dict) else None)
+            if challenge is not None:
+                _log.info("rule %s: scope contradiction — %s", rule_key,
+                          challenge["reason"])
+            store.annotate(rule_key, picked_attempt_no=attempt["attempt_no"],
+                           scope_challenge=challenge)
             return store.get(rule_key) or compiled
         repairs += 1
         last_error = scope_error or outcome["error"]
@@ -348,3 +403,111 @@ def _compile_rule_with_agent(rule_key: str,
     if keep_current:
         return store.get(rule_key)
     return store.record_compile_failure(rule_key, last_error)
+
+
+# --------------------------------------------------------------------------- preview (Round 7)
+
+def preview_compile(rule: dict, llm: Callable[[str, dict], str] | None = None,
+                    preview_key: str = "manual") -> dict:
+    """Round 7 task 9 — Preview Example: compile a statement and RUN the plan
+    against current data, persisting NOTHING. No rule, no version, no rule_key,
+    no compile attempt is written anywhere; repeated previews leave the rule
+    set untouched. The LLM calls are still turn-logged (cost is real and must
+    stay visible) under ``rule_preview|<key>``.
+
+    Returns one of:
+      {"outcome": "COMPILED", "plan", "explanation", "matched_count",
+       "evaluated_rows", "empty_reason"?, "sample": [{key, value}...],
+       "params_used", "scope_challenge"?}
+      {"outcome": "UNSUPPORTED", "reason", "explanation"?}
+      {"outcome": "FAILED", "reason"}
+    """
+    from app.rules.compiler import _test_params
+
+    if llm is None:
+        from app.llm.usage import wrap_llm
+
+        client = build_role_llm("rule_compiler")
+        if client is None:
+            from app.llm.client import get_llm_client
+
+            client = get_llm_client()
+        llm = wrap_llm(client, f"rule_preview|{preview_key}", "rule_compiler")
+
+    system_prompt = build_system_prompt()
+    transcript = [build_rule_prompt(rule)]
+    max_searches, max_repairs = _budgets()
+    searches = 0
+    repairs = 0
+    last_error = "the compiler produced no usable plan"
+
+    for _ in range(1 + max_searches + max_repairs):
+        raw = llm("\n\n".join(transcript), {"system_prompt": system_prompt})
+        decoded = _parse_json(raw)
+        if isinstance(decoded, str):
+            repairs += 1
+            last_error = decoded
+            if repairs > max_repairs:
+                break
+            transcript.append(f"YOUR RESPONSE WAS REJECTED: {decoded}. "
+                              f"Reply with one JSON object only.")
+            continue
+        if decoded.get("action") == "search":
+            if searches >= max_searches:
+                transcript.append("SEARCH BUDGET EXHAUSTED — emit your final plan JSON now.")
+                continue
+            searches += 1
+            rows = _search(str(decoded.get("query") or ""), int(decoded.get("top_k") or 5))
+            transcript.append("SEARCH RESULTS:\n" + json.dumps(rows, default=str)
+                              + "\n\nNow emit your final plan JSON (or one more search).")
+            continue
+        unsupported = decoded.get("unsupported")
+        if unsupported:
+            return {"outcome": "UNSUPPORTED", "reason": str(unsupported),
+                    "explanation": decoded.get("explanation")}
+        decoded.pop("driver_definition", None)
+        plan_by_scope = decoded.pop("plan_by_scope", None)
+        outcome = validate_plan(rule.get("rule_code") or "PREVIEW",
+                                rule.get("grain") or "account", decoded)
+        if not outcome["ok"]:
+            repairs += 1
+            last_error = outcome["error"]
+            if repairs > max_repairs:
+                break
+            transcript.append(
+                f"PLAN REJECTED by validation: {last_error}\n"
+                f"Fix the plan and emit the corrected JSON (or set \"unsupported\" "
+                f"if the schema truly cannot express the rule).")
+            continue
+        # run the plan for real to show WHAT COMES BACK — matched rows, not
+        # just a count. Same path evaluation uses; nothing is persisted.
+        from app.graph.client import get_graph_client
+
+        params = _test_params()
+        try:
+            result = get_graph_client().run_query(
+                "rules_evaluate_plan",
+                {"plan": outcome["compiled"].plan, "params": params})
+            row = (result.get("results") or [{}])[0]
+        except Exception as exc:  # noqa: BLE001 — honest preview failure
+            return {"outcome": "FAILED",
+                    "reason": f"plan compiled but raised when run: "
+                              f"{type(exc).__name__}: {exc}"}
+        matched = row.get("matched") or []
+        return {
+            "outcome": "COMPILED",
+            "plan": decoded,
+            "plan_by_scope": plan_by_scope if isinstance(plan_by_scope, dict) else None,
+            "explanation": str(decoded.get("explanation") or ""),
+            "matched_count": row.get("matched_count", 0),
+            "evaluated_rows": row.get("evaluated_rows", 0),
+            "empty_reason": row.get("empty_reason"),
+            "sample": matched[:5],
+            "params_used": {k: params.get(k)
+                            for k in (decoded.get("params") or [])} or
+                           {"month": params.get("month")},
+            "scope_challenge": detect_scope_contradiction(
+                rule, decoded,
+                plan_by_scope if isinstance(plan_by_scope, dict) else None),
+        }
+    return {"outcome": "FAILED", "reason": last_error}

@@ -102,8 +102,11 @@ export default function ExtractionProgress({
     return (
       <div style={{ marginTop: 6, fontSize: 12.5, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
         <b>
+          {/* Round 7 task 7 — the counter is the CHUNK WINDOW, not a rule count */}
           Extracting rules
-          {job.items_total ? ` — ${job.items_done ?? 0} of ${job.items_total}` : "…"}
+          {job.items_total
+            ? ` — Processing window ${Math.min((job.items_done ?? 0) + 1, job.items_total)} of ${job.items_total}`
+            : "…"}
         </b>
         {stageLine}
       </div>
@@ -145,5 +148,16 @@ export default function ExtractionProgress({
     );
   }
 
-  return null; // COMPLETE — the counts line on the row is the report
+  if (job.status === "COMPLETE" && job.funnel) {
+    // Round 7 task 7 — the funnel: candidates → after dedup → selected
+    const f = job.funnel;
+    return (
+      <div style={{ marginTop: 6, fontSize: 12.5, color: "var(--slate)" }} title={f.ranking}>
+        Last extraction: extracted {f.candidates} candidate{f.candidates === 1 ? "" : "s"} →{" "}
+        {f.after_dedup} after dedup → {f.selected} selected (limit {f.limit})
+        {f.unparseable_stubs ? ` · ${f.unparseable_stubs} unparseable window(s) kept for review` : ""}
+      </div>
+    );
+  }
+  return null; // COMPLETE without a funnel (pre-Round-7 job) — the counts line is the report
 }

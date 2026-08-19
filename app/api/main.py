@@ -77,10 +77,19 @@ def create_app() -> FastAPI:
     app.include_router(jobs_router)
     app.include_router(trace_router)
 
-    # B3.7: seed rule-set v0 at first startup if no version exists (idempotent).
-    ensure_v0_seed()
-
+    # B3.7 / Round 7 task 8: seed rule-set v0 AT STARTUP, before any request
+    # can create a version. Idempotent — an environment that already has a
+    # version is never re-seeded — and the log states plainly which happened,
+    # so a client environment where the seed did not run is diagnosable from
+    # the startup log alone.
     log = get_logger("app.api")
+    seed = ensure_v0_seed()
+    if seed.get("seeded"):
+        log.info("v0 seed: SEEDED %s with %d rules at startup",
+                 seed.get("version_id"), seed.get("rule_count", 0))
+    else:
+        log.info("v0 seed: no-op — %s already exists (%d rules); nothing "
+                 "re-seeded", seed.get("version_id"), seed.get("rule_count", 0))
     log.info("app configured", extra={"resolved_paths": settings.resolved_paths_report()})
     return app
 

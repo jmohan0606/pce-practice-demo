@@ -108,15 +108,18 @@ def main() -> int:  # noqa: PLR0915 — one check per stanza, deliberately linea
          "product_scope_source": "p.3 §3.1 'Standard Managed Fee Schedule'",
          "citations": [{"chunk_id": "c1", "page_no": 3, "section_path": "3.1",
                         "excerpt": "e"}]},
-        {"rule_code": "PLAIN", "rule_name": "P", "statement": "s", "kind": "RECORD",
+        {"rule_code": "PLAIN", "rule_name": "P", "statement": "a different provision",
+         "kind": "RECORD",
          "grain": "account", "severity": "INFO", "severity_reason": "x",
          "confidence": 0.8,
          "citations": [{"chunk_id": "c1", "page_no": 1, "section_path": "1",
                         "excerpt": "e"}]}])
+    # Round 7 re-pin: extraction returns {"rules", "funnel"} (two-pass
+    # dedup+rank); the proposal assertions are unchanged.
     rules = extract_rules_for_document(
         "DOC_R1", [{"chunk_id": "c1", "text": "t", "page_no": 1,
                     "section_path": "1", "has_table": False}],
-        llm=lambda p, o: resp, persist=False)
+        llm=lambda p, o: resp, persist=False)["rules"]
     ds = next(r_ for r_ in rules if r_["rule_code"] == "DS")
     plain = next(r_ for r_ in rules if r_["rule_code"] == "PLAIN")
     check("R1-4 extractor proposals: stated -> kept with citation; unstated -> "
@@ -185,14 +188,22 @@ def main() -> int:  # noqa: PLR0915 — one check per stanza, deliberately linea
     before = len(calls)
     res = extract_with_job("DOC_R1_RESUME", chunks, resume=True,
                            llm=llm_factory(None))
+    # Round 7 re-pin: the resume token now ALSO carries the accumulated
+    # candidates + the extraction limit (candidates ride the token, not the
+    # draft pool). The scripted windows all emit the same statement, so the
+    # exact-dedup collapses them to ONE distinct candidate and no ranking call
+    # is needed — resume still makes exactly 1 LLM call (window 2 only).
+    token = j1["resume_token"] or {}
     check("R1-6 interrupted extract: INTERRUPTED with resume_token, resume "
           "repeats no earlier window",
           j1["status"] == "INTERRUPTED"
-          and j1["resume_token"] == {"next_window": 2}
+          and token.get("next_window") == 2
+          and len(token.get("candidates") or []) == 2
           and len(calls) - before == 1
           and res["job"]["status"] == "COMPLETE"
           and res["job"]["items_done"] == 3,
-          f"interrupt: {j1['status']} token={j1['resume_token']}; resume made "
+          f"interrupt: {j1['status']} next_window={token.get('next_window')} "
+          f"candidates={len(token.get('candidates') or [])}; resume made "
           f"{len(calls) - before} LLM call(s) (windows 0-1 skipped), job "
           f"{res['job']['status']} {res['job']['items_done']}/"
           f"{res['job']['items_total']}")

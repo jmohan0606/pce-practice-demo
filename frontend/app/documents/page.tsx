@@ -95,8 +95,14 @@ export default function DocumentsPage() {
   // the Rule Extractor; every category is chunked, embedded and searchable.
   const [docType, setDocType] = useState<DocumentCategory>("PLAN");
   const [categoryBusy, setCategoryBusy] = useState<string | null>(null);
-  const [extractionOffer, setExtractionOffer] = useState<string | null>(null);
+  // Round 7 task 1: uploads AND reclassifications can each raise an offer, so
+  // several documents may be offering extraction at once.
+  const [extractionOffer, setExtractionOffer] = useState<string[]>([]);
   const [extractingDoc, setExtractingDoc] = useState<string | null>(null);
+  // Round 7 task 2 — Max Rule Extraction Limit: the extractor ranks provisions
+  // by significance across the whole document and returns the top N (never a
+  // truncation of whatever came first).
+  const [extractLimit, setExtractLimit] = useState<number>(10);
   const [docActionError, setDocActionError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   // Round 5 task 13 — the journey across the tabs
@@ -164,7 +170,13 @@ export default function DocumentsPage() {
       try {
         // lib/api's uploadDocuments signature predates the six-category
         // contract; the backend accepts all six (validated server-side).
-        await uploadDocuments(Array.from(files), docType as "PLAN" | "GUIDANCE");
+        const res = await uploadDocuments(Array.from(files), docType as "PLAN" | "GUIDANCE");
+        // Round 7 task 1: uploading as PLAN/FAQ offers extraction IMMEDIATELY —
+        // no second selection on the row dropdown.
+        const offered = (res.documents ?? [])
+          .filter((d) => d.extraction_offered)
+          .map((d) => d.document_id);
+        if (offered.length) setExtractionOffer((cur) => [...new Set([...cur, ...offered])]);
         refreshDocuments();
       } catch (e) {
         setDocumentsError(String((e as Error)?.message || e));
@@ -179,12 +191,12 @@ export default function DocumentsPage() {
     async (documentId: string, category: DocumentCategory) => {
       setCategoryBusy(documentId);
       setDocActionError(null);
-      setExtractionOffer(null);
+      setExtractionOffer((cur) => cur.filter((id) => id !== documentId));
       try {
         const res = await setDocumentCategory(documentId, category);
         // 3.1: changing to PLAN or FAQ offers to run extraction — offered,
         // never auto-run.
-        if (res.extraction_offered) setExtractionOffer(documentId);
+        if (res.extraction_offered) setExtractionOffer((cur) => [...new Set([...cur, documentId])]);
         refreshDocuments();
       } catch (e) {
         setDocActionError(
@@ -207,7 +219,7 @@ export default function DocumentsPage() {
       setDocActionError(null);
       try {
         const response = await fetch(
-          `${API_BASE}/api/documents/${encodeURIComponent(documentId)}/extract-rules`,
+          `${API_BASE}/api/documents/${encodeURIComponent(documentId)}/extract-rules?limit=${extractLimit}`,
           { method: "POST" },
         );
         if (!response.ok) {
@@ -220,7 +232,7 @@ export default function DocumentsPage() {
           }
           throw new Error(detail);
         }
-        setExtractionOffer(null);
+        setExtractionOffer((cur) => cur.filter((id) => id !== documentId));
         refreshDocuments();
         refreshDrafts();
       } catch (e) {
@@ -229,7 +241,7 @@ export default function DocumentsPage() {
         setExtractingDoc(null);
       }
     },
-    [refreshDocuments, refreshDrafts],
+    [refreshDocuments, refreshDrafts, extractLimit],
   );
 
   // 13.4 — batch approval: list first, approve on confirm, one version minted
@@ -394,9 +406,28 @@ export default function DocumentsPage() {
                           refreshDrafts();
                         }}
                       />
-                      {extractionOffer === doc.document_id ? (
-                        <div style={{ marginTop: 6, fontSize: 12.5 }}>
-                          This category feeds the Rule Extractor — run extraction now?{" "}
+                      {extractionOffer.includes(doc.document_id) ? (
+                        <div style={{ marginTop: 6, fontSize: 12.5, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <span>This category feeds the Rule Extractor — run extraction now?</span>
+                          <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                            <span
+                              title="The extractor ranks provisions by significance across the whole document and returns the top N — a ranking, never a truncation"
+                              style={{ color: "var(--slate)" }}
+                            >
+                              Max Rule Extraction Limit
+                            </span>
+                            <select
+                              value={extractLimit}
+                              disabled={extractingDoc !== null}
+                              onChange={(e) => setExtractLimit(Number(e.target.value))}
+                            >
+                              {[5, 10, 20].map((n) => (
+                                <option key={n} value={n}>
+                                  {n}
+                                </option>
+                              ))}
+                            </select>
+                          </label>{" "}
                           <button
                             className="btn primary"
                             style={{ padding: "3px 9px" }}
@@ -409,7 +440,7 @@ export default function DocumentsPage() {
                             className="btn"
                             style={{ padding: "3px 9px" }}
                             disabled={extractingDoc !== null}
-                            onClick={() => setExtractionOffer(null)}
+                            onClick={() => setExtractionOffer((cur) => cur.filter((id) => id !== doc.document_id))}
                           >
                             Not now
                           </button>

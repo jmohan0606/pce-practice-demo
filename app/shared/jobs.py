@@ -177,10 +177,13 @@ class JobStore:
     def update(self, job_id: str, *, stage: str | None = None,
                scope_key: str | None = None, run_id: str | None = None,
                items_done: int | None = None, items_total: int | None = None,
-               resume_token: dict | str | None = None) -> dict:
+               resume_token: dict | str | None = None,
+               extra: dict | None = None) -> dict:
         """Advance the job: entering a stage means every earlier stage's output
         is already written. Per-item progress (items_done/items_total) applies
-        within the CURRENT stage; resume_token must be enough to restart it."""
+        within the CURRENT stage; resume_token must be enough to restart it.
+        ``extra`` merges free-form keys into the job dict (SQLite-only —
+        Round 7: the extraction funnel + limit live here)."""
         with self._lock:
             job = self.get(job_id)
             if job is None:
@@ -207,6 +210,8 @@ class JobStore:
                 job["items_total"] = int(items_total)
             if resume_token is not None:
                 job["resume_token"] = resume_token
+            if extra:
+                job.update(extra)
             job["status"] = "RUNNING"
             job["updated_at"] = _now()
             self._save(job)

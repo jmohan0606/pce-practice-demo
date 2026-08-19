@@ -15,9 +15,23 @@ from app.shared.jobs import get_job_store
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
 
+def _api_job(job: dict) -> dict:
+    """Round 7: the extraction resume token carries the accumulated candidate
+    rules (potentially hundreds of KB). The API summarizes it — the token's
+    full content is a resume implementation detail, not a display field."""
+    token = job.get("resume_token")
+    if isinstance(token, dict) and "candidates" in token:
+        job = dict(job)
+        job["resume_token"] = {
+            **{k: v for k, v in token.items() if k != "candidates"},
+            "candidate_count": len(token.get("candidates") or [])}
+    return job
+
+
 @router.get("")
 def list_jobs(kind: str | None = None, scope_key: str | None = None) -> dict:
-    jobs = get_job_store().list_jobs(kind=kind, scope_key=scope_key)
+    jobs = [_api_job(j) for j in
+            get_job_store().list_jobs(kind=kind, scope_key=scope_key)]
     return {"total": len(jobs), "jobs": jobs}
 
 
@@ -26,7 +40,7 @@ def get_job(job_id: str) -> dict:
     job = get_job_store().get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"unknown job_id {job_id!r}")
-    return job
+    return _api_job(job)
 
 
 @router.post("/{job_id}/resume")

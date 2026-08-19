@@ -11,6 +11,7 @@ import {
 } from "@/lib/api";
 import { RulesApiError, createManualRule } from "@/lib/rulesApi";
 import PlanView from "@/components/rules/PlanView";
+import PreviewExample from "@/components/rules/PreviewExample";
 import StatusChip from "@/components/rules/StatusChip";
 
 /** Round C (docs/rules) task 5.4 — write a rule in plain English, no document.
@@ -149,6 +150,15 @@ export default function ManualRuleForm({ onCreated }: { onCreated?: () => void }
         value={statement}
         onChange={(e) => setStatement(e.target.value)}
         placeholder="Describe the rule the way you would explain it to a colleague — thresholds included."
+      />
+      {/* Round 7 task 9 — compile + run the statement BEFORE creating anything:
+          catches matches-nothing, matches-everything and unsupported rules. */}
+      <PreviewExample
+        statement={statement}
+        ruleName={ruleName}
+        appliesTo={appliesTo}
+        severity={severity}
+        disabled={busy || !generateQuery}
       />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
         <div>

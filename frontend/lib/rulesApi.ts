@@ -173,6 +173,17 @@ export function setExceptionConfig(
 
 /** A phx_dm_pce_job row (Round 1). `stages` is the ordered stage list;
  * `stage_index` is 1-based into it. */
+/** Round 7 task 7 — candidates → after dedup → selected (limit N). */
+export interface ExtractionFunnel {
+  candidates: number;
+  after_dedup: number;
+  selected: number;
+  limit: number;
+  duplicates_collapsed: number;
+  ranking: string;
+  unparseable_stubs?: number;
+}
+
 export interface IngestJob {
   job_id: string;
   kind: string;
@@ -188,6 +199,9 @@ export interface IngestJob {
   error?: string;
   started_at?: string;
   updated_at?: string;
+  /** Round 7 task 7 — the extraction funnel, recorded on job completion. */
+  funnel?: ExtractionFunnel | null;
+  extraction_limit?: number;
 }
 
 /** Latest document_ingest job for one document (jobs list is newest-first). */
@@ -254,4 +268,55 @@ export function setDocumentCategory(
   category: DocumentCategory,
 ): Promise<{ document: Record<string, unknown>; extraction_offered: boolean }> {
   return req("PATCH", `/api/documents/${encodeURIComponent(documentId)}/category`, { category });
+}
+
+// ---------- Round 7 task 9 — Preview Example ----------
+
+export interface PreviewResult {
+  /** COMPILED | UNSUPPORTED | FAILED */
+  outcome: string;
+  reason?: string;
+  plan?: unknown;
+  explanation?: string;
+  matched_count?: number;
+  evaluated_rows?: number;
+  empty_reason?: string | null;
+  sample?: { key: string; value: number | null; attribute?: unknown }[];
+  params_used?: Record<string, unknown>;
+  scope_challenge?: import("@/lib/api").ScopeChallenge | null;
+  severity?: string | null;
+  /** always false — the endpoint asserts nothing persisted */
+  persisted: boolean;
+  rule_count: number;
+}
+
+/** Compile a statement (or a stored draft via ruleKey) and RUN it against
+ * current data. Persists NOTHING — no rule, no version, no rule_key. Costs a
+ * real compile call. */
+export function previewRule(body: {
+  statement?: string;
+  rule_name?: string;
+  grain?: string;
+  kind?: string;
+  worked_example?: string | null;
+  applies_to?: string;
+  severity?: string;
+  rule_key?: string;
+}): Promise<PreviewResult> {
+  return req("POST", "/api/rules/preview", body);
+}
+
+// ---------- Round 7 task 6 — scope challenge resolution ----------
+
+/** Accept or dismiss the compiler's proposed scope correction. The human
+ * confirms; the compiler never applies its proposal itself. */
+export function resolveScopeChallenge(
+  ruleKey: string,
+  accept: boolean,
+  resolvedBy: string = "operator",
+): Promise<{ rule: import("@/lib/api").RuleDetail; challenge: import("@/lib/api").ScopeChallenge }> {
+  return req("POST", `/api/rules/${encodeURIComponent(ruleKey)}/scope-challenge`, {
+    accept,
+    resolved_by: resolvedBy,
+  });
 }

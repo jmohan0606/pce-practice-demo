@@ -277,7 +277,11 @@ class KnowledgeManagementService:
                 "document_id": row["document_id"],
                 "document_name": row["document_name"],
                 "document_type": row.get("document_type"),
-                "document_category": row.get("document_category"),
+                # Round 7 task 1: the category axis IS document_type (Round C
+                # decision). The catalog's document_category column is the
+                # legacy V1 field (defaults "Comp Plan") — serving it here made
+                # the UI's row dropdown read OTHER for every document.
+                "document_category": row.get("document_type"),
                 "status": row.get("status"),
                 "uploaded_at": row.get("uploaded_at"),
                 "page_count": meta.get("page_count"),

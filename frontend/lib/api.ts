@@ -140,6 +140,12 @@ export interface DocumentInfo {
   table_chunk_count?: number;
   status?: string; // uploaded | parsed | chunked | embedded | indexed | failed
   rule_count?: number;
+  /** Round 7 task 1 — the stored six-value category (PLAN/GUIDANCE/…). */
+  document_category?: string;
+  document_type?: string;
+  /** Upload response only: true when the chosen category feeds the extractor. */
+  extraction_offered?: boolean;
+  skipped_duplicate?: boolean;
 }
 export interface DocumentsResponse {
   documents: DocumentInfo[];
@@ -246,12 +252,29 @@ export function getRuleVersions(): Promise<RuleVersionsResponse> {
 
 // 4.6: rules are immutable — edit creates a new DRAFT row; approve + publish
 // mint the next version. The original version is never mutated.
+/** Round 7 task 6 — the compiler's scope challenge: recorded, never applied. */
+export interface ScopeChallenge {
+  original_applies_to: string;
+  proposed_applies_to: string;
+  fields: string[];
+  reason: string;
+  proposed_at?: string;
+  /** PROPOSED | ACCEPTED | DISMISSED */
+  status: string;
+  resolved_by?: string;
+  resolved_at?: string;
+}
 export interface RuleDetail extends Rule {
   rule_key?: string;
   compiled?: boolean;
   compile_error?: string | null;
   plan?: unknown;
   document_id?: string | null;
+  /** Round 7 task 2 — why the ranking selected this rule (extracted rules). */
+  selection_reason?: string | null;
+  selection_rank?: number | null;
+  extraction_limit?: number | null;
+  scope_challenge?: ScopeChallenge | null;
 }
 export function getRulesDetailed(version: string): Promise<{ version: RuleVersion | null; rules: RuleDetail[] }> {
   return get(`/api/rules?version=${encodeURIComponent(version)}`);

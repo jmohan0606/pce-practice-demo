@@ -123,6 +123,10 @@ async def upload_documents(files: list[UploadFile] = File(...),
                                             sum(1 for c in result.chunks if c.has_table)),
             "status": result.status.value,
             "skipped_duplicate": skipped,
+            # Round 7 task 1: upload sets the category and offers extraction
+            # directly — no second selection on the row dropdown needed.
+            "document_category": document_type,
+            "extraction_offered": document_type in EXTRACTING_CATEGORIES,
         })
     return {"documents": results}
 
@@ -159,7 +163,7 @@ def set_document_category(document_id: str, body: CategoryRequest) -> dict:
 
 
 @router.post("/{document_id}/extract-rules")
-def extract_rules(document_id: str, resume: bool = False) -> dict:
+def extract_rules(document_id: str, resume: bool = False, limit: int = 10) -> dict:
     # Round C (docs/rules) 3.1: only PLAN and FAQ feed the Rule Extractor.
     doc_row = _counts_for(document_id)
     if not doc_row:
@@ -189,14 +193,23 @@ def extract_rules(document_id: str, resume: bool = False) -> dict:
     # Round 1 (schema freeze): extraction runs under a phx_dm_pce_job with
     # per-window resume; ?resume=1 restarts an INTERRUPTED job at its recorded
     # window (resume is explicit, never automatic).
+    # Round 7 task 2: the Max Rule Extraction Limit rides the API into the
+    # extractor and is recorded on the job — a run at a different limit is
+    # distinguishable. This is ranking across the whole document, never a
+    # truncation of the candidate list.
+    if not 1 <= int(limit) <= 50:
+        raise HTTPException(status_code=400,
+                            detail=f"limit must be between 1 and 50 (got {limit})")
     try:
-        result = extract_with_job(document_id, extractor_chunks, resume=resume)
+        result = extract_with_job(document_id, extractor_chunks, resume=resume,
+                                  limit=int(limit))
     except ValueError as exc:  # nothing-to-resume — a request error, not a 500
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"document_id": document_id, "chunk_count": len(chunks),
             "job": {k: result["job"].get(k) for k in
                     ("job_id", "status", "stage", "stage_index", "stage_total",
                      "items_done", "items_total")},
+            "funnel": result["funnel"],
             "draft_rules": result["rules"]}
 
 

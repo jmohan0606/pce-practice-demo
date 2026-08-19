@@ -32,8 +32,10 @@ import {
   RulesApiError,
   deleteRules,
   recompileRule,
+  resolveScopeChallenge,
   setRuleActive,
 } from "@/lib/rulesApi";
+import PreviewExample from "@/components/rules/PreviewExample";
 import { Pager, usePager } from "@/components/Pager";
 import { useGlossary } from "@/components/Term";
 import AppliesToChip from "@/components/rules/AppliesToChip";
@@ -442,6 +444,20 @@ export default function RuleListManager({ preset }: { preset?: RulesPreset | nul
     }
   };
 
+  // Round 7 task 6 — resolve the compiler's scope challenge (human confirms)
+  const runScopeChallenge = async (ruleKey: string, accept: boolean) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await resolveScopeChallenge(ruleKey, accept);
+      refresh();
+    } catch (e) {
+      setActionError(errText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const runRetry = async (ruleKey: string) => {
     setRetryBusy(true);
     setRetryError(null);
@@ -507,6 +523,56 @@ export default function RuleListManager({ preset }: { preset?: RulesPreset | nul
         </div>
         {rule.statement || rule.plain_description ? (
           <div className="rule-d">{rule.statement || rule.plain_description}</div>
+        ) : null}
+        {/* Round 7 task 2 — why the significance ranking selected this rule */}
+        {rule.selection_reason ? (
+          <div className="eg">
+            <b>
+              Selected by ranking
+              {rule.selection_rank ? ` (#${rule.selection_rank}` : ""}
+              {rule.selection_rank && rule.extraction_limit ? ` of limit ${rule.extraction_limit})` : rule.selection_rank ? ")" : ""}
+              :
+            </b>{" "}
+            {rule.selection_reason}
+          </div>
+        ) : null}
+        {/* Round 7 task 6 — the compiler's scope challenge: proposed, never
+            applied; a human confirms or dismisses */}
+        {rule.scope_challenge ? (
+          <div
+            className="eg"
+            style={rule.scope_challenge.status === "PROPOSED" ? { border: "1px solid var(--sev-high-br, #c77)", borderRadius: 4 } : undefined}
+          >
+            <b>
+              Scope challenge
+              {rule.scope_challenge.status === "PROPOSED"
+                ? ""
+                : ` — ${rule.scope_challenge.status.toLowerCase()}${rule.scope_challenge.resolved_by ? ` by ${rule.scope_challenge.resolved_by}` : ""}`}
+              :
+            </b>{" "}
+            {rule.scope_challenge.reason} (extractor said {rule.scope_challenge.original_applies_to}, compiler proposes{" "}
+            {rule.scope_challenge.proposed_applies_to}).
+            {rule.scope_challenge.status === "PROPOSED" && rule.rule_key && !approved ? (
+              <span style={{ marginLeft: 8, display: "inline-flex", gap: 6 }}>
+                <button
+                  className="btn primary"
+                  style={{ padding: "2px 8px" }}
+                  disabled={busy}
+                  onClick={() => runScopeChallenge(rule.rule_key as string, true)}
+                >
+                  Apply {rule.scope_challenge.proposed_applies_to}
+                </button>
+                <button
+                  className="btn"
+                  style={{ padding: "2px 8px" }}
+                  disabled={busy}
+                  onClick={() => runScopeChallenge(rule.rule_key as string, false)}
+                >
+                  Keep {rule.scope_challenge.original_applies_to}
+                </button>
+              </span>
+            ) : null}
+          </div>
         ) : null}
         {rule.status === "NEEDS_INPUT" && (rule.missing || rule.unclear_notes) ? (
           <div className="eg">
@@ -592,6 +658,13 @@ export default function RuleListManager({ preset }: { preset?: RulesPreset | nul
             )}
             {retryError && retryFor === rule.rule_key ? (
               <div style={{ color: "var(--neg, #B3261E)", fontSize: 12.5, marginTop: 4 }}>{retryError}</div>
+            ) : null}
+            {/* Round 7 task 9 — the same preview as Write a Rule, on an
+                extracted rule BEFORE approval (a batch approval could publish
+                10 rules at once; see what each returns first). NEEDS_INPUT
+                rules are excluded above — they cannot compile yet. */}
+            {rule.status !== "NEEDS_INPUT" ? (
+              <PreviewExample ruleKey={rule.rule_key} disabled={busy} />
             ) : null}
           </div>
         ) : null}

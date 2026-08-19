@@ -35,6 +35,13 @@ export interface AdvisorListRow {
   advisor_name: string;
   rep_code: string;
   in_cohort: boolean;
+  /** Round 7 task 10 — the cascading filter's data (client req of 17 Aug).
+   * job_display_name is the client mapping's name; blank stays blank. */
+  job_code?: string;
+  job_display_name?: string;
+  work_state?: string;
+  work_city?: string;
+  is_synthetic?: boolean;
 }
 export function getAdvisorList(): Promise<{ advisors: AdvisorListRow[]; cohort_count: number }> {
   return request("/api/advisor/list");

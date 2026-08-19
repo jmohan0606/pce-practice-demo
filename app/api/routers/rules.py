@@ -723,3 +723,116 @@ def edit(rule_key: str, body: EditRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"rule": _serialize(draft),
             "note": "rules are immutable — a new draft row was created; the original is unchanged"}
+
+
+# --------------------------------------------------------------------- Round 7 task 9: preview
+
+
+class PreviewRequest(BaseModel):
+    """Preview a statement (Write a Rule) or a stored draft (rule_key) —
+    compiles and RUNS the plan, persisting NOTHING."""
+    statement: str = ""
+    rule_name: str = ""
+    grain: str = "account"
+    kind: str = "TRIGGER"
+    worked_example: str | None = None
+    applies_to: str = "ALL"
+    severity: str | None = None
+    rule_key: str | None = None
+
+
+@router.post("/preview")
+def preview(body: PreviewRequest) -> dict:
+    """Round 7 task 9 — Preview Example. Compiles the statement and runs the
+    resulting query against current data. NOTHING persists: no rule, no
+    version, no rule_key, no compile attempt — repeated previews leave the
+    rule set untouched. The compile call's cost is real and is turn-logged."""
+    from app.agents.rule_compiler import preview_compile
+
+    store = get_rule_store()
+    if body.rule_key:
+        rule = store.get(body.rule_key)
+        if rule is None:
+            raise HTTPException(status_code=404,
+                                detail=f"unknown rule_key {body.rule_key!r}")
+        if rule.get("natural_language_only"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{body.rule_key} is guidance-only — no plan by design, "
+                       f"so there is nothing to preview")
+        subject = dict(rule)
+        preview_key = body.rule_key
+    else:
+        if not body.statement.strip():
+            raise HTTPException(status_code=400,
+                                detail="statement (or rule_key) is required")
+        subject = {
+            "rule_code": _slug_rule_code(body.rule_name or "preview"),
+            "rule_name": body.rule_name or "(preview)",
+            "statement": body.statement.strip(),
+            "worked_example": body.worked_example,
+            "grain": body.grain or "account",
+            "kind": body.kind or "TRIGGER",
+            "applies_to": body.applies_to or "ALL",
+        }
+        preview_key = "manual"
+    before = len(store.rules)
+    result = preview_compile(subject, preview_key=preview_key)
+    after = len(store.rules)
+    # the no-persistence guarantee, asserted on every call — a preview that
+    # wrote a rule is a bug worth failing loudly over
+    if after != before:
+        raise HTTPException(status_code=500,
+                            detail="preview persisted a rule — this is a bug")
+    if body.severity:
+        result.setdefault("severity", body.severity)
+    result["persisted"] = False
+    result["rule_count"] = after
+    return result
+
+
+# ------------------------------------------------- Round 7 task 6: scope challenge resolution
+
+
+class ScopeChallengeRequest(BaseModel):
+    accept: bool
+    resolved_by: str = "operator"
+
+
+@router.post("/{rule_key}/scope-challenge")
+def resolve_scope_challenge(rule_key: str, body: ScopeChallengeRequest) -> dict:
+    """The compiler PROPOSED a corrected scope (the compiled plan filters on an
+    advisor attribute). A human confirms here — accept applies the proposed
+    applies_to; decline keeps the original. Either way the challenge record
+    stays on the rule with its resolution, so the history is visible."""
+    store = get_rule_store()
+    rule = store.get(rule_key)
+    if rule is None:
+        raise HTTPException(status_code=404, detail=f"unknown rule_key {rule_key!r}")
+    challenge = rule.get("scope_challenge")
+    if not isinstance(challenge, dict) or challenge.get("status") != "PROPOSED":
+        raise HTTPException(status_code=409,
+                            detail=f"{rule_key} has no unresolved scope challenge")
+    if rule.get("version_id"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{rule_key} belongs to version {rule['version_id']} — "
+                   f"version-bound rules are immutable; change applies_to "
+                   f"through the edit dialog (plan-preserving) instead")
+    from datetime import datetime, timezone
+
+    resolved = {**challenge,
+                "status": "ACCEPTED" if body.accept else "DISMISSED",
+                "resolved_by": body.resolved_by,
+                "resolved_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")}
+    try:
+        if body.accept:
+            rule = store.annotate(rule_key,
+                                  applies_to=str(challenge["proposed_applies_to"]),
+                                  applies_to_key=None,
+                                  scope_challenge=resolved)
+        else:
+            rule = store.annotate(rule_key, scope_challenge=resolved)
+    except RuleStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"rule": _serialize(rule), "challenge": resolved}
