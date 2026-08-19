@@ -205,3 +205,11 @@ On pce_dashboard_transitions — it is the mixed v1/v2 syntax cause, which is yo
 Then continue in order: group 2 (10 mixed-syntax), group 3 (4 invalid edge types — read the real reverse edge name from the WITH REVERSE_EDGE="..." clause in docs/tigergraph/02_edges.gsql), then the 5 one-offs, then the 29 column mismatches.
 
 Prove one query per group returns mode: pytigergraph with the exact mock column names before moving on. Report after each group.
+-----------------------TigerGraph round 4 fix
+Do the focused compiler-level isolation of pce_dashboard_transitions — get the exact compilation error, not the generic install failure. Report it before attempting another fix.
+
+Then finish the remaining 3 Group 2 failures. product_advisor_ranking and product_advisors are still mixed syntax — that pattern is now fixed in 7 other queries, so apply the same treatment. product_month_metrics is a new cause (SEM-1609 alias conflict); report what the conflicting alias is.
+
+Then continue to Group 3.
+
+Separately, do not attempt to fix the evaluator — that is application code and is being handled elsewhere. Your finding is recorded and correct.
