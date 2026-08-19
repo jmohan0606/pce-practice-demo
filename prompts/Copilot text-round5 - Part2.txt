@@ -171,3 +171,22 @@ Product resolution — the 26 groups with sub-code splits: ELIS→EQ/OP, LEND→
 If a Python function does something GSQL cannot express, report it — do not approximate. An approximation produces a number that looks right and reconciles to nothing, which is the one outcome this project cannot accept.
 
 Fix in the 7 root-cause groups you identified, prove one query per group returns mode: pytigergraph with the correct columns before moving to the next, and stop after two identical failures on any query.
+
+------------------------tigergraph fix phase 2
+Numbers confirmed. Proceed to Phase 2.
+
+Work in this order — the dashboard is what matters most:
+
+Group 1 first: the 5 with no file. pce_dashboard_months, pce_dashboard_transitions, pce_dashboard_advisors, pce_dashboard_product_contribution, rules_evaluate_plan. Without these the dashboard cannot render at all, so they gate everything else.
+
+Then the two big root causes — the 10 with mixed v1/v2 syntax and the 4 with invalid reverse_* edge types. That's 14 of the 21 failures in two mechanical passes. For the edge types, read the actual reverse edge name from the WITH REVERSE_EDGE="..." clause in docs/tigergraph/02_edges.gsql — it is not reverse_ prefixed.
+
+Then the 5 remaining one-off failures.
+
+Then the 29 column mismatches, which are PRINT-clause rewrites rather than logic changes.
+
+After each group, install it and prove one query returns mode: pytigergraph with the exact mock column names and rows greater than zero. Do not move to the next group until that passes.
+
+Report after each group: how many fixed, how many still failing, and the proof output. Stop after two identical failures on any single query.
+
+The Python @mock_query implementation remains the specification — translate, never reinterpret. If GSQL cannot express what a Python function does, report it rather than approximating.
