@@ -190,3 +190,18 @@ After each group, install it and prove one query returns mode: pytigergraph with
 Report after each group: how many fixed, how many still failing, and the proof output. Stop after two identical failures on any single query.
 
 The Python @mock_query implementation remains the specification — translate, never reinterpret. If GSQL cannot express what a Python function does, report it rather than approximating.
+
+---------------------TigerGraph fix part 3
+On rules_evaluate_plan — your finding is correct and it is not a translation problem.
+
+It takes a plan dict and interprets it at runtime via app/rules/evaluator.evaluate_plan. GSQL queries are compiled with fixed logic and cannot accept an arbitrary plan. Do not attempt to translate it, and do not approximate it.
+
+Record it in DECISIONS.md as: the rule evaluator interprets plans in Python and reads data through the other installed catalog queries; rules_evaluate_plan is not a GSQL query and never will be.
+
+Then verify one thing — that evaluate_plan actually reaches its data through other catalog queries rather than the local store directly. If it reads the foundation store, rule evaluation will silently use mock data in real mode, and that is a real bug to report.
+
+On pce_dashboard_transitions — it is the mixed v1/v2 syntax cause, which is your largest group. Fold it into group 2 and fix it with the other 10.
+
+Then continue in order: group 2 (10 mixed-syntax), group 3 (4 invalid edge types — read the real reverse edge name from the WITH REVERSE_EDGE="..." clause in docs/tigergraph/02_edges.gsql), then the 5 one-offs, then the 29 column mismatches.
+
+Prove one query per group returns mode: pytigergraph with the exact mock column names before moving on. Report after each group.
