@@ -116,3 +116,18 @@ Report using the exact template at the end, ending with a one-paragraph recommen
 Never estimate a number — every figure comes from a command that ran. If a file or symbol is not where expected, report it rather than searching elsewhere.
 
 Two identical failures = stop and report. Never a third attempt. Never estimate a number.
+
+-----------------------------------Tigergraph gsql issue
+Install the 52 GSQL queries in docs/tigergraph/queries/. They exist but are not installed, which is why run_query falls through to tier 4 and the app shows mock data despite GRAPH_CLIENT_MODE=real.
+
+gsql CLI is unavailable — use the same pyTigerGraph/GSQL-over-REST path that worked for the loading jobs.
+
+Create each query, then INSTALL QUERY — creation alone is not enough; installation compiles them and is the step that makes runInstalledQuery work.
+Report installed / failed counts, and for any failure the exact error and the query name. Do not edit a query to make it install — a query needing edits means it and the schema have diverged, and that is a finding.
+Prove one end to end: run_query('product_transition_table', {'from_month':'202604','to_month':'202605'}) returning mode: pytigergraph with real rows, not mode: foundation.
+
+Installing 52 queries may take a while — INSTALL QUERY ALL in one call is usually far faster than one at a time. Report which you used and the elapsed time.
+After installing, verify two things and report both:
+
+Every query name the app's catalog uses has a matching installed query. List any catalog name with no installed query, and any installed query the catalog never calls.
+Run three catalog queries in real mode and compare their returned column names against what the mock path returns for the same query. Report any difference.
