@@ -18,6 +18,8 @@
 - app/api/routers/trace.py
 - app/knowledge/knowledge_service.py
 - app/shared/jobs.py
+- docs/DECISIONS.md
+- docs/PROGRESS.md
 - frontend/app/advisor/page.tsx
 - frontend/app/documents/page.tsx
 - frontend/components/rules/ExtractionProgress.tsx

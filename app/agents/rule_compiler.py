@@ -503,7 +503,7 @@ def preview_compile(rule: dict, llm: Callable[[str, dict], str] | None = None,
             "evaluated_rows": row.get("evaluated_rows", 0),
             "empty_reason": row.get("empty_reason"),
             "sample": matched[:5],
-            "params_used": {k: params.get(k)
+            "params_used": {str(k).lstrip(":"): params.get(str(k).lstrip(":"))
                             for k in (decoded.get("params") or [])} or
                            {"month": params.get("month")},
             "scope_challenge": detect_scope_contradiction(

@@ -1,5 +1,68 @@
 # Build Progress
 
+## Round 7 (docs/spec/ROUND_7_SPEC.md) — document upload, rule extraction, rule authoring
+- [x] Task 1 (45d1258): ONE category control — root cause: list API served the
+      LEGACY V1 document_category column ("Comp Plan" → rendered OTHER); now
+      serves the real category axis; upload responses carry document_category
+      + extraction_offered and the upload flow offers extraction DIRECTLY
+      (multi-doc offers); row dropdown keeps only reclassification. Observed:
+      PLAN rows show PLAN; upload→offer with no second selection; reclassify
+      still offers.
+- [x] Tasks 2+4+7: two-pass extraction — per-window candidates ride the job
+      RESUME TOKEN (draft pool never holds unranked candidates; jobs API
+      summarizes the token); exact dedup in code (fuller citation kept,
+      duplicates' citations absorbed) + ONE ranking LLM call grouping semantic
+      duplicates and ordering provisions by significance with a stated reason
+      each; top N selected IN CODE (limit 5/10/20 dropdown, default 10, rides
+      API+token+job record); FAILED ranking keeps all deduped candidates with
+      the failure stated — never truncation. Funnel recorded on the job and
+      rendered ("extracted 17 candidates → 14 after dedup → 5 selected
+      (limit 5)" observed); progress label "Processing window N of M"
+      (observed via RUNNING fixture). verify_round_1 R1-4/R1-6 re-pinned.
+- [x] Task 3: explicit DO-NOT-EXTRACT list (definitions, appendix/admin, ToC/
+      headers, restatements, narrative, worked examples) + the one-provision-
+      per-table constraint generalised. Probe: appendix+definitions+ToC chunk
+      → 0 rules extracted (real LLM).
+- [x] Task 5 (the round's core): extractor receives THE SAME _schema_text()
+      the compiler builds (imported, not copied; NO provision-type→scope
+      mapping anywhere); "Default ALL when unsure" replaced by
+      conditioned-on-what, checked-against-schema; ALL only for genuinely
+      unlimited. Live: job-code provision → ADVISOR (pasted in COMPLETE);
+      household-minimum probe → ALL.
+- [x] Task 6: compiler scope challenge — a compiled plan filtering job_code/
+      advisor_plan/em_status_cd (any value) or advisor_sid (literal only;
+      ":advisor_sid" is evaluation plumbing — DECISIONS) on a non-ADVISOR rule
+      records scope_challenge {original, proposed, fields, reason, PROPOSED};
+      NEVER applied; POST /{key}/scope-challenge is the human confirm; clean
+      recompile clears stale challenges. Live-proven: manual ALL rule with
+      job_code IN (…) → PROPOSED → accept → ADVISOR; UI shows Apply/Keep.
+- [x] Task 8: startup seed — the call has existed since Round B (git-proven;
+      spec's "never called at startup" doesn't describe this repo); now logs
+      BOTH branches ("SEEDED RSV_v0 with 6 rules" / "no-op — RSV_v16 exists").
+      OBSERVED, not code-read: fresh store → RSV_v0 with 6 rules on the Rule
+      Versions page; normal store → no-op logged.
+- [x] Task 9: Preview Example — preview_compile() store-free by construction;
+      POST /api/rules/preview asserts rule count unchanged per call; runs the
+      plan for REAL rows (matches/evaluated/sample/params); UNSUPPORTED shows
+      the compiler's reason; available on Write a Rule AND every unapproved
+      computed rule (batch-approval case); click-triggered with the measured
+      avg compile cost (new rule_compile trace bucket). Proven: 3 previews,
+      drafts 42→42; extracted-rule preview surfaced an honest as-of-date gap.
+- [x] Task 10: advisor cascading filter Job Code/Display Name → State → City →
+      Advisor (client req 17 Aug) — /api/advisor/list serves the Round 5
+      attributes; options data-derived per level with "(blank …)" buckets;
+      display names from job_display_name (unmapped HK0300 renders raw; blank
+      stays blank — V000008 reachable via the blank bucket; blank state/city
+      observed via response interception, DECISIONS). Observed: 20 → HK0186 4
+      → CA → San Francisco.
+- [x] Verification: all 23 verify items with actual output in
+      docs/ROUND_7_COMPLETE.md; regression all green (a25 b19 c13 e8 h9 a1-17,
+      r1 12, r1b 8, r2a 16, r3 10, flags 8, manual 17, nnm 23, exports 43,
+      gate 9, parity 31V/44E, npm build clean); ROUND_7_CHANGED_FILES.md kept
+      current throughout. Session app-LLM spend ≈ $1.2 of $10. Servers left
+      running :8002/:3002. Draft pool intentionally holds the 15 extracted
+      rules + the scope-challenge proof rule; RSV_v16 still latest.
+
 ## Round 5 (docs/spec/ROUND_5_SPEC.md) — client cohort, reason codes, extraction fixes
 - [x] Task 1 (b88e424): the CLIENT defines the cohort — build_cohort.py runs
       their query verbatim (5,455 expected; report-and-stop on any other

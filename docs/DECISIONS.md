@@ -478,3 +478,37 @@ Reversible: yes
 Context: The client wants a fourth applies-to level available for both rule origins, with no behaviour required of it yet.
 Decision: APPLIES_TO gains COMPENSATION_ENGINE (store validation, extractor proposal with lenient coercion to ALL, Write a Rule dropdown, edit dialog, chip, data-derived list filter). The evaluator's applies_to filter SKIPS such rules at every evaluation with the explicit reason "its evaluation target is not yet defined; the rule is stored and displayed but produces no findings" — a scope that exists in the model but silently produced nothing would be exactly the "worse than not adding it" failure the spec warns about, so the absence of behaviour is stated, never implied.
 Reversible: yes (define the evaluation target later; the skip branch is one place)
+
+## 2026-08-19 · Round 7 task 1 · The list API's document_category is the category axis, not the legacy V1 column
+Context: The operator observed the row dropdown always reading OTHER. Diagnosis: the catalog table carries TWO columns — document_type (the Round C six-category axis, correct) and document_category (a legacy V1 field defaulting "Comp Plan") — and list_documents served the legacy one, which the frontend reads first; "Comp Plan" is not in the six-value set, so the select fell back to OTHER on every document.
+Decision: list_documents serves document_category = the stored document_type. The legacy column stays in the catalog (Chroma chunk metadata still carries the V1 field, untouched); nothing else read the legacy value from this API. The upload response now also carries document_category + extraction_offered so the upload flow offers extraction directly — the row dropdown keeps only its reclassification job.
+Reversible: yes
+
+## 2026-08-19 · Round 7 tasks 2+4 · Extraction candidates ride the job resume token; ONE ranking call groups duplicates AND orders provisions; top N selected in code
+Context: Task 2 (rank, don't truncate) conflicts with the Round 1 persist-per-window resume design — persisting unranked candidates would leave the draft pool holding 153 rules mid-run.
+Decisions:
+- Candidates are NOT persisted per window any more; they accumulate in the job's resume_token ({next_window, limit, candidates}) so an interruption still loses at most one window and the draft pool only ever holds SELECTED rules. The jobs API summarizes the token (candidate_count) — the full candidate list would ship ~100KB+ per 1.5s progress poll. verify_round_1 R1-4/R1-6 re-pinned (recorded in the script).
+- Dedup is two-level: exact restatements collapse in code (normalized statement; the keeper is the instance with the fuller citation and absorbs the duplicates' citations — dedup never loses provenance), then ONE LLM call groups semantic duplicates (same threshold/scope/subject regardless of generated rule_code) and returns the distinct provisions ordered most-significant-first with a stated reason each. The top N are taken IN CODE, so a lower limit selects a prefix of the same ranking. A candidate the ranker never mentions is appended last, never dropped.
+- A FAILED ranking call keeps every deduplicated candidate with the failure stated in the funnel — a cap applied by truncation would be worse than no cap (the spec's own words). Unparseable-window stubs bypass ranking entirely (operator-review placeholders, not provisions).
+- The funnel (candidates → after_dedup → selected, + duplicates_collapsed and the limit) is recorded on the job (JobStore.update gained an `extra` merge) and returned by the API; runs at different limits are distinguishable by extraction_limit on the job.
+Reversible: yes
+
+## 2026-08-19 · Round 7 task 6 · The scope challenge counts advisor_sid only with a concrete value — ":advisor_sid" is evaluation plumbing
+Context: The spec lists four advisor attributes (job_code, advisor_plan, em_status_cd, advisor_sid) whose presence in a compiled plan's filters makes the rule advisor-scoped. But a filter {field: advisor_sid, value: ":advisor_sid"} is how nearly every advisor-evaluable plan scopes to "the advisor being evaluated" (all six v0 lifecycle rules included) — it selects no fixed subpopulation.
+Decision: detect_scope_contradiction flags job_code / advisor_plan / em_status_cd with ANY value, and advisor_sid only with a literal value; the ":advisor_sid" parameter is excluded as scope plumbing. The challenge is recorded on the rule (original + proposed + fields + reason), NEVER applied — POST /{key}/scope-challenge {accept} is the human confirmation (draft-pool rules only; version-bound rules go through the plan-preserving edit dialog). A clean recompile clears a stale challenge.
+Reversible: yes
+
+## 2026-08-19 · Round 7 task 8 · The startup seed call already existed; the fix is unmistakable logging + observed proof
+Context: The spec states ensure_v0_seed() "is never called at application startup" — but app/api/main.py has called it at create_app() since Round B (git-verified). The operator's environment nonetheless had no v0 rules, which this repo cannot reproduce: with an empty store the startup seed runs (proven by observation — fresh PCE_RULE_DB_PATH → log "v0 seed: SEEDED RSV_v0 with 6 rules at startup", RSV_v0 with 6 rules on the Rule Versions page). Likeliest client-environment causes: a stale main.py copy (files are moved by hand) or a rule_store.db that already carried a version.
+Decision: the startup call now logs BOTH branches explicitly ("SEEDED RSV_v0 with 6 rules" / "no-op — RSV_vN already exists (M rules)"), so the client environment's next start is diagnosable from the startup log alone. No behavioural change to the seed itself.
+Reversible: yes
+
+## 2026-08-19 · Round 7 task 9 · Preview is store-free by construction and asserted per call; its LLM cost is turn-logged
+Context: Preview must persist nothing while costing a real compile call.
+Decision: preview_compile() in app/agents/rule_compiler.py runs the same agent loop (search/repair budgets included) with ZERO store calls, executes the validated plan through rules_evaluate_plan for real matched rows, and the endpoint asserts len(store.rules) unchanged (500 "preview persisted a rule — this is a bug" if not) and serializes persisted:false + rule_count. LLM calls turn-log under rule_preview|<key>; /api/trace/summary gained a rule_compile bucket (rule_compile|* + rule_preview|*) whose measured avg_cost_usd feeds the button's cost hint. Known pre-existing limit: synthetic-run-id turn logs live in process memory only, so the hint has no history after a restart until the next compile.
+Reversible: yes
+
+## 2026-08-19 · Round 7 task 10 · Blank filter values get an explicit "(blank …)" bucket; blank-state observation used response interception
+Context: "An advisor with no work state or city still appears — a blank stays blank … never a reason to hide them." The mock cohort has one genuinely blank job_code (V000008, the Round 1b pin) but NO blank work_state/work_city.
+Decision: each cascade level derives its options from the data and adds a "(blank …)" bucket whenever blanks exist, so blank-value advisors are both visible under "All" and reachable by selection. The blank-job_code path is observed on real data (V000008); the blank-state/city path was observed in the browser by intercepting /api/advisor/list and blanking one advisor's state/city — the UI code path is the thing under test, and the client data is where blanks actually occur. Recorded so nobody mistakes the interception for stored data.
+Reversible: yes
