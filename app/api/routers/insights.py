@@ -77,11 +77,9 @@ def _group_name(group_id: str | None) -> str | None:
     if not group_id:
         return None
     try:
-        from app.graph.foundation_store import get_foundation_store
+        from app.graph.queries import lookups
 
-        group = get_foundation_store().all_vertices(
-            "phx_dm_pce_product_group").get(str(group_id)) or {}
-        return group.get("group_name") or str(group_id)
+        return lookups.product_group_name(str(group_id))
     except Exception:  # noqa: BLE001 — display sugar, never invented
         return str(group_id)
 
@@ -215,11 +213,10 @@ def practice_summary(from_month: str, to_month: str) -> dict:
     """KPI row for the practice view (Round E 6.2): credited revenue, AUM,
     net flows — every figure computed from graph data, nothing invented.
     (Open exceptions come from /exceptions; the UI counts those rows.)"""
-    from app.graph.foundation_store import get_foundation_store
+    from app.graph.queries import lookups
     from app.graph.queries.catalog import CatalogError, run_catalog_query
 
-    store = get_foundation_store()
-    months = store.all_vertices("phx_dm_pce_month")
+    months = lookups.month_ids()
     for label, mid in (("from_month", from_month), ("to_month", to_month)):
         if str(mid) not in months:
             raise HTTPException(404, f"unknown {label} '{mid}'")
@@ -229,8 +226,7 @@ def practice_summary(from_month: str, to_month: str) -> dict:
     except CatalogError as exc:
         raise HTTPException(400, str(exc)) from exc
 
-    cohort = {sid for sid, a in store.all_vertices("phx_dm_pce_advisor").items()
-              if a.get("in_cohort") is True}
+    cohort = set(lookups.cohort_sids())
 
     def _f(value) -> float:
         try:
@@ -240,29 +236,25 @@ def practice_summary(from_month: str, to_month: str) -> dict:
 
     def _aum(month_id: str) -> float:
         return round(sum(_f(r.get("end_balance"))
-                         for r in store.all_vertices("phx_dm_pce_account_month").values()
-                         if str(r.get("advisor_sid")) in cohort
-                         and str(r.get("month_id")) == str(month_id)), 2)
+                         for r in lookups.fetch_vertex_rows(
+                             "phx_dm_pce_account_month", month=month_id,
+                             columns="advisor_sid,end_balance")
+                         if str(r.get("advisor_sid")) in cohort), 2)
 
     def _flows(month_id: str) -> dict:
-        rows = [r for r in store.all_vertices("phx_dm_pce_advisor_flow_month").values()
-                if str(r.get("advisor_sid")) in cohort
-                and str(r.get("month_id")) == str(month_id)]
+        rows = [r for r in lookups.fetch_vertex_rows(
+                    "phx_dm_pce_advisor_flow_month", month=month_id,
+                    columns="advisor_sid,total_inflows,total_outflows,total_net_flows")
+                if str(r.get("advisor_sid")) in cohort]
         return {"inflows": round(sum(_f(r.get("total_inflows")) for r in rows), 2),
                 "outflows": round(sum(_f(r.get("total_outflows")) for r in rows), 2),
                 "net_flows": round(sum(_f(r.get("total_net_flows")) for r in rows), 2)}
 
     # Round 3 review D2 — AUM is Managed Accounts only wherever it renders;
     # the managed-scoped figure is what the KPI shows, labelled.
-    managed = {k for k, a in store.all_vertices("phx_dm_pce_account").items()
-               if a.get("is_managed") in (True, "True", "true", 1, "1")}
-
     def _aum_managed(month_id: str) -> float:
-        return round(sum(_f(r.get("end_balance"))
-                         for r in store.all_vertices("phx_dm_pce_account_month").values()
-                         if str(r.get("advisor_sid")) in cohort
-                         and str(r.get("month_id")) == str(month_id)
-                         and str(r.get("acct_key")) in managed), 2)
+        return run_catalog_query("aum_managed", {
+            "advisor": "all", "month_id": month_id})["rows"][0]["total_balance"]
 
     aum_from, aum_to = _aum(from_month), _aum(to_month)
     aum_change = round(aum_to - aum_from, 2)
@@ -285,13 +277,11 @@ def exception_advisors(from_month: str, to_month: str,
                        version: str = "latest") -> dict:
     """Round 3 review batch 1 H4 — the advisors that actually HAVE exceptions
     on this transition (the UI's advisor dropdown lists only these)."""
-    from app.graph.foundation_store import get_foundation_store
+    from app.graph.queries import lookups
 
     store = get_insight_store()
     version_id = None if version in ("", "latest") else version
-    names = {sid: (a.get("advisor_name") or "")
-             for sid, a in get_foundation_store()
-             .all_vertices("phx_dm_pce_advisor").items()}
+    names = lookups.advisor_names()
     counts: dict[str, int] = {}
     runs = store.runs_for_transition(from_month, to_month)
     for sid in sorted({r["advisor_sid"] for r in runs if r["advisor_sid"] != "all"}):
@@ -315,7 +305,7 @@ def exceptions(from_month: str, to_month: str, version: str = "latest",
     the rule's severity; rows with no rule are observations at INFO (mockup's
     'Pattern — no rule matched' / 'Observation' rows). Filterable by severity
     (comma-separated levels), sorted Critical → Info then by absolute impact."""
-    from app.graph.foundation_store import get_foundation_store
+    from app.graph.queries import lookups
     from app.rules.store import SEVERITIES
 
     store = get_insight_store()
@@ -328,9 +318,7 @@ def exceptions(from_month: str, to_month: str, version: str = "latest",
             raise HTTPException(400, f"unknown severity level(s) {sorted(unknown)} — "
                                      f"expected {', '.join(SEVERITIES)}")
     advisors = store.runs_for_transition(from_month, to_month)
-    advisor_names = {sid: (a.get("advisor_name") or "")
-                     for sid, a in get_foundation_store()
-                     .all_vertices("phx_dm_pce_advisor").items()}
+    advisor_names = lookups.advisor_names()
     sids = sorted({r["advisor_sid"] for r in advisors if r["advisor_sid"] != "all"})
     # Round 3 review batch 1 H2/H3 — server-side advisor filter, so the UI's
     # default one-advisor view never fetches the whole set.

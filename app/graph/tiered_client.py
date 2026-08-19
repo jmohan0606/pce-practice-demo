@@ -568,9 +568,13 @@ class TieredGraphClient:
     # --- extras ------------------------------------------------------------
     @property
     def store(self):
-        """Backing FoundationGraphStore of the mock tier — several services read
-        `get_graph_client().store` directly; in tiered modes that resolves to the
-        final-fallback mock tier's store."""
+        """Backing FoundationGraphStore of the mock tier. No service reads
+        `get_graph_client().store` (Round 9: every read goes through
+        run_catalog_query, and scripts/check_store_reads.py fails any new use
+        of this property outside app/graph/) — it remains only for the mock
+        tier's own plumbing and tests. In tiered modes it resolves to the
+        final-fallback mock tier's store, which in real mode is NOT the data
+        the app serves."""
         for tier_no, _ in self._specs:
             if tier_no == 4:
                 return self._tier(4).store

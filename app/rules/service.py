@@ -486,18 +486,15 @@ def never_fired(version_id: str, months: list[str] | None = None) -> dict:
     advisor scope for every advisor, across ``months`` (default: every month in
     the data), and returns the rules that never matched — with their scopes, so
     a rule that CANNOT fire is obvious without a code read."""
-    from app.graph.foundation_store import get_foundation_store
+    from app.graph.queries import lookups
 
     store = get_rule_store()
     version = store.version(version_id)
     if version is None:
         raise ValueError(f"unknown rule-set version {version_id!r}")
-    fstore = get_foundation_store()
-    if not fstore.available():
-        fstore.load()
     if months is None:
-        months = sorted(fstore.all_vertices("phx_dm_pce_month"))
-    advisors = sorted(fstore.all_vertices("phx_dm_pce_advisor"))
+        months = lookups.month_ids()
+    advisors = sorted(lookups.advisor_rows(columns="advisor_sid"))
     total_matched: dict[str, int] = {}
     evaluated_anywhere: dict[str, bool] = {}
     for month in months:

@@ -1,0 +1,27 @@
+/*
+ * product_group_master — Round 9 task 9 catalog query (docs/STORE_READ_AUDIT.md).
+ * Purpose: One product group's master facts — the name lookup behind finding
+ *          group names and driver descriptions. An unknown group_id returns
+ *          an empty set (callers fall back to the raw id; a name is never
+ *          invented).
+ * Params:  group_id — product group id
+ * Outputs: groups set: group_id, group_name, display_prefix, class_id.
+ * Local-tier equivalent: app/graph/queries/catalog.py::product_group_master
+ * Created: Round 9 (2026-08-19). NEEDS LIVE INSTALL.
+ * Compatibility target: TigerGraph 4.2.x (patch_4.2.2_jpmc_57231), classic
+ *          GSQL SYNTAX V1 — written against reference/v2 (GQ-001 form). No v2
+ *          constructs, no reverse_ edge names, no MapAccum, no ternaries.
+ */
+USE GRAPH phx_dm_pce_practice_demo
+
+CREATE QUERY product_group_master(STRING group_id)
+    FOR GRAPH phx_dm_pce_practice_demo SYNTAX V1 {
+  group_seed = {phx_dm_pce_product_group.*};
+  groups = SELECT g FROM group_seed:g
+      WHERE g.group_id == group_id;
+  PRINT groups[groups.group_id AS group_id, groups.group_name AS group_name,
+               groups.display_prefix AS display_prefix,
+               groups.class_id AS class_id];
+}
+
+INSTALL QUERY product_group_master

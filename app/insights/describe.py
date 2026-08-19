@@ -26,19 +26,18 @@ def _money(value: float) -> str:
 
 
 def _account_advisors(month: str) -> dict[str, str]:
-    from app.graph.foundation_store import get_foundation_store
+    from app.graph.queries import lookups
 
-    store = get_foundation_store()
     return {str(r.get("acct_key")): str(r.get("advisor_sid"))
-            for r in store.all_vertices(V_AM).values()
-            if str(r.get("month_id")) == str(month)}
+            for r in lookups.fetch_vertex_rows(
+                V_AM, month=month, columns="acct_key,advisor_sid")}
 
 
 def _advisor_names() -> dict[str, str]:
-    from app.graph.foundation_store import get_foundation_store
+    from app.graph.queries import lookups
 
     return {sid: a.get("advisor_name") or sid
-            for sid, a in get_foundation_store().all_vertices(V_ADVISOR).items()}
+            for sid, a in lookups.advisor_rows(columns="advisor_name").items()}
 
 
 def dominant_group(matched: list[dict], month: str) -> tuple[str | None, str | None]:
@@ -46,18 +45,19 @@ def dominant_group(matched: list[dict], month: str) -> tuple[str | None, str | N
     determinable: the group holding the MAJORITY (>=50%) of the matched
     accounts' credited revenue in the month. (group_id, group_name), or
     (None, None) when no group dominates — attribution is never guessed."""
-    from app.graph.foundation_store import get_foundation_store
+    from app.graph.queries import lookups
 
-    store = get_foundation_store()
     keys = {str(m.get("key")) for m in matched}
     if not keys:
         return None, None
-    from app.graph.queries.catalog import _product_group_map
-
-    group_of = _product_group_map(store)
+    group_of = {str(r.get("product_id")): str(r.get("group_id") or "unmapped")
+                for r in lookups.fetch_vertex_rows(
+                    "phx_dm_pce_product", columns="product_id,group_id")}
     by_group: dict[str, float] = {}
-    for r in store.all_vertices("phx_dm_pce_revenue_transaction").values():
-        if str(r.get("month_id")) != str(month) or str(r.get("acct_key")) not in keys:
+    for r in lookups.fetch_vertex_rows("phx_dm_pce_revenue_transaction",
+                                       month=month,
+                                       columns="acct_key,product_id,credited_amt"):
+        if str(r.get("acct_key")) not in keys:
             continue
         gid = group_of.get(str(r.get("product_id") or ""))
         if gid:
@@ -68,8 +68,7 @@ def dominant_group(matched: list[dict], month: str) -> tuple[str | None, str | N
     gid, amt = max(by_group.items(), key=lambda kv: kv[1])
     if amt / total < 0.5:
         return None, None
-    group = store.all_vertices("phx_dm_pce_product_group").get(gid) or {}
-    return gid, group.get("group_name") or gid
+    return gid, lookups.product_group_name(gid)
 
 
 def describe_rule_finding(rule: dict, matched: list[dict], month: str,

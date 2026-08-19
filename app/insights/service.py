@@ -276,10 +276,9 @@ def cohort_advisors() -> list[str]:
 
 
 def _any_month() -> str:
-    from app.graph.foundation_store import get_foundation_store
+    from app.graph.queries import lookups
 
-    months = sorted(get_foundation_store().all_vertices("phx_dm_pce_month"))
-    return months[0]
+    return lookups.month_ids()[0]
 
 
 class JobManager:

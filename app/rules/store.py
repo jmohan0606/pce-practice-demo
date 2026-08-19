@@ -30,6 +30,7 @@ The graph mirror above is unchanged (the live-TigerGraph path).
 from __future__ import annotations
 
 import json
+import re
 import threading
 from datetime import datetime, timezone
 
@@ -570,9 +571,15 @@ class RuleStore:
         what the query computes, so it MINTS A VERSION like any rule change:
         the new plan re-validates deterministically (all five checks, execution
         included — no LLM) and the draft publishes in one call (set_active
-        precedent). The statement/worked_example keep meaning: formatted
-        occurrences of the old value are rewritten to the new one. Draft-pool
-        rules update in place (nothing to mint yet)."""
+        precedent). The STATEMENT keeps meaning by substitution (it declares
+        the threshold). The WORKED EXAMPLE is different (Round 9 task 5): it
+        REASONS about illustrative figures relative to the threshold — a
+        mechanical substitution of one number into prose comparing three
+        produces a false example ("$62,000,000 exceeds the $70,000,000
+        threshold"). It is substituted only when the threshold is the ONLY
+        figure it names; otherwise it is CLEARED and marked for review —
+        clearing is honest, a false example is not. Draft-pool rules update in
+        place (nothing to mint yet)."""
         from app.rules.compiler import validate_plan
 
         reason = str(reason or "").strip()
@@ -627,10 +634,46 @@ class RuleStore:
                         return out.replace(old_s, new_s)
                 return out
 
+            def _figures(text: str) -> set[float]:
+                """Every standalone numeric figure in the prose. Codes fused to
+                letters (9R, V000001) are not figures."""
+                out: set[float] = set()
+                for tok in re.findall(
+                        r"\$?\b\d[\d,]*(?:\.\d+)?\b(?![A-Za-z])", text):
+                    try:
+                        out.add(float(tok.lstrip("$").replace(",", "")))
+                    except ValueError:
+                        pass
+                return out
+
+            # Round 9 task 5 — a worked example is substitutable only when
+            # the threshold is the ONLY figure it reasons with; illustrative
+            # figures ($62M fires / $48M does not) are only coherent inside a
+            # window around the OLD threshold, so the example is cleared and
+            # marked for review instead of silently becoming false.
+            old_example = rule.get("worked_example")
+            # an already-cleared example keeps its review note until rewritten
+            example_note = rule.get("worked_example_review_note")
+            if old_example and _figures(old_example) <= {float(old_value)}:
+                new_example = _rewrite(old_example)
+                example_note = None
+            elif old_example:
+                new_example = None
+                example_note = (
+                    f"worked example cleared when the trigger threshold "
+                    f"changed to ${new_value:,.2f}: the previous example "
+                    f"reasoned about illustrative figures that are only "
+                    f"coherent against the old ${float(old_value):,.2f} "
+                    f"threshold — rewrite it against the new threshold and "
+                    f"review")
+            else:
+                new_example = old_example
+
             content = {
                 "plan": new_plan, "plan_by_scope": new_by_scope,
                 "statement": _rewrite(rule.get("statement")) or rule.get("statement"),
-                "worked_example": _rewrite(rule.get("worked_example")),
+                "worked_example": new_example,
+                "worked_example_review_note": example_note,
                 "compiled_evaluated_rows": outcome["execution"]["evaluated_rows"],
                 "compiled_matched_count": outcome["execution"]["matched_count"],
                 "threshold_changed_by": changed_by or "operator",

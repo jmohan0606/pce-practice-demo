@@ -28,10 +28,13 @@ Static: grep -c "all_vertices\|store\.vertex" app/rules/evaluator.py → 0
 ## OPERATOR TASK 2 — the systemic audit + the guard ✓
 
 **docs/STORE_READ_AUDIT.md** classifies every remaining direct read (41 after
-the evaluator fix) per call site. The verdict: **22 covered by existing
-queries as-is · 7 need additive extensions to three existing queries · 9 need
-only THREE distinct small new queries · 3 raw-coverable via
-rule_evaluation_rows — a day, not a week.** MinerTools untouched (already
+the evaluator fix — **corrected to 37 in Round 9**: the tables sum to 36, the
+41 was derived by subtraction, and `app/rules/service.py:497 fstore.load()`
+was omitted) per call site. The verdict (buckets as originally claimed;
+Round 9 re-derived them from the tables as A/B 22 · EXT 6 · NEW 8 · +1
+load-guard): **22 covered by existing queries as-is · 7 need additive
+extensions to three existing queries · 9 need only THREE distinct small new
+queries · 3 raw-coverable via rule_evaluation_rows — a day, not a week.** MinerTools untouched (already
 correct). Fixing the sites is a later round per the operator's instruction;
 this round delivers the report and the guard.
 
@@ -169,7 +172,8 @@ needs the Ports panel (carried).
 
 ## Carried / open
 
-- The 41 audited direct-store reads: fix per docs/STORE_READ_AUDIT.md (three
+- The 41 (corrected to 37 in Round 9 — and all converted there) audited
+  direct-store reads: fix per docs/STORE_READ_AUDIT.md (three
   new queries + three extensions + rewiring, identity-proof pattern
   established) — awaiting the operator's go after reading the report.
   Each new/extended query needs its GSQL twin in the client install set —

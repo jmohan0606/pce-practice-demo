@@ -1,5 +1,63 @@
 # Build Progress
 
+## Round 9 (docs/spec/ROUND_9_SPEC.md) — real-mode read guard, review defects, all store reads converted
+- [x] PART A (the blocking defect): run_catalog_query REFUSES tier-4 (local
+      mock fallback) results outside mock/local modes, naming the query — the
+      read twin of the upsert guard; proven by a real-mode run against a dead
+      host (RAISES) and an unchanged mock run. Envelope now carries
+      served_by_tier + graph_mode (additive; 'mode' was taken by the
+      shape/rows envelope). docs/tigergraph/queries/rule_evaluation_rows.gsql
+      WRITTEN (V1, WHERE-guard per-type blocks, month/advisor/key filtered
+      SERVER-SIDE; params renamed vertex_type/key_id for GSQL keyword safety).
+- [x] Task 4: the evaluator row path filters server-side and PROJECTS —
+      _plan_columns builds the plan's own field set; joins project too (not
+      month-filtered: the prefer-month-else-first fallback would change).
+      Docstring re-pinned: same rows out, NOT same method.
+- [x] Task 5: threshold edits no longer write false worked examples — the
+      example substitutes only when the threshold is its only figure, else
+      CLEARED + worked_example_review_note (persists until rewritten).
+      $70M/$40M probes pasted in ROUND_9_COMPLETE.md (run on a scratch copy;
+      live store unpolluted at RSV_v19).
+- [x] Task 6: exceptions engine PRACTICE branch now requires a NUMERIC
+      trigger (matching ExceptionsTab's own condition); without one →
+      model "unsupported" with the remedy stated, never silent zeros.
+- [x] Task 7: check_store_reads.py catches .store/out/inbound/out_ids/
+      in_ids/store-receiver load+statistics (six-read evasion reproduced →
+      FAILS naming 7 lines); the ratchet SELF-TIGHTENS (writes the lowered
+      baseline back into its own source — proven); stale tiered_client .store
+      docstring corrected.
+- [x] Task 8: STORE_READ_AUDIT corrected 41 → 37 (36 audited +
+      rules/service.py:497 fstore.load(), row added); buckets re-derived from
+      the tables (A/B 22 · EXT 6 · NEW 8 · +1 load-guard; RAW never
+      standalone). ROUND_8_COMPLETE.md + this file annotated.
+- [x] PART C (two subagents on disjoint module sets, claims re-verified in
+      the main thread): ALL 37 direct reads converted to run_catalog_query —
+      three NEW catalog queries (account_managed_flags / aum_managed /
+      product_group_master, each with a V1 GSQL twin) + the internal generic
+      vertex fetch via app/graph/queries/lookups.py; no other new query names
+      (client install bottleneck). Guard now STRICT (baseline empty, zero
+      reads outside app/graph/). PROVEN centrally: 19 payloads (the three
+      largest modules as full API responses + every converted function)
+      captured against HEAD and against the finished tree — 19/19
+      byte-identical (wall-clock timestamps scrubbed). MinerTools untouched.
+      C6-1 re-pinned 50 (49 visible + 1 internal).
+- [x] PART D: C6-1 asserts the internal query's __vertex_id column contract
+      (10a) and the refusal MESSAGE (10b); _absolute_firm_exception has ONE
+      authoritative source — the passed rule's plan, fired derived from the
+      open-trigger observation (10c); empty_reason distinguishes
+      "no rows matched the population filter" from "matched but none met the
+      trigger" with empty_kind so lifecycle notes keep meaning true-zero-free
+      (10d); DEMO_WRITE_A_RULE.md's 0-of-0 passage corrected.
+- [x] Verification: all 16 verify items with actual output in
+      docs/ROUND_9_COMPLETE.md; full regression green (a25 b19 c13 e8 h9
+      a1-17, r1 12, r1b 8, r2a 16, r3 10, flags 8, manual 17, nnm 23,
+      exports 43, gate 9, parity 31V/44E, store guard STRICT, npm build 10
+      routes). Session app-LLM spend $0.00 of $12. Servers restarted
+      :8002/:3002; live store RSV_v19. CLIENT INSTALL REQUIRED: the four new
+      .gsql files (rule_evaluation_rows, account_managed_flags, aum_managed,
+      product_group_master) — rule evaluation in real mode fails loudly (by
+      design) until rule_evaluation_rows is installed.
+
 ## Round 8 (docs/spec/ROUND_8_SPEC.md + 2 operator mid-round tasks) — empty states, HIGH_9R_MONTH, demo walkthrough, evaluator fix + store-read audit
 - [x] OPERATOR TASK (client-env bug, highest priority): the rule EVALUATOR read
       the local foundation store — in real mode rules evaluated MOCK rows while
@@ -12,7 +70,8 @@
       evaluator direct store calls=0. C6-1 re-pinned 47 (46 visible + 1
       internal).
 - [x] OPERATOR TASK (audit before fixing): docs/STORE_READ_AUDIT.md classifies
-      all 41 remaining direct reads per call site — 22 covered by existing
+      all 41 (CORRECTED to 37 in Round 9 — tables summed to 36, +
+      rules/service.py:497 omitted) remaining direct reads per call site — 22 covered by existing
       queries, 7 need additive extensions (3 queries), 9 need THREE small new
       queries, 3 raw-coverable: a day, not a week. Guard
       scripts/check_store_reads.py = ratchet on audited per-module baselines

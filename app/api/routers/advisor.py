@@ -32,21 +32,19 @@ def _catalog(name: str, params: dict) -> list[dict]:
         raise HTTPException(400, str(exc)) from exc
 
 
-def _store():
-    from app.graph.foundation_store import get_foundation_store
-
-    return get_foundation_store()
-
-
 def _advisor_row(sid: str) -> dict:
-    row = _store().all_vertices("phx_dm_pce_advisor").get(sid)
-    if row is None:
+    from app.graph.queries import lookups
+
+    rows = lookups.fetch_vertex_rows("phx_dm_pce_advisor", key=sid)
+    if not rows:
         raise HTTPException(404, f"unknown advisor '{sid}'")
-    return row
+    return rows[0]
 
 
 def _month_ids() -> list[str]:
-    return sorted(_store().all_vertices("phx_dm_pce_month"))
+    from app.graph.queries import lookups
+
+    return lookups.month_ids()
 
 
 def _num(v) -> float:
@@ -62,6 +60,8 @@ def advisor_list() -> dict:
     # job code + the client-mapping display name (job_display_name — NOT
     # em_pay_title_txt, which is blank for four codes), work state, work city.
     # A blank stays blank — never invented, never a reason to hide an advisor.
+    from app.graph.queries import lookups
+
     advisors = [
         {"advisor_sid": sid,
          "advisor_name": str(a.get("advisor_name") or ""),
@@ -72,7 +72,7 @@ def advisor_list() -> dict:
          "work_state": str(a.get("work_state") or ""),
          "work_city": str(a.get("work_city") or ""),
          "is_synthetic": a.get("is_synthetic") is True}
-        for sid, a in sorted(_store().all_vertices("phx_dm_pce_advisor").items())
+        for sid, a in sorted(lookups.advisor_rows().items())
     ]
     return {"advisors": advisors,
             "cohort_count": sum(1 for a in advisors if a["in_cohort"])}
@@ -88,9 +88,12 @@ def _team_status(sid: str) -> dict:
     team_rep = None
     if active:
         # team_rep_cd lives on the agreement vertex, not the catalog row
-        vertices = _store().all_vertices("phx_dm_pce_team_agreement")
+        from app.graph.queries import lookups
+
+        vertices = lookups.fetch_vertex_rows(
+            "phx_dm_pce_team_agreement", columns="agreement_id,team_rep_cd")
         ids = {a["agreement_id"] for a in active}
-        for v in vertices.values():
+        for v in vertices:
             if str(v.get("agreement_id")) in ids:
                 team_rep = str(v.get("team_rep_cd") or "") or None
                 break
@@ -110,13 +113,15 @@ def advisor_summary(sid: str,
 
     # per-month AUM for the chart — null when the advisor holds no account
     # rows that month (honest, never 0-as-a-guess)
+    from app.graph.queries import lookups
+
     aum_by_month: dict[str, float | None] = {}
     for mid in months:
         rows = _catalog("advisor_aum", {"advisor": sid, "month_id": mid})
         row = rows[0] if rows else None
-        has_rows = any(str(r.get("advisor_sid")) == sid
-                       and str(r.get("month_id")) == mid
-                       for r in _store().all_vertices("phx_dm_pce_account_month").values())
+        has_rows = bool(lookups.fetch_vertex_rows(
+            "phx_dm_pce_account_month", month=mid, advisor_sid=sid,
+            columns="advisor_sid"))
         aum_by_month[mid] = row["total_balance"] if (row and has_rows) else None
 
     # lifecycle counts (Round A1 rule outcomes — includes Retained)
@@ -132,15 +137,11 @@ def advisor_summary(sid: str,
     # balances of the advisor's accounts where the account master says
     # is_managed, for the to-month and its prior (null when no managed rows).
     def _managed_aum(month_id: str) -> float | None:
-        managed = {k for k, a in _store().all_vertices("phx_dm_pce_account").items()
-                   if a.get("is_managed") in (True, "True", "true", 1, "1")}
-        rows = [r for r in _store().all_vertices("phx_dm_pce_account_month").values()
-                if str(r.get("advisor_sid")) == sid
-                and str(r.get("month_id")) == str(month_id)
-                and str(r.get("acct_key")) in managed]
-        if not rows:
+        row = run_catalog_query("aum_managed", {
+            "advisor": sid, "month_id": month_id})["rows"][0]
+        if not row["account_count"]:
             return None
-        return round(sum(float(r.get("end_balance") or 0) for r in rows), 2)
+        return row["total_balance"]
 
     prior_mid = months[months.index(to_month) - 1] if months.index(to_month) > 0 else None
     managed_now = _managed_aum(to_month)
@@ -220,8 +221,9 @@ def _rank_block(sid: str, values: dict[str, float | None]) -> dict:
 
 def _peer_ranking(sid: str, from_month: str, to_month: str) -> dict:
     _advisor_row(sid)
-    cohort = {s for s, a in _store().all_vertices("phx_dm_pce_advisor").items()
-              if a.get("in_cohort") is True}
+    from app.graph.queries import lookups
+
+    cohort = set(lookups.cohort_sids())
 
     rev_to = {r["advisor_sid"]: r["value"] for r in _catalog(
         "cohort_ranking", {"advisor": "all", "month_id": to_month,

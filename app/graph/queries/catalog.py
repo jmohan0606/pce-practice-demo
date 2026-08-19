@@ -849,7 +849,10 @@ def account_lifecycle_counts(store: FoundationGraphStore, params: dict) -> list[
         field = LIFECYCLE_RULE_FIELDS.get(str(result.get("rule_code")))
         if field is None:
             continue
-        if result.get("empty_reason"):
+        # Round 9 task 10d — true-zero diagnostics (empty_kind set: the rule
+        # ran and matched nothing) are NOT caveats; only structural reasons
+        # (baseline guard etc.) qualify the count here.
+        if result.get("empty_reason") and not result.get("empty_kind"):
             notes.append(f"{result['rule_code']}: {result['empty_reason']}")
         # Round 3 review B2 — a SKIPPED lifecycle rule (e.g. deactivated) must
         # never read as a true zero: the note says why the count is absent.
@@ -1109,19 +1112,44 @@ def rule_evaluation_rows(store: FoundationGraphStore, params: dict) -> list[dict
     from agent tool listings and refused for agent callers — raw vertex rows at
     client scale must never land in a prompt.
 
-    Filtering mirrors the evaluator's original logic EXACTLY (month/advisor
-    apply only when the attribute exists on the rows) so mock-mode results are
-    byte-identical to the direct-read implementation. Each row carries
-    __vertex_id (the store key) for the evaluator's join index."""
-    vertex = str(params["vertex"])
+    Round 9 task 4 — the contract between the tiers is SAME ROWS OUT, NOT SAME
+    METHOD. The Python (mock) tier filters after materialising because the
+    local store is in memory and tiny; the GSQL twin
+    (docs/tigergraph/queries/rule_evaluation_rows.gsql) pushes the month /
+    advisor_sid / key filters into the query so a 12M-row vertex is never
+    materialised server-side and shipped. Both must return the same rows for
+    the same params; how much work each does to get there is tier-local.
+    Filter semantics: month/advisor apply only when the attribute exists on
+    the vertex. Each row carries __vertex_id (the primary key) for the
+    evaluator's join index.
+
+    ``columns`` (optional, comma-separated) projects the returned rows to just
+    those attributes (+ __vertex_id) — the evaluator passes the fields its
+    plan actually references, so full 27-column rows never ride the wire.
+    Filtering happens BEFORE projection, so projecting month_id out never
+    changes which rows return.
+
+    Param names are the GSQL twin's names verbatim (vertex_type / key_id —
+    ``vertex`` and ``key`` risk keyword collisions in GSQL)."""
+    vertex = str(params["vertex_type"])
     from app.rules.compiler import load_schema_catalog
 
     if vertex not in load_schema_catalog()["vertices"]:
         raise CatalogError(f"unknown vertex {vertex!r}")
-    key = params.get("key")
+
+    def _project(rows: list[dict]) -> list[dict]:
+        wanted = str(params.get("columns") or "").strip()
+        if not wanted:
+            return rows
+        keep = {c.strip() for c in wanted.split(",") if c.strip()}
+        keep.add("__vertex_id")
+        return [{k: v for k, v in r.items() if k in keep} for r in rows]
+
+    key = params.get("key_id")
     if key not in (None, ""):
         row = store.vertex(vertex, str(key))
-        return [{**dict(row), "__vertex_id": str(key)}] if row is not None else []
+        return _project([{**dict(row), "__vertex_id": str(key)}]
+                        if row is not None else [])
     rows = [{**dict(attrs), "__vertex_id": str(vid)}
             for vid, attrs in store.all_vertices(vertex).items()]
     month = params.get("month")
@@ -1130,7 +1158,7 @@ def rule_evaluation_rows(store: FoundationGraphStore, params: dict) -> list[dict
     advisor = params.get("advisor_sid")
     if advisor not in (None, "") and rows and "advisor_sid" in rows[0]:
         rows = [r for r in rows if str(r.get("advisor_sid")) == str(advisor)]
-    return rows
+    return _project(rows)
 
 
 @mock_query("month_meta")
@@ -1139,6 +1167,51 @@ def month_meta(store: FoundationGraphStore, params: dict) -> list[dict]:
     return [{"trading_days": int(_num(row.get("trading_days"))),
              "is_baseline": bool(row.get("is_baseline")),
              "is_partial": bool(row.get("is_partial"))}]
+
+
+# --------------------------------------------------- Round 9 task 9 — the
+# three NEW queries the store-read audit called for (docs/STORE_READ_AUDIT.md):
+# bulk managed flags, managed-scoped AUM, product-group name lookup. Each has
+# a GSQL twin under docs/tigergraph/queries/ in the client install set.
+
+@mock_query("account_managed_flags")
+def account_managed_flags(store: FoundationGraphStore, params: dict) -> list[dict]:
+    """Bulk acct_key -> is_managed for every account (account_master is
+    single-key; the exceptions model and the managed-AUM tiles need the whole
+    map in one read)."""
+    return [{"acct_key": str(k), "is_managed": bool(a.get("is_managed"))}
+            for k, a in sorted(store.all_vertices(V_ACCOUNT).items())]
+
+
+@mock_query("aum_managed")
+def aum_managed(store: FoundationGraphStore, params: dict) -> list[dict]:
+    """Managed-accounts-only AUM (Round 3 review D2's scope: the account
+    MASTER's is_managed flag) for one advisor or the cohort, one month.
+    account_count says whether any managed row existed — callers render null,
+    not 0, when it is 0 (a missing figure is never a guessed zero)."""
+    scope = _advisor_scope(store, params["advisor"])
+    _require_month(store, params["month_id"])
+    managed = {str(k) for k, a in store.all_vertices(V_ACCOUNT).items()
+               if a.get("is_managed") in (True, "True", "true", 1, "1")}
+    rows = [r for r in _am_rows(store, scope, params["month_id"])
+            if str(r.get("acct_key")) in managed]
+    return [{"total_balance": round(sum(_num(r.get("end_balance"))
+                                        for r in rows), 2),
+             "account_count": len(rows)}]
+
+
+@mock_query("product_group_master")
+def product_group_master(store: FoundationGraphStore, params: dict) -> list[dict]:
+    """One product group's master facts — the name lookup the insights API and
+    the driver descriptions need. Unknown group_id returns an empty result
+    (callers fall back to the raw id, never invent a name)."""
+    group = store.all_vertices(V_GROUP).get(str(params["group_id"]))
+    if group is None:
+        return []
+    return [{"group_id": str(params["group_id"]),
+             "group_name": str(group.get("group_name") or ""),
+             "display_prefix": str(group.get("display_prefix") or ""),
+             "class_id": str(group.get("class_id") or "")}]
 
 
 @mock_query("account_master")
@@ -1312,12 +1385,35 @@ CATALOG: dict[str, dict] = {
                        "optionally scoped to a month/advisor/key. Routed "
                        "through the tiered client so evaluation reaches "
                        "TigerGraph in real mode. Never agent-callable.",
-        "params": [_p("vertex", "schema vertex name"),
+        "params": [_p("vertex_type", "schema vertex name"),
                    _p("month", "YYYYMM", required=False),
                    _p("advisor_sid", "advisor_sid", required=False),
-                   _p("key", "vertex primary id", required=False)],
-        "returns": ["(every attribute of the vertex)", "__vertex_id"],
+                   _p("key_id", "vertex primary id", required=False),
+                   _p("columns", "comma-separated attribute projection",
+                      required=False)],
+        "returns": ["(the projected attributes of the vertex — every "
+                    "attribute when columns is unset)", "__vertex_id"],
         "internal": True,
+    },
+    "account_managed_flags": {
+        "description": "Every account's is_managed flag — the bulk map behind "
+                       "managed-scoped figures (account_master is single-key).",
+        "params": [],
+        "returns": ["acct_key", "is_managed"],
+    },
+    "aum_managed": {
+        "description": "Managed-accounts-only AUM (account master is_managed "
+                       "scope) for an advisor or the cohort, one month. "
+                       "account_count 0 means no managed rows — render null, "
+                       "never 0.",
+        "params": [ADVISOR, MONTH],
+        "returns": ["total_balance", "account_count"],
+    },
+    "product_group_master": {
+        "description": "One product group's master facts (name, prefix, "
+                       "class). Unknown group_id returns empty.",
+        "params": [_p("group_id", "string")],
+        "returns": ["group_id", "group_name", "display_prefix", "class_id"],
     },
     "account_master": {
         "description": "One account's master facts (class, platform, managed, opened-in-scope, household).",
@@ -1507,7 +1603,20 @@ def run_catalog_query(query_name: str, params: dict | None = None, *,
 
     Shape-mode results carry ``shape`` plus ``source_rows`` (the complete row
     set) so evidence attached to a finding is every row behind the number.
+
+    Round 9 tasks 1+2 — real-mode read guard and tier provenance:
+
+    - In a REAL graph mode (GRAPH_CLIENT_MODE not mock/local) a result served
+      by tier 4 — the LOCAL MOCK FALLBACK — RAISES instead of returning mock
+      rows that look real (the read-side twin of the upsert guard at
+      app/ingestion/tigergraph_upsert.py). mock/local modes are unaffected:
+      tier 4 is the correct and only tier there.
+    - Every envelope carries ``served_by_tier`` (1-4) and ``graph_mode`` (the
+      GRAPH_CLIENT_MODE that served it) — additive keys, so existing callers
+      are untouched. (The key is ``graph_mode``, not ``mode``: ``mode`` was
+      already taken by the shape/rows envelope above.)
     """
+    from app.config.settings import get_settings
     from app.graph.client import get_graph_client
     from app.graph.queries.shapes import compute_shape, shape_capable
 
@@ -1527,20 +1636,38 @@ def run_catalog_query(query_name: str, params: dict | None = None, *,
             f"queries — this one returns a bounded result already")
     checked = validate_params(query_name, params)
     result = get_graph_client().run_query(query_name, checked)
+    graph_mode = get_settings().graph_client_mode.lower()
+    served_by_tier = result.get("served_by_tier")
+    if served_by_tier is None and result.get("mode") == "mock":
+        # mock/local mode serves through MockGraphClient directly (no tiered
+        # dispatch), so the dispatcher never stamped a tier — it IS tier 4.
+        served_by_tier = 4
+    # Round 9 task 1 — the read-side twin of the tier-4 upsert guard: a real
+    # mode must NEVER quietly serve local mock rows as if they were TigerGraph.
+    if graph_mode not in {"mock", "local"} and served_by_tier == 4:
+        raise RuntimeError(
+            f"catalog query '{query_name}' was served by the LOCAL FALLBACK tier, "
+            f"not TigerGraph (GRAPH_CLIENT_MODE={graph_mode}) — the rows would be "
+            f"MOCK data, not the real graph. Check TigerGraph connectivity "
+            f"(/api/health / logs/app.log) and that the '{query_name}' GSQL query "
+            f"is installed; the read is refused rather than served from the "
+            f"local store."
+        )
+    provenance = {"served_by_tier": served_by_tier, "graph_mode": graph_mode}
     rows = result.get("results") or []
     if not shape_capable(query_name):
-        return {"rows": rows, "row_count": len(rows)}
+        return {"rows": rows, "row_count": len(rows), **provenance}
     mode = str(envelope.get("mode") or default_mode).lower()
     if mode not in ("shape", "rows"):
         raise CatalogError(f"{query_name}: mode must be 'shape' or 'rows', got {mode!r}")
     if mode == "shape":
         shape = compute_shape(query_name, rows, group_by=envelope.get("group_by") or None)
         return {"rows": [shape], "row_count": len(rows), "shape": shape,
-                "source_rows": rows, "mode": "shape"}
+                "source_rows": rows, "mode": "shape", **provenance}
     limit = envelope.get("limit")
     shown = rows if limit in (None, "") else rows[:max(0, int(limit))]
     return {"rows": shown, "row_count": len(rows), "source_rows": rows,
-            "mode": "rows"}
+            "mode": "rows", **provenance}
 
 
 # ------------------------------------------------------------------- Round F2

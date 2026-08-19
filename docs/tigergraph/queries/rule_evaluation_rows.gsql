@@ -1,0 +1,143 @@
+/*
+ * rule_evaluation_rows — INTERNAL catalog query (Round 8 fix / Round 9 task 3).
+ * Purpose: The RULE EVALUATOR's raw row source, routed through the tiered
+ *          client so rule evaluation reads TigerGraph in real mode instead of
+ *          the local mock store. Never agent-callable (catalog marks it
+ *          internal); the app refuses it without allow_internal.
+ * Params:  vertex_type — one of the supported vertex type names below
+ *          month       — "" or YYYYMM; applied where the type carries month_id
+ *          advisor_sid — "" or an advisor SID; applied where the type carries
+ *                        advisor_sid
+ *          key_id      — "" or a primary id; narrows to that one vertex
+ *          columns     — accepted for signature parity with the catalog entry;
+ *                        the app layer applies the projection (GSQL cannot
+ *                        select attributes by a runtime name), so this query
+ *                        returns full rows and the caller keeps only the
+ *                        columns it asked for
+ * Outputs: one result set per supported vertex type (rows_<short name>); only
+ *          the set matching vertex_type is non-empty. Each printed vertex's
+ *          v_id is the row's __vertex_id; attributes ride the standard PRINT
+ *          vertex payload.
+ * Filtering happens SERVER-SIDE (Round 9 task 4): the contract with the
+ * Python mock tier is SAME ROWS OUT, NOT SAME METHOD — the mock tier filters
+ * an in-memory store after materialising; this query filters in the engine so
+ * a 12M-row vertex type is never shipped.
+ * Supported vertex types = the compiler's GRAIN_VERTICES union plus the
+ * lookup vertices the app's converted read sites use (Round 9 task 9):
+ * account_month, account, account_transfer, revenue_transaction, advisor,
+ * month, monthly_revenue, advisor_flow_month, opportunity, rpg, household,
+ * product, product_group, team_agreement. Any other vertex_type returns
+ * empty sets.
+ * Created: Round 9 (2026-08-19). NEEDS LIVE INSTALL — rule evaluation in real
+ *          mode fails loudly (by design) until this query is installed.
+ * Compatibility target: TigerGraph 4.2.x (patch_4.2.2_jpmc_57231), classic
+ *          GSQL SYNTAX V1 — written against reference/v2 (EXAMPLE_query.gsql
+ *          WHERE-guard pattern; GQ-013/GQ-009 as installed-form references).
+ *          No v2 constructs, no reverse_-prefixed edge names (no edges are
+ *          traversed at all), no MapAccum, no ternaries.
+ */
+USE GRAPH phx_dm_pce_practice_demo
+
+CREATE QUERY rule_evaluation_rows(STRING vertex_type, STRING month,
+    STRING advisor_sid, STRING key_id, STRING columns)
+    FOR GRAPH phx_dm_pce_practice_demo SYNTAX V1 {
+
+  am_seed = {phx_dm_pce_account_month.*};
+  rows_account_month = SELECT r FROM am_seed:r
+      WHERE vertex_type == "phx_dm_pce_account_month"
+        AND (month == "" OR r.month_id == month)
+        AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
+        AND (key_id == "" OR r.am_id == key_id);
+
+  acct_seed = {phx_dm_pce_account.*};
+  rows_account = SELECT r FROM acct_seed:r
+      WHERE vertex_type == "phx_dm_pce_account"
+        AND (key_id == "" OR r.acct_key == key_id);
+
+  transfer_seed = {phx_dm_pce_account_transfer.*};
+  rows_account_transfer = SELECT r FROM transfer_seed:r
+      WHERE vertex_type == "phx_dm_pce_account_transfer"
+        AND (month == "" OR r.month_id == month)
+        AND (key_id == "" OR r.transfer_id == key_id);
+
+  txn_seed = {phx_dm_pce_revenue_transaction.*};
+  rows_revenue_transaction = SELECT r FROM txn_seed:r
+      WHERE vertex_type == "phx_dm_pce_revenue_transaction"
+        AND (month == "" OR r.month_id == month)
+        AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
+        AND (key_id == "" OR r.txn_id == key_id);
+
+  advisor_seed = {phx_dm_pce_advisor.*};
+  rows_advisor = SELECT r FROM advisor_seed:r
+      WHERE vertex_type == "phx_dm_pce_advisor"
+        AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
+        AND (key_id == "" OR r.advisor_sid == key_id);
+
+  month_seed = {phx_dm_pce_month.*};
+  rows_month = SELECT r FROM month_seed:r
+      WHERE vertex_type == "phx_dm_pce_month"
+        AND (month == "" OR r.month_id == month)
+        AND (key_id == "" OR r.month_id == key_id);
+
+  mr_seed = {phx_dm_pce_monthly_revenue.*};
+  rows_monthly_revenue = SELECT r FROM mr_seed:r
+      WHERE vertex_type == "phx_dm_pce_monthly_revenue"
+        AND (month == "" OR r.month_id == month)
+        AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
+        AND (key_id == "" OR r.mr_id == key_id);
+
+  flow_seed = {phx_dm_pce_advisor_flow_month.*};
+  rows_advisor_flow_month = SELECT r FROM flow_seed:r
+      WHERE vertex_type == "phx_dm_pce_advisor_flow_month"
+        AND (month == "" OR r.month_id == month)
+        AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
+        AND (key_id == "" OR r.afm_id == key_id);
+
+  opp_seed = {phx_dm_pce_opportunity.*};
+  rows_opportunity = SELECT r FROM opp_seed:r
+      WHERE vertex_type == "phx_dm_pce_opportunity"
+        AND (advisor_sid == "" OR r.advisor_sid == advisor_sid)
+        AND (key_id == "" OR r.opportunity_id == key_id);
+
+  rpg_seed = {phx_dm_pce_rpg.*};
+  rows_rpg = SELECT r FROM rpg_seed:r
+      WHERE vertex_type == "phx_dm_pce_rpg"
+        AND (key_id == "" OR r.rpg_id == key_id);
+
+  household_seed = {phx_dm_pce_household.*};
+  rows_household = SELECT r FROM household_seed:r
+      WHERE vertex_type == "phx_dm_pce_household"
+        AND (key_id == "" OR r.eci_id == key_id);
+
+  product_seed = {phx_dm_pce_product.*};
+  rows_product = SELECT r FROM product_seed:r
+      WHERE vertex_type == "phx_dm_pce_product"
+        AND (key_id == "" OR r.product_id == key_id);
+
+  group_seed = {phx_dm_pce_product_group.*};
+  rows_product_group = SELECT r FROM group_seed:r
+      WHERE vertex_type == "phx_dm_pce_product_group"
+        AND (key_id == "" OR r.group_id == key_id);
+
+  team_seed = {phx_dm_pce_team_agreement.*};
+  rows_team_agreement = SELECT r FROM team_seed:r
+      WHERE vertex_type == "phx_dm_pce_team_agreement"
+        AND (key_id == "" OR r.agreement_id == key_id);
+
+  PRINT rows_account_month;
+  PRINT rows_account;
+  PRINT rows_account_transfer;
+  PRINT rows_revenue_transaction;
+  PRINT rows_advisor;
+  PRINT rows_month;
+  PRINT rows_monthly_revenue;
+  PRINT rows_advisor_flow_month;
+  PRINT rows_opportunity;
+  PRINT rows_rpg;
+  PRINT rows_household;
+  PRINT rows_product;
+  PRINT rows_product_group;
+  PRINT rows_team_agreement;
+}
+
+INSTALL QUERY rule_evaluation_rows

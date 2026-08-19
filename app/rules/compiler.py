@@ -509,11 +509,10 @@ def translate_plan(rule_code: str, grain: str, plan_json: dict) -> CompiledRule 
 def _test_params() -> dict:
     """Benign parameter values from the mock data — every allowed param is
     supplied so check 5 exercises the plan itself, not parameter plumbing."""
-    from app.graph.foundation_store import get_foundation_store
+    from app.graph.queries import lookups
 
-    store = get_foundation_store()
-    months = sorted(store.all_vertices("phx_dm_pce_month"))
-    advisors = sorted(store.all_vertices("phx_dm_pce_advisor"))
+    months = lookups.month_ids()
+    advisors = sorted(lookups.advisor_rows(columns="advisor_sid"))
     return {
         "month": months[-1] if months else "202606",
         "from_month": months[0] if months else "202604",

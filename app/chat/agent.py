@@ -141,18 +141,19 @@ def _rules_digest() -> list[dict]:
 
 
 def _roster() -> list[dict]:
-    from app.graph.foundation_store import get_foundation_store
+    from app.graph.queries import lookups
 
-    advisors = get_foundation_store().all_vertices("phx_dm_pce_advisor")
+    advisors = lookups.advisor_rows(
+        columns="advisor_sid,advisor_name,branch_cd,in_cohort")
     return [{"advisor_sid": sid, "advisor_name": a.get("advisor_name"),
              "branch_cd": a.get("branch_cd"), "in_cohort": a.get("in_cohort")}
             for sid, a in sorted(advisors.items())]
 
 
 def _months() -> list[str]:
-    from app.graph.foundation_store import get_foundation_store
+    from app.graph.queries import lookups
 
-    return sorted(get_foundation_store().all_vertices("phx_dm_pce_month"))
+    return lookups.month_ids()
 
 
 def build_opening() -> tuple[str, list[dict]]:

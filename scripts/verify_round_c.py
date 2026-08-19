@@ -39,6 +39,10 @@ SAMPLE_PARAMS = {
     "revenue_by_advisor": {"month_id": "202605"},
     "advisor_totals": {"advisor": "all", "from_month": "202604", "to_month": "202605"},
     "accounts_for_month": {"advisor": "all", "month_id": "202605"},
+    # Round 9 task 9 — the audit's three new queries
+    "account_managed_flags": {},
+    "aum_managed": {"advisor": "all", "month_id": "202605"},
+    "product_group_master": {"group_id": "managed_accounts"},
     "accounts_opened": {"advisor": "all", "from_dt": "2026-04-01", "to_dt": "2026-06-30"},
     "accounts_zeroed": {"advisor": "all", "from_month": "202604", "to_month": "202605"},
     "accounts_absent": {"advisor": "all", "from_month": "202604", "to_month": "202605"},
@@ -157,14 +161,24 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
     from app.graph.queries.catalog import catalog_signatures as _sigs
     internal_ok = (internal_names == {"rule_evaluation_rows"}
                    and not any(s["query_name"] in internal_names for s in _sigs()))
+    # Round 9 task 10b — the refusal must be THE refusal, not any exception
+    # (a typo'd vertex name also raises CatalogError): assert on the message.
     try:
-        run_catalog_query("rule_evaluation_rows", {"vertex": "phx_dm_pce_month"})
+        run_catalog_query("rule_evaluation_rows",
+                          {"vertex_type": "phx_dm_pce_month"})
         internal_ok = False  # must refuse without allow_internal
-    except Exception:  # noqa: BLE001 — the refusal is the pass
-        pass
-    internal_ok = internal_ok and bool(run_catalog_query(
-        "rule_evaluation_rows", {"vertex": "phx_dm_pce_month"},
-        allow_internal=True)["rows"])
+    except Exception as exc:  # noqa: BLE001 — message asserted below
+        if "internal query" not in str(exc):
+            internal_ok = False
+    # Round 9 task 10a — the internal query's own column contract is asserted
+    # (the visible-query loop below skips internal names): every row carries
+    # __vertex_id plus the projected attribute.
+    internal_rows = run_catalog_query(
+        "rule_evaluation_rows",
+        {"vertex_type": "phx_dm_pce_month", "columns": "month_name"},
+        allow_internal=True)["rows"]
+    internal_ok = internal_ok and bool(internal_rows) and all(
+        set(r) == {"__vertex_id", "month_name"} for r in internal_rows)
     missing_cols, empty, errors = [], [], []
     for name, spec in CATALOG.items():
         if name in internal_names:
@@ -182,9 +196,10 @@ def main() -> int:  # noqa: PLR0915 — one linear verification script
         if not wanted <= cols:
             missing_cols.append(f"{name}: missing {sorted(wanted - cols)}")
     check(1, "every catalog query executes and returns the documented columns",
-          not errors and not missing_cols and len(CATALOG) == 47 and internal_ok,
-          f"{len(CATALOG)} queries (46 agent-visible + 1 internal evaluator row "
-          f"source, hidden from signatures and refused without allow_internal); "
+          not errors and not missing_cols and len(CATALOG) == 50 and internal_ok,
+          f"{len(CATALOG)} queries (49 agent-visible + 1 internal evaluator row "
+          f"source, hidden from signatures, refused-with-the-internal-message "
+          f"without allow_internal, __vertex_id column contract asserted); "
           f"errors={errors or 'none'}; column gaps={missing_cols or 'none'}; "
           f"legitimately empty on mock data: {empty or 'none'}")
 

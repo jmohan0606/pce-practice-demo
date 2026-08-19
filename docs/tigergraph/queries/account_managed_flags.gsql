@@ -1,0 +1,23 @@
+/*
+ * account_managed_flags — Round 9 task 9 catalog query (docs/STORE_READ_AUDIT.md).
+ * Purpose: Bulk acct_key -> is_managed for every account — the map behind the
+ *          exceptions model's managed scoping and the managed-AUM tiles
+ *          (account_master is single-key).
+ * Outputs: accounts set: acct_key, is_managed.
+ * Local-tier equivalent: app/graph/queries/catalog.py::account_managed_flags
+ * Created: Round 9 (2026-08-19). NEEDS LIVE INSTALL.
+ * Compatibility target: TigerGraph 4.2.x (patch_4.2.2_jpmc_57231), classic
+ *          GSQL SYNTAX V1 — written against reference/v2 (GQ-001/GQ-013 form).
+ *          No v2 constructs, no reverse_ edge names, no MapAccum, no ternaries.
+ */
+USE GRAPH phx_dm_pce_practice_demo
+
+CREATE QUERY account_managed_flags() FOR GRAPH phx_dm_pce_practice_demo SYNTAX V1 {
+  acct_seed = {phx_dm_pce_account.*};
+  accounts = SELECT c FROM acct_seed:c
+      ORDER BY c.acct_key ASC;
+  PRINT accounts[accounts.acct_key AS acct_key,
+                 accounts.is_managed AS is_managed];
+}
+
+INSTALL QUERY account_managed_flags

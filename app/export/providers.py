@@ -126,20 +126,21 @@ def provide_dashboard_table(params: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def provide_noncredited(params: dict) -> dict:
-    from app.graph.foundation_store import get_foundation_store
+    from app.graph.queries import lookups
     from app.shared.reason_codes import cause_for_code
 
     month = str(params.get("month") or params.get("to") or "").strip()
     if not month:
         raise ExportParamError("missing required param 'month' (or 'to')")
-    store = get_foundation_store()
-    if month not in store.all_vertices("phx_dm_pce_month"):
+    if lookups.month_row(month) is None:
         raise ExportParamError(f"unknown month '{month}'")
 
     grouped: dict[str, dict] = {}
-    for txn in store.all_vertices("phx_dm_pce_revenue_transaction").values():
+    for txn in lookups.fetch_vertex_rows(
+            "phx_dm_pce_revenue_transaction", month=month,
+            columns="reason_cd,acct_key,advisor_sid,non_credited_amt,pre_split_amt"):
         reason = str(txn.get("reason_cd") or "")
-        if reason in ("", "__NONE__") or str(txn.get("month_id")) != month:
+        if reason in ("", "__NONE__"):
             continue
         bucket = grouped.setdefault(reason, {
             "reason_cd": reason,

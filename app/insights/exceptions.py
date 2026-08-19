@@ -64,14 +64,10 @@ def _truthy(value) -> bool:
     return str(value).strip().lower() in {"true", "1", "yes"}
 
 
-def _store():
-    from app.graph.foundation_store import get_foundation_store
-
-    return get_foundation_store()
-
-
 def _prior_month(month: str) -> str | None:
-    months = sorted(_store().all_vertices(V_MONTH))
+    from app.graph.queries import lookups
+
+    months = lookups.month_ids()
     try:
         idx = months.index(str(month))
     except ValueError:
@@ -103,13 +99,12 @@ def _denominator_kind(rule: dict) -> tuple[str, str]:
 def _advisor_accounts(month: str) -> dict[str, list[dict]]:
     """advisor_sid -> that advisor's account_month rows for the month, with
     the account master's is_managed merged on."""
-    store = _store()
-    managed = {k: _truthy(a.get("is_managed"))
-               for k, a in store.all_vertices(V_ACCOUNT).items()}
+    from app.graph.queries import lookups
+
+    managed = lookups.account_managed_map()
     out: dict[str, list[dict]] = {}
-    for row in store.all_vertices(V_AM).values():
-        if str(row.get("month_id")) != str(month):
-            continue
+    for row in lookups.fetch_vertex_rows(
+            V_AM, month=month, columns="acct_key,advisor_sid,credited_amt"):
         r = dict(row)
         r["is_managed"] = managed.get(str(row.get("acct_key")), False)
         out.setdefault(str(row.get("advisor_sid")), []).append(r)
@@ -117,13 +112,16 @@ def _advisor_accounts(month: str) -> dict[str, list[dict]]:
 
 
 def _cohort_sids() -> list[str]:
-    return sorted(sid for sid, a in _store().all_vertices(V_ADVISOR).items()
-                  if a.get("in_cohort") is True)
+    from app.graph.queries import lookups
+
+    return lookups.cohort_sids()
 
 
 def _advisor_names() -> dict[str, str]:
+    from app.graph.queries import lookups
+
     return {sid: a.get("advisor_name") or sid
-            for sid, a in _store().all_vertices(V_ADVISOR).items()}
+            for sid, a in lookups.advisor_rows(columns="advisor_name").items()}
 
 
 def exception_rules(version_id: str | None = None) -> list[dict]:
@@ -166,50 +164,49 @@ def _matched_by_advisor(rule: dict, month: str, sids: list[str],
     return out
 
 
+def _trigger_fires(op: str, value: float, threshold: float) -> bool:
+    return {"=": value == threshold, "!=": value != threshold,
+            ">": value > threshold, ">=": value >= threshold,
+            "<": value < threshold, "<=": value <= threshold}[op]
+
+
 def _absolute_firm_exception(rule: dict, month: str, version_id: str) -> dict:
     """Round 8 task 4 — a PRACTICE-applies rule is an ABSOLUTE firm-level
     threshold, not a cohort rate: there is no peer cohort at firm level, so the
-    rate model does not apply. The rule evaluates ONCE at practice scope;
-    fired comes from that evaluation, and the OBSERVED value comes from the
-    same plan with its trigger opened (so the row shows the actual figure even
-    when the threshold did not fire — the operator sees whether the threshold
-    discriminates)."""
+    rate model does not apply.
+
+    Round 9 task 10c — ONE authoritative source: the passed-in rule's own
+    plan. The plan runs once with its trigger opened to observe the actual
+    value, and ``fired`` is that observation compared against the same plan's
+    own trigger — never a second evaluation reading the store again, which
+    could disagree with the rule this function was handed."""
+    import app.graph.queries.rules_evaluate  # noqa: F401 — registers rules_evaluate_plan
     from app.graph.client import get_graph_client
     from app.rules.compiler import translate_plan
-    from app.rules.service import evaluate_rule_set
 
     plan = rule.get("plan") or {}
     trigger = plan.get("trigger") or {}
     threshold = trigger.get("value")
+    op = str(trigger.get("op") or ">")
     fired = False
-    matched_value = None
+    observed = None
     error = None
     try:
-        outcome = evaluate_rule_set(version_id, month=month, scope="practice")
-        result = next((r for r in outcome["results"]
-                       if r.get("rule_key") == rule.get("rule_key")), None)
-        if result is not None and result.get("evaluated"):
-            fired = bool(result.get("matched"))
-            if fired:
-                matched_value = round(sum(_f(e.get("value"))
-                                          for e in result["matched"]), 2)
+        open_plan = dict(plan)
+        open_plan["trigger"] = {"op": ">=", "value": -1e18}
+        compiled = translate_plan(rule.get("rule_code") or "", "month", open_plan)
+        rows = get_graph_client().run_query(
+            "rules_evaluate_plan",
+            {"plan": compiled.plan, "params": {"month": month}})
+        entries = (rows.get("results") or [{}])[0].get("matched") or []
+        fired_entries = [e for e in entries
+                         if _trigger_fires(op, _f(e.get("value")), _f(threshold))]
+        fired = bool(fired_entries)
+        source = fired_entries if fired else entries
+        observed = round(sum(_f(e.get("value")) for e in source), 2) \
+            if source else 0.0
     except Exception as exc:  # noqa: BLE001 — stated, never hidden
         error = f"{type(exc).__name__}: {exc}"
-    observed = matched_value
-    if observed is None and error is None:
-        # trigger did not fire — observe the actual value by opening the trigger
-        try:
-            open_plan = dict(plan)
-            open_plan["trigger"] = {"op": ">=", "value": -1e18}
-            compiled = translate_plan(rule.get("rule_code") or "", "month", open_plan)
-            rows = get_graph_client().run_query(
-                "rules_evaluate_plan",
-                {"plan": compiled.plan, "params": {"month": month}})
-            entries = (rows.get("results") or [{}])[0].get("matched") or []
-            observed = round(sum(_f(e.get("value")) for e in entries), 2) \
-                if entries else 0.0
-        except Exception as exc:  # noqa: BLE001
-            error = f"observation failed: {type(exc).__name__}: {exc}"
     monetary = _rule_is_monetary(rule)
     return {
         "rule_key": rule.get("rule_key"), "rule_code": rule.get("rule_code"),
@@ -246,6 +243,47 @@ def _absolute_firm_exception(rule: dict, month: str, version_id: str) -> dict:
     }
 
 
+def _practice_unsupported(rule: dict, month: str) -> dict:
+    """Round 9 task 6 — a PRACTICE-applies rule WITHOUT a numeric trigger fits
+    neither exceptions model: the absolute-threshold branch has no threshold
+    to compare, and the rate model has no per-advisor evaluation (applies_to
+    PRACTICE confines the rule to firm-level runs). Say exactly that instead
+    of producing a zero-filled firm row."""
+    note = ("this PRACTICE-applies rule has no numeric trigger, so the "
+            "absolute firm-level threshold model cannot evaluate it — and "
+            "applies_to=PRACTICE excludes per-advisor evaluation, so the "
+            "cohort rate model cannot either. Give the rule's plan a numeric "
+            "trigger, or re-tag applies_to (e.g. ALL/ADVISOR) so it can be "
+            "measured per advisor.")
+    return {
+        "rule_key": rule.get("rule_key"), "rule_code": rule.get("rule_code"),
+        "rule_name": rule.get("rule_name") or rule.get("rule_code"),
+        "severity": rule.get("severity"),
+        "model": "unsupported",
+        "config": {
+            "exception_denominator": None,
+            "denominator_label": "not evaluable — see note",
+            "denominator_kind": "unsupported",
+            "product_scope": rule.get("product_scope") or None,
+            "product_scope_applied": None,
+            "exception_floor": None, "exception_floor_unit": None,
+            "exception_sensitivity": None, "sensitivity_applied": None,
+            "sensitivity_default_used": False,
+            "threshold": None, "threshold_op": None,
+        },
+        "cohort": {"median_pct": None, "stdev_pct": None,
+                   "flag_threshold_pct": None, "in_scope_advisors": 0},
+        "advisors": [],
+        "firm": {"affected": None, "denominator": None, "rate_pct": None,
+                 "advisors_in_scope": 0, "advisors_flagged": 0,
+                 "advisors_with_exceptions": 0, "impact_amt": None,
+                 "observed_value": None, "threshold": None, "fired": None,
+                 "is_monetary": _rule_is_monetary(rule),
+                 "error": None, "note": note},
+        "month": month,
+    }
+
+
 def compute_rule_exceptions(rule: dict, month: str, *,
                             sids: list[str] | None = None,
                             accounts_by_advisor: dict[str, list[dict]] | None = None,
@@ -258,7 +296,16 @@ def compute_rule_exceptions(rule: dict, month: str, *,
 
     version_id = version_id or get_rule_store().latest_version("PUBLISHED")["version_id"]
     if rule.get("applies_to") == "PRACTICE":
-        return _absolute_firm_exception(rule, month, version_id)
+        # Round 9 task 6 — the absolute-threshold branch requires a NUMERIC
+        # trigger, matching the UI editor's own condition (ExceptionsTab keys
+        # on applies_to PRACTICE + a numeric trigger). A PRACTICE rule without
+        # one (e.g. an account-grain rule re-tagged PRACTICE) must never be
+        # silently collapsed into a firm-level scalar of zeros.
+        trigger_value = ((rule.get("plan") or {}).get("trigger") or {}).get("value")
+        if isinstance(trigger_value, (int, float)) \
+                and not isinstance(trigger_value, bool):
+            return _absolute_firm_exception(rule, month, version_id)
+        return _practice_unsupported(rule, month)
     sids = sids or _cohort_sids()
     accounts_by_advisor = accounts_by_advisor or _advisor_accounts(month)
     kind, denominator_label = _denominator_kind(rule)
@@ -432,6 +479,9 @@ def compute_advisor_exceptions(advisor_sid: str, month: str,
             mine = {"advisor_sid": advisor_sid, "in_scope": False,
                     "note": "firm-level absolute threshold — not evaluated "
                             "per advisor"}
+        elif full.get("model") == "unsupported":
+            mine = {"advisor_sid": advisor_sid, "in_scope": False,
+                    "note": full["firm"]["note"]}
         out.append({
             "rule_key": full["rule_key"], "rule_code": full["rule_code"],
             "rule_name": full["rule_name"], "severity": full["severity"],

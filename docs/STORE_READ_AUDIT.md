@@ -1,7 +1,24 @@
 # Direct foundation-store reads outside app/graph/ — the audit (Round 8)
 
+> **Round 9 status: ALL 37 reads converted.** Every site below now reads
+> through `run_catalog_query` (existing queries, the three new queries, or the
+> internal `rule_evaluation_rows` generic vertex fetch);
+> `scripts/check_store_reads.py` runs with an EMPTY baseline (strict guard),
+> and mock-mode outputs were proven byte-identical before/after
+> (docs/ROUND_9_COMPLETE.md). The tables below are the audit record.
+>
+> **Round 9 arithmetic correction:** this audit previously said **41** reads —
+> that figure came from subtracting the evaluator's 3 from a prior count of 44
+> rather than summing the tables, which total **36**. An independent AST
+> census found **37**: the 36 audited plus `app/rules/service.py:497`
+> `fstore.load()`, which the audit omitted (now added below). The bucket
+> totals are re-derived from the tables: **A/B = 22, EXT = 6, NEW = 8, plus
+> the one load-guard line** — every RAW mention in the tables is an
+> alternative to a NEW/EXT verdict, never a standalone bucket. The
+> three-new-queries conclusion survives; the arithmetic did not.
+
 **The finding is systemic.** `app/rules/evaluator.py` was the first instance
-(fixed this round: it now reads through the internal `rule_evaluation_rows`
+(fixed in Round 8: it now reads through the internal `rule_evaluation_rows`
 catalog query, mock-mode results proven identical). The remaining direct reads
 mean that in real mode the dashboard shows TigerGraph data while the advisor
 page, exceptions, rules and chat compute from the LOCAL mock store — both look
@@ -25,7 +42,7 @@ Legend:
 `app/rules/evaluator.py` (3 reads) — **FIXED this round** (run_catalog_query
 97 calls / 0 direct reads on the proof run; mock results identical).
 
-## Per-site classification (41 remaining reads)
+## Per-site classification (37 remaining reads — corrected in Round 9)
 
 ### app/insights/exceptions.py — 5 reads (helper `_store()` + 4 uses)
 | Line | Reads | Verdict |
@@ -69,9 +86,10 @@ Legend:
 | 59 | month's transactions restricted to matched accounts (dominant-group attribution) | **NEW** (small) `revenue_by_group_for_accounts(acct_keys, month)` — or **RAW** `rule_evaluation_rows(revenue_transaction, month)` (same volume as today's read) |
 | 71 | product_group name | same **NEW**/RAW as insights:82 |
 
-### app/rules/service.py — 2 reads (never-fired sweep)
+### app/rules/service.py — 3 reads (never-fired sweep)
 | Line | Reads | Verdict |
 |---|---|---|
+| 497 | `fstore.load()` — ensure-loaded guard before the sweep | **(added in Round 9 — omitted by the original audit)** removed outright: the tiered mock path loads its own store; no query needed |
 | 499 | month list | **B** `pce_dashboard_months` |
 | 500 | every advisor SID (non-cohort included) | **EXT** the advisor-directory extension (needs non-cohort rows), or **RAW** |
 
@@ -103,22 +121,25 @@ Legend:
 | 136 | month existence | **A** `month_meta` |
 | 140 | month's transactions grouped by reason code | **A** the `non_credited_by_cause` family / `non_credited_summary(advisor='all')` — confirm the export's firm-wide grouping matches when wiring |
 
-## The verdict
+## The verdict (buckets re-derived from the tables — Round 9 correction)
 
-Of the 41 remaining reads:
+Of the 37 remaining reads (36 audited + the omitted `service.py:497`):
 
 - **22 are covered by existing queries as-is** (A/B — mostly month lists,
-  cohort/advisor names, month existence checks)
-- **7 need additive extensions** to three existing queries
+  cohort/advisor names, month existence checks: A=7, B=15)
+- **6 need additive extensions** to three existing queries
   (`pce_dashboard_advisors` + the Round-5 attribute columns & non-cohort rows;
   `accounts_for_month` + an `advisor_sid` column; `team_members` +
   `team_rep_cd`)
-- **9 need genuinely new queries — but only THREE distinct ones**:
+- **8 need genuinely new queries — but only THREE distinct ones**:
   `account_managed_flags` (bulk is_managed, 3 sites),
   `aum_managed` (managed-scoped AUM, 2 sites),
   `product_group_master` (name lookup, 2 sites) + optionally
   `revenue_by_group_for_accounts` (1 site, RAW-coverable)
-- **3 are RAW-coverable today** via the internal `rule_evaluation_rows`
+- **1 is the `fstore.load()` ensure-loaded guard** — removed, not converted
+- RAW mentions in the tables are ALTERNATIVES to a NEW/EXT verdict (via the
+  internal `rule_evaluation_rows`), never a standalone bucket — the previous
+  "3 RAW-exclusive" claim was wrong
 
 **This is a day, not a week**: three small new queries, three additive
 extensions, then mechanical rewiring — with the mock-mode identity proof
@@ -130,6 +151,10 @@ Each new/extended query also needs its GSQL twin in the client install set.
 `scripts/check_store_reads.py` — fails if any module outside `app/graph/`
 imports `get_foundation_store` / `FoundationGraphStore` or calls
 `all_vertices(` / `.vertex(` **beyond the recorded baseline** (this audit).
-The baseline may only SHRINK: fixing a module without updating the baseline
-passes; adding a read anywhere fails naming the file and line. When the
-baseline reaches empty, the script IS the strict guard the fix demands.
+Round 9 (task 7) closed the pattern holes — it now also catches the tiered
+client's `.store` back-door and the store's other read methods (`out` /
+`inbound` / `out_ids` / `in_ids`, store-receiver `.load(` /
+`.statistics(`) — and the ratchet SELF-TIGHTENS: an under-baseline run writes
+the lower count back into the script, so the ceiling only moves down. The
+baseline reached EMPTY in Round 9: the script is now the strict guard —
+zero direct reads outside `app/graph/`.

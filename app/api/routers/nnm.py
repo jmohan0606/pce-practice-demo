@@ -41,9 +41,9 @@ ASSUMED_NOTE = ("the plan document's award table is titled 'Existing Client "
 def _month_label(month_id: str | None) -> str | None:
     if not month_id:
         return None
-    from app.graph.foundation_store import get_foundation_store
+    from app.graph.queries import lookups
 
-    row = get_foundation_store().all_vertices("phx_dm_pce_month").get(month_id)
+    row = lookups.month_row(month_id)
     if row and row.get("month_name"):
         return str(row["month_name"])
     return month_id

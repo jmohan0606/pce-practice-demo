@@ -53,8 +53,9 @@ the unchanged rule count).
 At **$100,000** (returned in **9.5s**):
 
 ```
-Matches:   0 of 0 rows evaluated — matches nothing — a threshold or field may
-           not behave as expected
+Matches:   0 of 0 rows evaluated — matches nothing (no rows matched the
+           population filter — 10 row(s) were in scope for
+           phx_dm_pce_account_month, none passed the filters)
 Previewed with: month=202606 · advisor_sid=V000001
 Severity:  proposed MODERATE
 
@@ -66,7 +67,12 @@ Nothing was saved — the rule set still holds 247 rules.
 
 **Zero matches is the demo's first talking point**: the preview caught, before
 anything was approved, that $100,000 does not discriminate on this data — the
-exact failure it exists to catch.
+exact failure it exists to catch. Note what the diagnostic says (Round 9): 10
+rows WERE in scope, none passed the filters — so the population is fine and
+the $100,000 threshold is what does not discriminate. The preview
+distinguishes this from the other empty case ("N row(s) matched the population
+filter but none met the trigger"), so you never have to guess which of the two
+you are looking at.
 
 ## 3 · The scope point — say this out loud
 

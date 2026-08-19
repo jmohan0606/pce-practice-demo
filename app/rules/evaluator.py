@@ -160,31 +160,62 @@ def _trigger_fires(trigger: dict, value: float) -> bool:
 
 def _fetch_rows(vertex: str, month: str | None = None,
                 advisor_sid: str | None = None,
-                key: str | None = None) -> list[dict]:
+                key: str | None = None,
+                columns: set[str] | None = None) -> list[dict]:
     """Round 8 (client-env bug fix) — the evaluator's ONE row source: the
     internal ``rule_evaluation_rows`` catalog query, through the tiered graph
     client. In mock mode the mock tier serves it (results identical to the old
     direct store read — proven); in real mode it reaches TigerGraph like every
     other query, so rules stop silently evaluating against mock rows while the
     dashboard shows real figures. The evaluator itself stays Python-interpreted
-    (the recorded decision) — only WHERE the rows come from changed."""
+    (the recorded decision) — only WHERE the rows come from changed.
+
+    Round 9 task 4: every available filter (month / advisor_sid / key) rides
+    the query so the serving tier filters BEFORE returning rows, and
+    ``columns`` projects the result to only the attributes the plan
+    references — the full vertex is never materialised into the response."""
     from app.graph.queries.catalog import run_catalog_query
 
-    params: dict = {"vertex": vertex}
+    params: dict = {"vertex_type": vertex}
     if month not in (None, ""):
         params["month"] = str(month)
     if advisor_sid not in (None, ""):
         params["advisor_sid"] = str(advisor_sid)
     if key not in (None, ""):
-        params["key"] = str(key)
+        params["key_id"] = str(key)
+    if columns:
+        params["columns"] = ",".join(sorted(columns))
     return run_catalog_query("rule_evaluation_rows", params,
                              allow_internal=True)["rows"]
 
 
-def _join_rows(plan: dict, rows: list[dict]) -> list[dict]:
-    """Merge joined-vertex attributes onto each driving-vertex row (non-overriding)."""
+def _plan_columns(plan: dict) -> set[str]:
+    """Every field the plan can touch — filters, compute, attribute, group_by,
+    join keys, plus month_id (the join disambiguator). This is the projection
+    _fetch_rows requests so no unused column is materialised or shipped."""
+    needed = set(collect_fields(plan.get("filters")))
+    needed |= collect_fields(plan.get("compute"))
+    needed |= collect_fields(plan.get("attribute"))
+    needed |= set(plan.get("population_fields") or [])
+    needed.add(str(plan.get("group_by") or ""))
+    needed.add("month_id")
     for join in plan.get("joins", []):
-        source = {r.get("__vertex_id"): r for r in _fetch_rows(join["vertex"])}
+        needed.add(str(join.get("via") or ""))
+    needed.discard("")
+    return needed
+
+
+def _join_rows(plan: dict, rows: list[dict],
+               columns: set[str] | None = None) -> list[dict]:
+    """Merge joined-vertex attributes onto each driving-vertex row
+    (non-overriding). The join fetch projects to the plan's own field set
+    (Round 9 task 4) — merging columns the plan never reads shipped the whole
+    joined table's width for nothing. The join is deliberately NOT month- or
+    advisor-filtered: the lookup below prefers a month-matched candidate but
+    falls back to any candidate, and pre-filtering would change that."""
+    for join in plan.get("joins", []):
+        source = {r.get("__vertex_id"): r
+                  for r in _fetch_rows(join["vertex"], columns=columns)}
         via = join["via"]
         primary = None
         try:
@@ -244,7 +275,8 @@ def evaluate_plan(store, plan: dict, params: dict | None = None) -> dict:
     month = params.get("month")
     if month and "present_prior_month" in set(plan.get("population_fields") or
                                              collect_fields(plan["filters"])):
-        month_rows = _fetch_rows("phx_dm_pce_month", key=str(month))
+        month_rows = _fetch_rows("phx_dm_pce_month", key=str(month),
+                                 columns={"is_baseline"})
         if month_rows and _to_bool(month_rows[0].get("is_baseline")):
             return {"matched": [], "matched_count": 0, "evaluated_rows": 0,
                     "empty_reason": f"month {month} is the baseline month — no prior month "
@@ -258,9 +290,11 @@ def evaluate_plan(store, plan: dict, params: dict | None = None) -> dict:
     auto_advisor = (advisor if advisor
                     and "advisor_sid" not in collect_fields(plan["filters"])
                     else None)
-    rows = _fetch_rows(vertex, month=month, advisor_sid=auto_advisor)
+    columns = _plan_columns(plan)
+    rows = _fetch_rows(vertex, month=month, advisor_sid=auto_advisor,
+                       columns=columns)
 
-    rows = _join_rows(plan, rows)
+    rows = _join_rows(plan, rows, columns=columns)
     group_by = plan["group_by"]
     population = [
         row for row in rows
@@ -306,6 +340,30 @@ def evaluate_plan(store, plan: dict, params: dict | None = None) -> dict:
               "evaluated_rows": len(population)}
     if compute_errors:
         result["compute_error_rows"] = compute_errors
+    # Round 9 task 10d — an empty result says WHICH kind of empty it is:
+    # "no rows matched the population filter" and "rows matched but none met
+    # the trigger" demand different next actions (fix the filter/scope vs fix
+    # the threshold) and were previously indistinguishable.
+    # ``empty_kind`` marks these as TRUE-ZERO diagnostics (the evaluation ran
+    # and found nothing), distinct from structural reasons like the baseline
+    # guard above — consumers that surface "the count is qualified" notes
+    # (account_lifecycle_counts) skip these; diagnostic surfaces (the rule
+    # preview) show them.
+    if not matched:
+        if not population:
+            result["empty_kind"] = "no_population"
+            result["empty_reason"] = (
+                f"no rows matched the population filter — {len(rows)} row(s) "
+                f"were in scope for {vertex}, none passed the filters")
+        else:
+            groups_n = len({str(r.get(group_by)) for r in population}) \
+                if plan.get("aggregate") else len(population)
+            unit = "group(s)" if plan.get("aggregate") else "row(s)"
+            result["empty_kind"] = "trigger_not_met"
+            result["empty_reason"] = (
+                f"{len(population)} row(s) matched the population filter "
+                f"({groups_n} {unit} evaluated) but none met the trigger "
+                f"({trigger['op']} {trigger['value']})")
     return result
 
 

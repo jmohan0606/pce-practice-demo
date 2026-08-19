@@ -1,0 +1,40 @@
+/*
+ * aum_managed — Round 9 task 9 catalog query (docs/STORE_READ_AUDIT.md).
+ * Purpose: Managed-accounts-only AUM (the account MASTER's is_managed flag —
+ *          Round 3 review D2's scope) for one advisor or the cohort, one
+ *          month. month_aum uses a different membership rule; this is the
+ *          managed-scoped figure the KPI tiles render.
+ * Params:  advisor — advisor_sid or "all" (cohort only, in_cohort = true)
+ *          month_id — YYYYMM
+ * Outputs: total_balance (sum of end_balance over managed accounts' rows),
+ *          account_count (how many managed rows — 0 means callers render
+ *          null, never 0-as-a-guess).
+ * Local-tier equivalent: app/graph/queries/catalog.py::aum_managed
+ * Created: Round 9 (2026-08-19). NEEDS LIVE INSTALL.
+ * Compatibility target: TigerGraph 4.2.x (patch_4.2.2_jpmc_57231), classic
+ *          GSQL SYNTAX V1 — written against reference/v2 (EXAMPLE_query.gsql
+ *          single-hop form; GQ-009 for accumulators + PRINT expr AS name).
+ *          No v2 constructs, no reverse_ edge names, no MapAccum, no
+ *          ternaries; single-hop SELECTs only.
+ */
+USE GRAPH phx_dm_pce_practice_demo
+
+CREATE QUERY aum_managed(STRING advisor, STRING month_id)
+    FOR GRAPH phx_dm_pce_practice_demo SYNTAX V1 {
+  SumAccum<DOUBLE> @@total_balance;
+  SumAccum<INT> @@account_count;
+
+  am_seed = {phx_dm_pce_account_month.*};
+  scoped = SELECT r FROM am_seed:r -(phx_dm_pce_am_by_advisor:e)- phx_dm_pce_advisor:a
+      WHERE r.month_id == month_id
+        AND ((advisor == "all" AND a.in_cohort) OR a.advisor_sid == advisor);
+
+  managed_rows = SELECT r FROM scoped:r -(phx_dm_pce_am_for_account:e2)- phx_dm_pce_account:c
+      WHERE c.is_managed
+      ACCUM @@total_balance += r.end_balance,
+            @@account_count += 1;
+
+  PRINT @@total_balance AS total_balance, @@account_count AS account_count;
+}
+
+INSTALL QUERY aum_managed
