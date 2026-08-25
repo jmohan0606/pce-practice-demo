@@ -11,3 +11,14 @@ Produce docs/analysis/CLIENT_ENV_GAP_REPORT.md and stop.
 Quote exact commands and exact output — never a summary, never an estimated number. If a check cannot be run, say so plainly rather than inferring the answer. Two identical failures on any diagnostic = stop that line and report.
 
 End with the ranked fix list. That list is what I will approve before you touch any code.
+
+--------------------Memory Fix Test - Round A
+Read docs/analysis/COPILOT_DIAGNOSIS_TASK.md and follow it exactly.
+
+It contains seven read-only diagnostics. Run all seven and produce a single report at docs/analysis/DIAGNOSIS_ROUND_A.md in the format the task file specifies.
+
+This is diagnosis only. Change nothing — no application file, no config, no data file, no GSQL query, no .env. The report is the only file you create. Do not propose or apply fixes, and do not copy anything from a reference tree.
+
+Three rules that matter most: paste exact command output verbatim rather than summarising it; if something cannot be measured, say so instead of substituting a different measurement; and do not run anything that loads the foundation store, because that is the suspected memory bomb — the only exception is Diagnostic 7, which has its own 90% stop rule.
+
+Do not leave any process running when you finish.
