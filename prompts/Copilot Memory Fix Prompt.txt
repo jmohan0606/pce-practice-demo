@@ -1,0 +1,13 @@
+Read docs/COPILOT_ANALYSIS_ONLY.md in full before running anything.
+
+This is an analysis pass. Change nothing — not a file, not a config value, not a docstring, not a "quick" one-liner. If you find something broken, record it and move on. The fix pass is a separate instruction after this report is reviewed.
+
+A reference copy of the last Codespace state is at reference/codespace_latest/. Read-only — never edit it and never copy from it during this pass, since copying is a fix.
+
+Section 1.1's diff is the most important output. Ten rounds were hand-moved here file by file and nobody has verified what actually landed. The round documents describe what was intended; the diff shows what is here.
+
+Produce docs/analysis/CLIENT_ENV_GAP_REPORT.md and stop.
+
+Quote exact commands and exact output — never a summary, never an estimated number. If a check cannot be run, say so plainly rather than inferring the answer. Two identical failures on any diagnostic = stop that line and report.
+
+End with the ranked fix list. That list is what I will approve before you touch any code.
