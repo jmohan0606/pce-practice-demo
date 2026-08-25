@@ -63,3 +63,31 @@ Then re-run uv run python scripts\check_rule_rows_contract.py and continue with 
 Item 2.7 needs the LLM. If it is still unreachable, pause and ask the operator to run pcl aws login rather than skipping the item.
 
 Append to docs/analysis/PHASE_2_COMPLETE.md — do not overwrite the existing content. Master spec §8 format, and keep the §4 discipline.
+
+
+---------------Phase 2 amendment #2
+Phase 2 stopped correctly again. RR-3 is architecturally incompatible with Phase 1's guard — the checker builds its fixture from get_foundation_store(), which real mode must refuse. That is a defect in the checker, written before the guard existed, not in your work. You were right not to weaken the guard.
+
+Amendment 4 — Item 2.1: you are authorised to modify scripts/check_rule_rows_contract.py, for RR-3 only.
+
+Replace RR-3's live-store fixture with a static in-file fixture. Do not call get_foundation_store(), do not read data/, do not change GRAPH_CLIENT_MODE, and do not weaken or bypass the Phase 1 guard in any way.
+
+Hand-write two or three rows per exercised vertex type in the TigerGraph payload shape — one result-set object per PRINT, each row {"v_id": ..., "v_type": ..., "attributes": {...}} with __vertex_id present among the attributes. Field names must match the projections in docs/tigergraph/queries/rule_evaluation_rows.gsql.
+
+RR-3 must still prove the same three things: rows arrive flat, __vertex_id is present at top level, and the columns projection is applied. It must still fail if given a payload without __vertex_id.
+
+RR-1 and RR-2 already pass — do not alter them.
+
+Amendment 5 — diagnose the CompileError before fixing RR-3.
+
+translate_plan(...) returned a CompileError where the checker expected compiled.plan. Determine why the plan does not compile against the merged catalog. Report the plan being compiled and the error's message and reason.
+
+This is not only a checker problem. translate_plan is the compiler behind the Generate Query button, which is a known Phase 4 defect. Anything you learn here is evidence for that. Report it in full even if it turns out to be specific to the checker's test plan.
+
+If the compile failure is a real defect in the merged catalog or the compiler, fix it and say so. If it is only a stale test plan in the checker, fix the test plan. If you cannot determine which, stop and report — do not guess.
+
+Then re-run uv run python scripts\check_rule_rows_contract.py, expect RR-1 through RR-3 to pass, and continue with Item 2.1b and Items 2.2 through 2.7 as written.
+
+Item 2.7 needs the LLM. If it is unreachable, pause and ask the operator to run pcl aws login rather than skipping.
+
+Append to docs/analysis/PHASE_2_COMPLETE.md. Master spec §8 format, §4 discipline.
