@@ -91,3 +91,32 @@ Then re-run uv run python scripts\check_rule_rows_contract.py, expect RR-1 throu
 Item 2.7 needs the LLM. If it is unreachable, pause and ask the operator to run pcl aws login rather than skipping.
 
 Append to docs/analysis/PHASE_2_COMPLETE.md. Master spec §8 format, §4 discipline.
+
+-------------------------------Phase 2 fix continues
+Item 2.1 passes 5/5 and Item 2.2's catalog reconciliation is complete. The non-credited normalizer fix is accepted. You were right to refuse to invent a label for 9R.
+
+Amendment 6 — the operator has supplied the 9R label.
+
+Add to REASON_CODES in app/shared/reason_codes.py:
+
+python
+"9R": {
+    "cause": "rep_code_not_found",
+    "cause_label": "Rep Code Not Found",
+    "description": "No matching rep code was found for the transaction. Excluded "
+                   "from advisor-level credited revenue; included firm-wide.",
+},
+
+This is operator-supplied, not inferred. Do not add labels for 98, 99, 9X or XX — no mapping exists for those and they must keep rendering as Unknown Code (…).
+
+Adding a REASON_CODES entry makes a code advisor-excluded via ADVISOR_REASON_FILTER. 9R is already in ADVISOR_EXCLUDED_REASON_CODES, so this must not change any figure. Confirm April firm-basis revenue is still $397,389,374.54 after the edit and state the measured figure.
+
+Then report 9R's share of the 12 non-credited rows — value and account_count against the totals — and list every remaining unmapped code with its value share, so the operator can request the rest in one go.
+
+Then continue with Item 2.1b and Items 2.3 through 2.7 as written.
+
+Item 2.4 is the substantive one and nothing has been done on it: route rules/service.py:105-107 through run_catalog_query(..., allow_internal=True), and make rules/service.py:146-148 raise instead of returning evaluated=False. A rule that evaluated successfully and matched nothing may be skipped; a rule that errored must surface.
+
+Item 2.7 needs the LLM. If unreachable, pause and ask the operator to run pcl aws login rather than skipping.
+
+Append to docs/analysis/PHASE_2_COMPLETE.md. Master spec §8 format, §4 discipline.
