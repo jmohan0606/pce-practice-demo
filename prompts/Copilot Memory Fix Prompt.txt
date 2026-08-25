@@ -22,3 +22,44 @@ This is diagnosis only. Change nothing — no application file, no config, no da
 Three rules that matter most: paste exact command output verbatim rather than summarising it; if something cannot be measured, say so instead of substituting a different measurement; and do not run anything that loads the foundation store, because that is the suspected memory bomb — the only exception is Diagnostic 7, which has its own 90% stop rule.
 
 Do not leave any process running when you finish.
+--------------------------------------------Phase 2 fix
+Phase 2 stopped correctly at Item 2.1 — the spec authorised three files while requiring a check that needs a fourth. That was a spec error, not yours. You were right to stop.
+
+Amendment 1 to docs/spec/02_PHASE_2_CATALOG_AND_RULES.md Item 2.1 — copy four GSQL files.
+
+Copy these byte-for-byte from reference/codespace_latest/docs/tigergraph/queries/ to docs/tigergraph/queries/:
+
+rule_evaluation_rows.gsql
+account_managed_flags.gsql
+aum_managed.gsql
+product_group_master.gsql
+
+This is restoration of missed deployment files, not GSQL authoring. The operator has independently verified that all four are already installed in TigerGraph. The prohibition on authoring GSQL — and specifically on ever creating a GSQL rules_evaluate_plan — is unchanged. Do not edit any of them.
+
+Before copying rule_evaluation_rows.gsql, confirm the reference file has 15 bracketed PRINT statements and 15 AS __vertex_id aliases. If it has bare PRINT rows_x; statements instead, stop and report — that would be the wrong version.
+
+Amendment 2 — new Item 2.1b: GSQL install inventory (read-only, report only).
+
+During earlier rounds an unknown subset of new GSQL queries was installed in TigerGraph. Nobody has a record of which. Establish it.
+
+Compare every .gsql file in reference/codespace_latest/docs/tigergraph/queries/ against the installed query list from:
+
+uv run python -c "from app.graph.tiered_client import PyTigerGraphClient; q=PyTigerGraphClient()._connection().getInstalledQueries(fmt='py'); print(sorted(k.rsplit('/',1)[-1] for k in q))"
+
+Report three lists:
+
+Reference .gsql files with no installed query of that name — these were never installed.
+Installed queries with no reference .gsql file — installed from somewhere else, or older.
+Present in both but the body differs — for each name in both lists, fetch the installed body with showQuery('<name>') and compare against the file, ignoring whitespace and comments. An installed-but-stale query is the dangerous case — it answers under the right name with the wrong logic. For any query the deployed CATALOG actually calls, report the difference specifically.
+
+The operator has confirmed all four newly-copied queries are installed by name. List 1 should therefore not contain any of them — if it does, stop and report, because the file and the installed name would disagree.
+
+Do not install, drop, or modify any TigerGraph query. This item is read-only. Installing is the operator's decision.
+
+Amendment 3 — Item 2.4 is not done. The catalog registration of rules_evaluate_plan landed via the 2.1 merge, but the two substantive changes have not been made: routing rules/service.py:105-107 through run_catalog_query(..., allow_internal=True), and making rules/service.py:146-148 raise instead of returning evaluated=False. Both are still required.
+
+Then re-run uv run python scripts\check_rule_rows_contract.py and continue with Items 2.2 through 2.7 as written.
+
+Item 2.7 needs the LLM. If it is still unreachable, pause and ask the operator to run pcl aws login rather than skipping the item.
+
+Append to docs/analysis/PHASE_2_COMPLETE.md — do not overwrite the existing content. Master spec §8 format, and keep the §4 discipline.
