@@ -212,4 +212,4 @@ Then finish the remaining 3 Group 2 failures. product_advisor_ranking and produc
 
 Then continue to Group 3.
 
-Separately, do not attempt to fix the evaluator — that is application code and is being handled elsewhere. Your finding is recorded and correct.
+Separately, do not attempt to fix the evaluator — that is application code and is being handled elsewhere. Your finding is recorded and correct.  
